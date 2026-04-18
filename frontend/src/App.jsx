@@ -51,10 +51,10 @@ function getProgress(points, hatched) {
 }
 
 function getPetImage(petType, stage, hatched) {
-  if (!hatched) return '/pets/egg.png';
+  if (!hatched) return '/pets/egg.webp';
   const idx = stage.imageIndex;
-  if (idx < 0) return '/pets/egg.png';
-  return `/pets/${petType}_${idx}.png`;
+  if (idx < 0) return '/pets/egg.webp';
+  return `/pets/${petType}_${idx}.webp`;
 }
 
 function getTodayDate() {
@@ -250,7 +250,7 @@ function App() {
         <div className="bg-stars"></div>
         <div className="loading">
           <div className="loading-egg">
-            <img src="/pets/egg.png" alt="egg" className="loading-egg-img" />
+            <img src="/pets/egg.webp" alt="egg" className="loading-egg-img" />
           </div>
           <p>Загрузка...</p>
         </div>
@@ -266,7 +266,7 @@ function App() {
       <div className="app">
         <div className="bg-stars"></div>
         <div className="no-pair">
-          <img src="/pets/egg.png" alt="egg" className="no-pair-egg" />
+          <img src="/pets/egg.webp" alt="egg" className="no-pair-egg" />
           <h1>Chumi</h1>
           <p className="no-pair-subtitle">Вырастите питомца вместе с другом!</p>
 
