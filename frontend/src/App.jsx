@@ -1,6 +1,35 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
+const PET_STAGES = [
+  { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
+  { name: 'Малыш', emoji: '🐣', minPoints: 50 },
+  { name: 'Подросток', emoji: '🐲', minPoints: 200 },
+  { name: 'Взрослый', emoji: '🔥', minPoints: 500 },
+  { name: 'Легенда', emoji: '👑', minPoints: 1000 },
+];
+
+function getNextStage(points) {
+  for (const s of PET_STAGES) {
+    if (points < s.minPoints && s.minPoints > 0) return s.name;
+  }
+  return 'Макс!';
+}
+
+function getProgress(points) {
+  const thresholds = PET_STAGES.map(s => s.minPoints);
+  for (let i = 0; i < thresholds.length - 1; i++) {
+    if (points < thresholds[i + 1]) {
+      return ((points - thresholds[i]) / (thresholds[i + 1] - thresholds[i])) * 100;
+    }
+  }
+  return 100;
+}
+
+function getTodayDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
 function App() {
   const [userId, setUserId] = useState(null);
   const [pair, setPair] = useState(null);
@@ -9,9 +38,8 @@ function App() {
   const [feeding, setFeeding] = useState(false);
   const [evolved, setEvolved] = useState(false);
 
-  const API_URL = '/.netlify/functions/api';
+  const API_URL = '/api';
 
-  // Получаем userId из Telegram
   useEffect(() => {
     let foundUser = false;
     try {
@@ -29,18 +57,15 @@ function App() {
       console.log('Telegram WebApp not available');
     }
 
-    // Для тестирования без Telegram
     if (!foundUser) {
       setUserId('test_user_123');
     }
   }, []);
 
-
-  // Загружаем данные пары
   useEffect(() => {
     if (!userId) return;
 
-    fetch(`${API_URL}/api/pair/${userId}`)
+    fetch(`${API_URL}/pair/${userId}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -51,7 +76,6 @@ function App() {
       .catch(() => setLoading(false));
   }, [userId]);
 
-  // Кормление
   const feedPet = async () => {
     if (feeding) return;
     setFeeding(true);
@@ -59,7 +83,7 @@ function App() {
     setEvolved(false);
 
     try {
-      const res = await fetch(`${API_URL}/api/feed`, {
+      const res = await fetch(`${API_URL}/feed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })
@@ -86,16 +110,9 @@ function App() {
     setFeeding(false);
   };
 
-  // Получаем изображение питомца по стадии
   const getPetImage = (stageName) => {
-    const images = {
-      'Яйцо': '🥚',
-      'Малыш': '🐣',
-      'Подросток': '🐲',
-      'Взрослый': '🔥',
-      'Легенда': '👑'
-    };
-    return images[stageName] || '🥚';
+    const found = PET_STAGES.find(s => s.name === stageName);
+    return found ? found.emoji : '🥚';
   };
 
   if (loading) {
@@ -121,7 +138,7 @@ function App() {
     );
   }
 
-  const todayFed = pair.lastFed && pair.lastFed[userId] === new Date().toISOString().split('T')[0];
+  const todayFed = pair.lastFed && pair.lastFed[userId] === getTodayDate();
 
   return (
     <div className="app">
@@ -172,30 +189,6 @@ function App() {
       </div>
     </div>
   );
-}
-
-// Вспомогательные функции
-function getNextStage(points) {
-  const stages = [
-    { name: 'Малыш', min: 50 },
-    { name: 'Подросток', min: 200 },
-    { name: 'Взрослый', min: 500 },
-    { name: 'Легенда', min: 1000 },
-  ];
-  for (const s of stages) {
-    if (points < s.min) return s.name;
-  }
-  return 'Макс!';
-}
-
-function getProgress(points) {
-  const stages = [0, 50, 200, 500, 1000];
-  for (let i = 0; i < stages.length - 1; i++) {
-    if (points < stages[i + 1]) {
-      return ((points - stages[i]) / (stages[i + 1] - stages[i])) * 100;
-    }
-  }
-  return 100;
 }
 
 export default App;

@@ -4,7 +4,6 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 }
 
-
 const PET_STAGES = [
   { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
   { name: 'Малыш', emoji: '🐣', minPoints: 50 },
@@ -41,24 +40,26 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers, body: '' };
   }
 
-  const path = event.path.replace('/.netlify/functions/api', '').replace('/api', '');
+  const path = event.path.replace('/.netlify/functions/api', '');
 
   try {
-        const supabase = getSupabase();
-
+    const supabase = getSupabase();
 
     // --- GET /pair/:userId ---
     if (event.httpMethod === 'GET' && path.startsWith('/pair/')) {
-      const userId = path.split('/pair/')[1];
+      const userId = path.replace('/pair/', '');
 
-      // Находим пару пользователя
-      const { data: pairUser } = await supabase
+      if (!userId) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'userId не указан' }) };
+      }
+
+      const { data: pairUser, error: pairUserError } = await supabase
         .from('pair_users')
         .select('pair_code')
         .eq('user_id', userId)
         .single();
 
-      if (!pairUser) {
+      if (!pairUser || pairUserError) {
         return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Пара не найдена' }) };
       }
 
@@ -67,6 +68,10 @@ exports.handler = async (event) => {
         .select('*')
         .eq('code', pairUser.pair_code)
         .single();
+
+      if (!pair) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Данные пары не найдены' }) };
+      }
 
       const { data: users } = await supabase
         .from('pair_users')
@@ -108,6 +113,10 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'POST' && path === '/feed') {
       const { userId } = JSON.parse(event.body);
 
+      if (!userId) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'userId не указан' }) };
+      }
+
       const { data: pairUser } = await supabase
         .from('pair_users')
         .select('pair_code')
@@ -121,7 +130,6 @@ exports.handler = async (event) => {
       const pairCode = pairUser.pair_code;
       const today = getTodayDate();
 
-      // Проверяем, кормил ли уже сегодня
       const { data: existingFeed } = await supabase
         .from('feedings')
         .select('id')
@@ -134,10 +142,14 @@ exports.handler = async (event) => {
         return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже покормил сегодня! Приходи завтра 🌙' }) };
       }
 
-      // Записываем кормление
-      await supabase.from('feedings').insert({ pair_code: pairCode, user_id: userId, fed_date: today });
+      const { error: insertError } = await supabase
+        .from('feedings')
+        .insert({ pair_code: pairCode, user_id: userId, fed_date: today });
 
-      // Проверяем, оба ли покормили
+      if (insertError) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ошибка записи кормления' }) };
+      }
+
       const { data: users } = await supabase
         .from('pair_users')
         .select('user_id')
@@ -149,12 +161,27 @@ exports.handler = async (event) => {
         .eq('pair_code', pairCode)
         .eq('fed_date', today);
 
-      const allFedToday = users.length === 2 && users.every(u => todayFeedings.some(f => f.user_id === u.user_id));
+      const allFedToday = users.length === 2 &&
+        users.every(u => todayFeedings.some(f => f.user_id === u.user_id));
 
       let evolved = false;
       let pair = (await supabase.from('pairs').select('*').eq('code', pairCode).single()).data;
 
       if (allFedToday) {
+        if (pair.last_streak_date === today) {
+          const lastFed = {};
+          todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
+          const stage = getPetStage(pair.growth_points);
+
+          return {
+            statusCode: 200, headers,
+            body: JSON.stringify({
+              success: true, fed: true, allFedToday: true, evolved: false,
+              pair: { streakDays: pair.streak_days, growthPoints: pair.growth_points, stage, lastFed }
+            })
+          };
+        }
+
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -162,7 +189,7 @@ exports.handler = async (event) => {
         let newStreak = pair.streak_days;
         if (pair.last_streak_date === yesterdayStr || pair.streak_days === 0) {
           newStreak += 1;
-        } else if (pair.last_streak_date !== today) {
+        } else {
           newStreak = 1;
         }
 
@@ -199,7 +226,6 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'POST' && path === '/create') {
       const { userId } = JSON.parse(event.body);
 
-      // Проверяем, есть ли уже пара
       const { data: existing } = await supabase
         .from('pair_users')
         .select('pair_code')
@@ -256,6 +282,7 @@ exports.handler = async (event) => {
     }
 
   } catch (error) {
+    console.log('API Error:', error);
     return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
   }
 
