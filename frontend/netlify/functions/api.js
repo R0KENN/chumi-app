@@ -1,10 +1,10 @@
-const TelegramBot = require('node-telegram-bot-api');
+const { createClient } = require('@supabase/supabase-js');
 
-// --- База данных в памяти (позже заменим на Supabase) ---
-let pairs = {};
-let userToPair = {};
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
-// --- Уровни питомца ---
 const PET_STAGES = [
   { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
   { name: 'Малыш', emoji: '🐣', minPoints: 50 },
@@ -43,97 +43,218 @@ exports.handler = async (event) => {
 
   const path = event.path.replace('/.netlify/functions/api', '').replace('/api', '');
 
-  // --- GET /pair/:userId ---
-  if (event.httpMethod === 'GET' && path.startsWith('/pair/')) {
-    const userId = path.split('/pair/')[1];
-    const code = userToPair[userId];
+  try {
 
-    if (!code || !pairs[code]) {
-      return {
-        statusCode: 200, headers,
-        body: JSON.stringify({ success: false, message: 'Пара не найдена' })
-      };
-    }
+    // --- GET /pair/:userId ---
+    if (event.httpMethod === 'GET' && path.startsWith('/pair/')) {
+      const userId = path.split('/pair/')[1];
 
-    const pair = pairs[code];
-    const stage = getPetStage(pair.growthPoints);
+      // Находим пару пользователя
+      const { data: pairUser } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId)
+        .single();
 
-    return {
-      statusCode: 200, headers,
-      body: JSON.stringify({
-        success: true,
-        pair: { code, petType: pair.petType, streakDays: pair.streakDays, growthPoints: pair.growthPoints, stage, users: pair.users, lastFed: pair.lastFed }
-      })
-    };
-  }
-
-  // --- POST /feed ---
-  if (event.httpMethod === 'POST' && path === '/feed') {
-    const { userId } = JSON.parse(event.body);
-    const code = userToPair[userId];
-
-    if (!code || !pairs[code]) {
-      return {
-        statusCode: 200, headers,
-        body: JSON.stringify({ success: false, message: 'Пара не найдена' })
-      };
-    }
-
-    const pair = pairs[code];
-    const today = getTodayDate();
-
-    if (pair.lastFed[userId] === today) {
-      return {
-        statusCode: 200, headers,
-        body: JSON.stringify({ success: false, message: 'Ты уже покормил сегодня! Приходи завтра 🌙' })
-      };
-    }
-
-    pair.lastFed[userId] = today;
-
-    const allFedToday = pair.users.length === 2 && pair.users.every(u => pair.lastFed[u] === today);
-    let evolved = false;
-
-    if (allFedToday) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-      if (pair.lastStreakDate === yesterdayStr || pair.streakDays === 0) {
-        pair.streakDays += 1;
-      } else if (pair.lastStreakDate !== today) {
-        pair.streakDays = 1;
+      if (!pairUser) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Пара не найдена' }) };
       }
 
-      pair.lastStreakDate = today;
-      const oldStage = getPetStage(pair.growthPoints);
-      pair.growthPoints += 10 + pair.streakDays * 2;
-      const newStage = getPetStage(pair.growthPoints);
+      const { data: pair } = await supabase
+        .from('pairs')
+        .select('*')
+        .eq('code', pairUser.pair_code)
+        .single();
 
-      if (oldStage.name !== newStage.name) evolved = true;
+      const { data: users } = await supabase
+        .from('pair_users')
+        .select('user_id')
+        .eq('pair_code', pairUser.pair_code);
+
+      const today = getTodayDate();
+      const { data: todayFeedings } = await supabase
+        .from('feedings')
+        .select('user_id')
+        .eq('pair_code', pairUser.pair_code)
+        .eq('fed_date', today);
+
+      const lastFed = {};
+      if (todayFeedings) {
+        todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
+      }
+
+      const stage = getPetStage(pair.growth_points);
+
+      return {
+        statusCode: 200, headers,
+        body: JSON.stringify({
+          success: true,
+          pair: {
+            code: pair.code,
+            petType: pair.pet_type,
+            streakDays: pair.streak_days,
+            growthPoints: pair.growth_points,
+            stage,
+            users: users.map(u => u.user_id),
+            lastFed
+          }
+        })
+      };
     }
 
-    const stage = getPetStage(pair.growthPoints);
+    // --- POST /feed ---
+    if (event.httpMethod === 'POST' && path === '/feed') {
+      const { userId } = JSON.parse(event.body);
 
-    return {
-      statusCode: 200, headers,
-      body: JSON.stringify({
-        success: true, fed: true, allFedToday, evolved,
-        pair: { streakDays: pair.streakDays, growthPoints: pair.growthPoints, stage, lastFed: pair.lastFed }
-      })
-    };
-  }
+      const { data: pairUser } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId)
+        .single();
 
-  // --- GET /test-create ---
-  if (event.httpMethod === 'GET' && path === '/test-create') {
-    const code = generateCode();
-    pairs[code] = {
-      users: ['test_user_123', 'test_user_456'],
-      petType: 'grimm', petLevel: 0, streakDays: 0, growthPoints: 0, lastFed: {}, createdAt: getTodayDate()
-    };
-    userToPair['test_user_123'] = code;
-    userToPair['test_user_456'] = code;
-    return { statusCode: 200, headers, body: JSON.stringify({ success: true, code }) };
+      if (!pairUser) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Пара не найдена' }) };
+      }
+
+      const pairCode = pairUser.pair_code;
+      const today = getTodayDate();
+
+      // Проверяем, кормил ли уже сегодня
+      const { data: existingFeed } = await supabase
+        .from('feedings')
+        .select('id')
+        .eq('pair_code', pairCode)
+        .eq('user_id', userId)
+        .eq('fed_date', today)
+        .single();
+
+      if (existingFeed) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже покормил сегодня! Приходи завтра 🌙' }) };
+      }
+
+      // Записываем кормление
+      await supabase.from('feedings').insert({ pair_code: pairCode, user_id: userId, fed_date: today });
+
+      // Проверяем, оба ли покормили
+      const { data: users } = await supabase
+        .from('pair_users')
+        .select('user_id')
+        .eq('pair_code', pairCode);
+
+      const { data: todayFeedings } = await supabase
+        .from('feedings')
+        .select('user_id')
+        .eq('pair_code', pairCode)
+        .eq('fed_date', today);
+
+      const allFedToday = users.length === 2 && users.every(u => todayFeedings.some(f => f.user_id === u.user_id));
+
+      let evolved = false;
+      let pair = (await supabase.from('pairs').select('*').eq('code', pairCode).single()).data;
+
+      if (allFedToday) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        let newStreak = pair.streak_days;
+        if (pair.last_streak_date === yesterdayStr || pair.streak_days === 0) {
+          newStreak += 1;
+        } else if (pair.last_streak_date !== today) {
+          newStreak = 1;
+        }
+
+        const oldStage = getPetStage(pair.growth_points);
+        const newPoints = pair.growth_points + 10 + newStreak * 2;
+        const newStage = getPetStage(newPoints);
+
+        if (oldStage.name !== newStage.name) evolved = true;
+
+        await supabase
+          .from('pairs')
+          .update({ streak_days: newStreak, growth_points: newPoints, last_streak_date: today })
+          .eq('code', pairCode);
+
+        pair.streak_days = newStreak;
+        pair.growth_points = newPoints;
+      }
+
+      const lastFed = {};
+      todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
+
+      const stage = getPetStage(pair.growth_points);
+
+      return {
+        statusCode: 200, headers,
+        body: JSON.stringify({
+          success: true, fed: true, allFedToday, evolved,
+          pair: { streakDays: pair.streak_days, growthPoints: pair.growth_points, stage, lastFed }
+        })
+      };
+    }
+
+    // --- POST /create ---
+    if (event.httpMethod === 'POST' && path === '/create') {
+      const { userId } = JSON.parse(event.body);
+
+      // Проверяем, есть ли уже пара
+      const { data: existing } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId)
+        .single();
+
+      if (existing) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже в паре!' }) };
+      }
+
+      const code = generateCode();
+      await supabase.from('pairs').insert({ code, pet_type: 'grimm' });
+      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
+
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, code }) };
+    }
+
+    // --- POST /join ---
+    if (event.httpMethod === 'POST' && path === '/join') {
+      const { userId, code } = JSON.parse(event.body);
+
+      const { data: existing } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId)
+        .single();
+
+      if (existing) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже в паре!' }) };
+      }
+
+      const { data: pair } = await supabase
+        .from('pairs')
+        .select('code')
+        .eq('code', code.toUpperCase())
+        .single();
+
+      if (!pair) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Код не найден' }) };
+      }
+
+      const { data: pairUsers } = await supabase
+        .from('pair_users')
+        .select('user_id')
+        .eq('pair_code', code.toUpperCase());
+
+      if (pairUsers.length >= 2) {
+        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'В этой паре уже 2 человека' }) };
+      }
+
+      await supabase.from('pair_users').insert({ pair_code: code.toUpperCase(), user_id: userId });
+
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, message: 'Ты присоединился!' }) };
+    }
+
+  } catch (error) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
   }
 
   return { statusCode: 404, headers, body: JSON.stringify({ error: 'Not found' }) };
