@@ -9,7 +9,7 @@ function App() {
   const [feeding, setFeeding] = useState(false);
   const [evolved, setEvolved] = useState(false);
 
-  const API_URL = '';
+  const API_URL = '/.netlify/functions/api';
 
   // Получаем userId из Telegram
   useEffect(() => {
