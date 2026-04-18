@@ -47,10 +47,10 @@ function getProgress(points, hatched) {
 }
 
 function getPetImage(petType, stage, hatched) {
-  if (!hatched) return '/pets/egg.webp';
+  if (!hatched) return '/pets/egg.png';
   const idx = stage.imageIndex;
-  if (idx < 0) return '/pets/egg.webp';
-  return `/pets/${petType}_${idx}.webp`;
+  if (idx < 0) return '/pets/egg.png';
+  return `/pets/${petType}_${idx}.png`;
 }
 
 function getTodayDate() {
@@ -148,14 +148,14 @@ function App() {
         } else if (data.allFedToday) {
           setMessage('✅ Оба покормили! Серия продолжается!');
         } else {
-          setMessage('🍖 Ты покормил питомца! Ждём второго участника...');
+          setMessage('🍖 Ты покормил питомца! Ждём второго...');
         }
         setPair(data.pair);
       } else {
         setMessage(data.message);
       }
     } catch (err) {
-      setMessage('❌ Ошибка соединения с сервером');
+      setMessage('❌ Ошибка соединения');
     }
     setFeeding(false);
   };
@@ -166,13 +166,13 @@ function App() {
       const tg = window.Telegram?.WebApp;
       if (tg) {
         const code = pair?.code || '';
-        const text = `🐾 Привет! Давай вместе вырастим питомца в Chumi!\n\nМой код для пары: ${code}\n\nПрисоединяйся:`;
+        const text = `🐾 Давай вырастим питомца в Chumi!\n\nКод пары: ${code}\n\nПрисоединяйся:`;
         tg.switchInlineQuery(text, ['users']);
       }
     } catch (e) {
       if (pair?.code) {
         navigator.clipboard?.writeText(pair.code);
-        setMessage('📋 Код скопирован! Отправь его другу.');
+        setMessage('📋 Код скопирован!');
       }
     }
   }, [pair]);
@@ -192,32 +192,32 @@ function App() {
     playSound('click');
   };
 
+  // --- LOADING ---
   if (loading) {
     return (
-      <div className="app">
-        <div className="bg-stars"></div>
-        <div className="loading">
-          <div className="loading-egg">
-            <img src="/pets/egg.webp" alt="egg" className="loading-egg-img" />
-          </div>
-          <p>Загрузка...</p>
+      <div className="scene">
+        <div className="room-bg"></div>
+        <div className="loading-screen">
+          <img src="/pets/egg.png" alt="egg" className="loading-egg" />
+          <p className="loading-text">Загрузка...</p>
         </div>
       </div>
     );
   }
 
+  // --- NO PAIR ---
   if (!pair) {
     return (
-      <div className="app">
-        <div className="bg-stars"></div>
-        <div className="no-pair">
-          <img src="/pets/egg.webp" alt="egg" className="no-pair-egg" />
-          <h1>Chumi</h1>
-          <p className="no-pair-subtitle">Вырастите питомца вместе с другом!</p>
-          <div className="no-pair-instructions">
+      <div className="scene">
+        <div className="room-bg"></div>
+        <div className="no-pair-screen">
+          <img src="/pets/egg.png" alt="egg" className="no-pair-egg" />
+          <h1 className="no-pair-title">Chumi</h1>
+          <p className="no-pair-sub">Вырастите питомца вместе!</p>
+          <div className="no-pair-box">
             <p>Открой бота и используй:</p>
-            <div className="command"><span>/create</span> — создать пару</div>
-            <div className="command"><span>/join КОД</span> — присоединиться</div>
+            <div className="cmd"><span>/create</span> — создать пару</div>
+            <div className="cmd"><span>/join КОД</span> — присоединиться</div>
           </div>
         </div>
       </div>
@@ -229,134 +229,135 @@ function App() {
   const petImage = getPetImage(pair.petType, stage, hatched);
   const todayFed = pair.lastFed && pair.lastFed[userId] === getTodayDate();
   const daysUntilHatch = hatched ? 0 : Math.max(0, 3 - pair.streakDays);
+  const progress = getProgress(pair.growthPoints, hatched);
 
   return (
-    <div className="app">
-      <div className="bg-stars"></div>
+    <div className="scene">
+      <div className="room-bg"></div>
+      <div className="room-floor"></div>
+      <div className="room-decor">
+        <div className="decor-shelf"></div>
+        <div className="decor-plant"></div>
+        <div className="decor-lamp"></div>
+      </div>
 
+      {/* --- OVERLAYS --- */}
       {showHatch && (
-        <div className="overlay hatch-overlay">
-          <div className="hatch-animation">
-            <div className="hatch-flash"></div>
-            <img src={petImage} alt="pet" className="hatch-pet-reveal" />
+        <div className="overlay">
+          <div className="overlay-content">
+            <div className="overlay-flash"></div>
+            <img src={petImage} alt="pet" className="overlay-pet-img" />
             <h2>🎉 Вылупился!</h2>
-            <p>{PET_NAMES[pair.petType] || pair.petType}</p>
+            <p className="overlay-name">{PET_NAMES[pair.petType] || pair.petType}</p>
           </div>
         </div>
       )}
 
       {showEvolve && (
-        <div className="overlay evolve-overlay">
-          <div className="evolve-animation">
-            <img src={petImage} alt="pet" className="evolve-pet" />
+        <div className="overlay overlay--evolve">
+          <div className="overlay-content">
+            <img src={petImage} alt="pet" className="overlay-pet-img overlay-pet-img--evolve" />
             <h2>✨ Эволюция!</h2>
-            <p>{stage.name}</p>
+            <p className="overlay-name">{stage.name}</p>
           </div>
         </div>
       )}
 
+      {/* --- MAIN UI --- */}
       {activeTab === 'home' && (
-        <div className="tab-content">
-<div className="pet-area">
-  <div className="pet-platform">
-    <div className="pet-glow"></div>
-    <div className={`pet-container ${!hatched ? 'egg-wobble' : 'pet-idle'}`}>
-      <img src={petImage} alt="pet" className="pet-img" />
-    </div>
-    <div className="pet-shadow"></div>
-  </div>
-  <h2 className="pet-name">
-    {hatched ? (PET_NAMES[pair.petType] || pair.petType) : 'Яйцо'}
-  </h2>
-  <p className="pet-stage-label">
-    {hatched ? stage.name : `До вылупления: ${daysUntilHatch} дн.`}
-  </p>
-</div>
-
-
-          <div className="stats-row">
-            <div className="stat-card">
-              <div className="stat-icon">🔥</div>
-              <div className="stat-value">{pair.streakDays}</div>
-              <div className="stat-label">дней</div>
+        <>
+          {/* Top bar */}
+          <div className="top-bar">
+            <div className="top-bar-level">
+              <span className="top-bar-stage">{hatched ? stage.name : 'Яйцо'}</span>
+              <span className="top-bar-points">{pair.growthPoints} / {hatched ? getNextStage(pair.growthPoints, hatched) === 'Макс!' ? '1000' : PET_STAGES.find(s => s.name === getNextStage(pair.growthPoints, hatched))?.minPoints || '?' : '3 дн.'}</span>
             </div>
-            <div className="stat-card">
-              <div className="stat-icon">⭐</div>
-              <div className="stat-value">{pair.growthPoints}</div>
-              <div className="stat-label">очков</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon">👥</div>
-              <div className="stat-value">{pair.users?.length || 0}/2</div>
-              <div className="stat-label">пара</div>
+            <div className="top-bar-progress">
+              <div className="top-bar-progress-fill" style={{ width: hatched ? `${progress}%` : `${(pair.streakDays / 3) * 100}%` }}></div>
             </div>
           </div>
 
-          <button
-            className={`feed-btn ${todayFed ? 'feed-btn--done' : ''} ${feeding ? 'feed-btn--loading' : ''}`}
-            onClick={feedPet}
-            disabled={todayFed || feeding}
-          >
-            {feeding ? '⏳ Кормлю...' : todayFed ? '✅ Покормлен!' : '🍖 Покормить'}
-          </button>
-
-          {message && (
-            <div className={`toast ${showHatch || showEvolve ? 'toast--special' : ''}`}>
-              {message}
+          {/* Pet */}
+          <div className="pet-scene">
+            <div className={`pet-character ${!hatched ? 'pet-character--egg' : 'pet-character--alive'}`}>
+              <img src={petImage} alt="pet" className="pet-main-img" />
             </div>
-          )}
+            <div className="pet-ground-shadow"></div>
+          </div>
 
-          {hatched && (
-            <div className="progress-section">
-              <div className="progress-label">
-                {stage.name} → {getNextStage(pair.growthPoints, hatched)}
-              </div>
-              <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${getProgress(pair.growthPoints, hatched)}%` }}></div>
-              </div>
+          {/* Stats row */}
+          <div className="stats-floating">
+            <div className="sf-item">
+              <span className="sf-icon">🔥</span>
+              <span className="sf-val">{pair.streakDays}</span>
             </div>
-          )}
+            <div className="sf-item">
+              <span className="sf-icon">⭐</span>
+              <span className="sf-val">{pair.growthPoints}</span>
+            </div>
+            <div className="sf-item">
+              <span className="sf-icon">👥</span>
+              <span className="sf-val">{pair.users?.length || 0}/2</span>
+            </div>
+          </div>
 
-          {pair.users?.length < 2 && (
-            <button className="invite-btn" onClick={inviteFriend}>
-              💌 Пригласить друга
+          {/* Feed button */}
+          <div className="bottom-actions">
+            <button
+              className={`feed-btn ${todayFed ? 'feed-btn--done' : ''} ${feeding ? 'feed-btn--loading' : ''}`}
+              onClick={feedPet}
+              disabled={todayFed || feeding}
+            >
+              {feeding ? '⏳' : todayFed ? '✅ Покормлен' : '🍖 Покормить'}
             </button>
-          )}
-        </div>
+
+            {pair.users?.length < 2 && (
+              <button className="invite-float-btn" onClick={inviteFriend}>💌</button>
+            )}
+          </div>
+
+          {/* Pet name */}
+          <div className="pet-name-tag">
+            {hatched ? (PET_NAMES[pair.petType] || pair.petType) : `Яйцо · ${daysUntilHatch} дн.`}
+          </div>
+
+          {/* Toast */}
+          {message && <div className="toast-msg">{message}</div>}
+        </>
       )}
 
       {activeTab === 'shop' && (
-        <div className="tab-content">
-          <div className="placeholder-page">
-            <div className="placeholder-icon">🏪</div>
+        <div className="page-overlay">
+          <div className="page-content">
+            <div className="page-icon">🏪</div>
             <h2>Магазин</h2>
-            <p>Скоро здесь появятся аксессуары и украшения для твоего питомца!</p>
+            <p>Скоро здесь появятся аксессуары!</p>
           </div>
         </div>
       )}
 
       {activeTab === 'settings' && (
-        <div className="tab-content">
-          <div className="settings-page">
+        <div className="page-overlay">
+          <div className="settings-content">
             <h2 className="settings-title">Настройки</h2>
-            <div className="setting-item">
-              <div className="setting-info">
-                <div className="setting-icon">🔔</div>
+            <div className="s-item">
+              <div className="s-info">
+                <span className="s-icon">🔔</span>
                 <div>
-                  <div className="setting-name">Уведомления</div>
-                  <div className="setting-desc">Напоминания о кормлении</div>
+                  <div className="s-name">Уведомления</div>
+                  <div className="s-desc">Напоминания о кормлении</div>
                 </div>
               </div>
               <button className={`toggle ${notifications ? 'toggle--on' : ''}`} onClick={toggleNotifications}>
                 <div className="toggle-knob"></div>
               </button>
             </div>
-            <div className="setting-item">
-              <div className="setting-info">
-                <div className="setting-icon">🔊</div>
+            <div className="s-item">
+              <div className="s-info">
+                <span className="s-icon">🔊</span>
                 <div>
-                  <div className="setting-name">Звуки</div>
-                  <div className="setting-desc">Звуковые эффекты</div>
+                  <div className="s-name">Звуки</div>
+                  <div className="s-desc">Звуковые эффекты</div>
                 </div>
               </div>
               <button className={`toggle ${soundOn ? 'toggle--on' : ''}`} onClick={toggleSound}>
@@ -364,12 +365,12 @@ function App() {
               </button>
             </div>
             {pair?.code && (
-              <div className="setting-item setting-item--code">
-                <div className="setting-info">
-                  <div className="setting-icon">🔑</div>
+              <div className="s-item">
+                <div className="s-info">
+                  <span className="s-icon">🔑</span>
                   <div>
-                    <div className="setting-name">Код пары</div>
-                    <div className="setting-desc">{pair.code}</div>
+                    <div className="s-name">Код пары</div>
+                    <div className="s-desc">{pair.code}</div>
                   </div>
                 </div>
               </div>
@@ -378,18 +379,19 @@ function App() {
         </div>
       )}
 
+      {/* Tab bar */}
       <nav className="tab-bar">
-        <button className={`tab-btn ${activeTab === 'home' ? 'tab-btn--active' : ''}`} onClick={() => { setActiveTab('home'); playSound('click'); }}>
-          <span className="tab-icon">🏠</span>
-          <span className="tab-label">Главная</span>
+        <button className={`tab ${activeTab === 'home' ? 'tab--active' : ''}`} onClick={() => { setActiveTab('home'); playSound('click'); }}>
+          <span className="tab-ico">🏠</span>
+          <span className="tab-lbl">Главная</span>
         </button>
-        <button className={`tab-btn ${activeTab === 'shop' ? 'tab-btn--active' : ''}`} onClick={() => { setActiveTab('shop'); playSound('click'); }}>
-          <span className="tab-icon">🏪</span>
-          <span className="tab-label">Магазин</span>
+        <button className={`tab ${activeTab === 'shop' ? 'tab--active' : ''}`} onClick={() => { setActiveTab('shop'); playSound('click'); }}>
+          <span className="tab-ico">🏪</span>
+          <span className="tab-lbl">Магазин</span>
         </button>
-        <button className={`tab-btn ${activeTab === 'settings' ? 'tab-btn--active' : ''}`} onClick={() => { setActiveTab('settings'); playSound('click'); }}>
-          <span className="tab-icon">⚙️</span>
-          <span className="tab-label">Настройки</span>
+        <button className={`tab ${activeTab === 'settings' ? 'tab--active' : ''}`} onClick={() => { setActiveTab('settings'); playSound('click'); }}>
+          <span className="tab-ico">⚙️</span>
+          <span className="tab-lbl">Настройки</span>
         </button>
       </nav>
     </div>
