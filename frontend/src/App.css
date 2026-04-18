@@ -1,227 +1,727 @@
+/* ==========================================
+   CHUMI APP — ПОЛНЫЕ СТИЛИ
+   ========================================== */
+
+/* --- БАЗА --- */
 .app {
+  position: relative;
   min-height: 100vh;
   width: 100%;
-  background: linear-gradient(180deg, #0a0a1a 0%, #1a1a3e 50%, #0a0a1a 100%);
+  background: linear-gradient(170deg, #0b0b20 0%, #151537 40%, #1a1045 70%, #0b0b20 100%);
   color: #ffffff;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px;
-  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 80px;
 }
 
-.app h1,
-.app h2 {
+.app h1, .app h2, .app h3 {
   color: #ffffff;
 }
 
-.loading {
+/* --- ЗВЁЗДНЫЙ ФОН --- */
+.bg-stars {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.8), transparent),
+    radial-gradient(1px 1px at 30% 60%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1.5px 1.5px at 50% 10%, rgba(255,255,255,0.9), transparent),
+    radial-gradient(1px 1px at 70% 40%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1.5px 1.5px at 85% 70%, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1px 1px at 15% 80%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 60% 90%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1.5px 1.5px at 40% 35%, rgba(255,255,255,0.8), transparent),
+    radial-gradient(1px 1px at 90% 15%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 25% 45%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 75% 85%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1px 1px at 55% 55%, rgba(255,255,255,0.4), transparent);
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  0% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+/* --- КОНТЕНТ ТАБОВ --- */
+.tab-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 16px;
+  animation: fadeIn 0.3s ease;
+}
+
+/* ==========================================
+   ЗАГРУЗКА
+   ========================================== */
+.loading {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  font-size: 18px;
+  gap: 20px;
+}
+
+.loading p {
+  font-size: 16px;
   color: #8888aa;
 }
 
+.loading-egg {
+  width: 100px;
+  height: 100px;
+  animation: eggPulse 1.5s ease-in-out infinite;
+}
+
+.loading-egg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@keyframes eggPulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+/* ==========================================
+   НЕТ ПАРЫ
+   ========================================== */
 .no-pair {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 80vh;
+  min-height: 100vh;
   text-align: center;
+  padding: 20px;
 }
 
-.no-pair .logo {
-  font-size: 80px;
-  margin-bottom: 10px;
+.no-pair-egg {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 16px;
+  animation: eggFloat 3s ease-in-out infinite;
 }
 
 .no-pair h1 {
-  font-size: 36px;
-  margin-bottom: 20px;
-  background: linear-gradient(135deg, #ff6b6b, #ffa500);
+  font-size: 42px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #ff6b9d, #ffa751, #ff6b9d);
+  background-size: 200% 200%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  color: transparent;
+  animation: gradientShift 3s ease infinite;
 }
 
-.no-pair p {
-  font-size: 16px;
-  color: #aaaacc;
-  margin: 5px 0;
+.no-pair-subtitle {
+  font-size: 15px;
+  color: #9999bb;
+  margin-bottom: 30px;
 }
 
-.pet-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-top: 30px;
-  margin-bottom: 20px;
+.no-pair-instructions {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 300px;
 }
 
-.pet {
-  width: 180px;
-  height: 180px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #2a2a5a 0%, #1a1a3e 70%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 40px rgba(100, 100, 255, 0.3);
-  transition: all 0.5s ease;
-  animation: float 3s ease-in-out infinite;
+.no-pair-instructions > p {
+  font-size: 13px;
+  color: #8888aa;
+  margin-bottom: 12px;
 }
 
-.pet:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 60px rgba(100, 100, 255, 0.5);
+.command {
+  background: rgba(255,255,255,0.05);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #ccccee;
 }
 
-.pet.evolved {
-  animation: evolve 1s ease-in-out;
-  box-shadow: 0 0 80px rgba(255, 165, 0, 0.8);
-}
-
-.pet-emoji {
-  font-size: 80px;
-  line-height: 1;
-}
-
-.pet-stage {
-  margin-top: 15px;
-  font-size: 24px;
-  color: #ddddff;
+.command span {
+  color: #ffa751;
   font-weight: 600;
 }
 
-.stats {
-  display: flex;
-  gap: 40px;
-  margin: 20px 0;
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
 }
 
-.stat {
+/* ==========================================
+   ПИТОМЕЦ
+   ========================================== */
+.pet-area {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: rgba(255, 255, 255, 0.05);
-  padding: 15px 25px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 20px;
+  margin-bottom: 16px;
 }
 
-.stat-icon {
-  font-size: 24px;
-  margin-bottom: 5px;
+.pet-circle {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, rgba(100,100,255,0.15), rgba(50,20,100,0.3));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 0 60px rgba(100, 80, 255, 0.2),
+    0 0 120px rgba(100, 80, 255, 0.1);
+  position: relative;
 }
 
-.stat-value {
-  font-size: 28px;
+.pet-circle::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.06);
+}
+
+.pet-img {
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+/* Анимация яйца — покачивание */
+.egg-wobble {
+  animation: eggWobble 2.5s ease-in-out infinite;
+}
+
+@keyframes eggWobble {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  20% { transform: rotate(-3deg) translateY(-4px); }
+  40% { transform: rotate(3deg) translateY(-2px); }
+  60% { transform: rotate(-2deg) translateY(-4px); }
+  80% { transform: rotate(2deg) translateY(-2px); }
+}
+
+/* Анимация питомца — дыхание */
+.pet-bounce {
+  animation: petBounce 3s ease-in-out infinite;
+}
+
+@keyframes petBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-8px) scale(1.02); }
+}
+
+@keyframes eggFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+.pet-name {
+  margin-top: 14px;
+  font-size: 26px;
   font-weight: 700;
   color: #ffffff;
 }
 
-.stat-label {
-  font-size: 12px;
-  color: #8888aa;
+.pet-stage-label {
+  font-size: 14px;
+  color: #9999bb;
+  margin-top: 4px;
+}
+
+/* ==========================================
+   СТАТИСТИКА
+   ========================================== */
+.stats-row {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0;
+  width: 100%;
+}
+
+.stat-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  padding: 12px 8px;
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+.stat-card .stat-icon {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.stat-card .stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.stat-card .stat-label {
+  font-size: 11px;
+  color: #7777aa;
   margin-top: 2px;
 }
 
-.feed-button {
-  margin-top: 20px;
-  padding: 16px 48px;
-  font-size: 20px;
-  font-weight: 600;
+/* ==========================================
+   КНОПКА КОРМЛЕНИЯ
+   ========================================== */
+.feed-btn {
+  margin-top: 16px;
+  padding: 16px 52px;
+  font-size: 18px;
+  font-weight: 700;
   border: none;
   border-radius: 50px;
   cursor: pointer;
-  background: linear-gradient(135deg, #ff6b6b, #ff8e53);
   color: white;
-  box-shadow: 0 4px 20px rgba(255, 107, 107, 0.4);
+  background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+  box-shadow:
+    0 4px 20px rgba(255, 107, 107, 0.35),
+    0 0 40px rgba(255, 107, 107, 0.15);
   transition: all 0.3s ease;
   -webkit-tap-highlight-color: transparent;
   outline: none;
+  position: relative;
+  overflow: hidden;
 }
 
-.feed-button:hover:not(:disabled) {
+.feed-btn::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.15), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.feed-btn:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.feed-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 30px rgba(255, 107, 107, 0.6);
+  box-shadow:
+    0 6px 30px rgba(255, 107, 107, 0.5),
+    0 0 60px rgba(255, 107, 107, 0.2);
 }
 
-.feed-button:active:not(:disabled) {
-  transform: translateY(0);
+.feed-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
 }
 
-.feed-button:disabled {
-  opacity: 0.6;
+.feed-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.feed-button.fed {
+.feed-btn--done {
   background: linear-gradient(135deg, #4CAF50, #66BB6A);
-  box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
+  box-shadow:
+    0 4px 20px rgba(76, 175, 80, 0.35),
+    0 0 40px rgba(76, 175, 80, 0.15);
 }
 
-.message {
-  margin-top: 15px;
+.feed-btn--loading {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* ==========================================
+   СООБЩЕНИЯ (TOAST)
+   ========================================== */
+.toast {
+  margin-top: 14px;
   padding: 12px 20px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
   font-size: 14px;
   text-align: center;
-  max-width: 300px;
-  animation: fadeIn 0.3s ease;
+  max-width: 320px;
+  animation: slideUp 0.3s ease;
 }
 
-.message-evolved {
-  background: rgba(255, 165, 0, 0.2);
-  border: 1px solid rgba(255, 165, 0, 0.5);
+.toast--special {
+  background: rgba(255, 165, 0, 0.15);
+  border-color: rgba(255, 165, 0, 0.4);
 }
 
-.progress {
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================
+   ПРОГРЕСС-БАР
+   ========================================== */
+.progress-section {
   width: 100%;
-  max-width: 300px;
-  margin-top: 25px;
-  margin-bottom: 30px;
+  margin-top: 20px;
 }
 
 .progress-label {
   font-size: 12px;
-  color: #8888aa;
+  color: #7777aa;
   text-align: center;
   margin-bottom: 8px;
 }
 
-.progress-bar {
+.progress-track {
   height: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255,255,255,0.08);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ff6b6b, #ffa500);
+  background: linear-gradient(90deg, #ff6b9d, #ffa751);
   border-radius: 4px;
-  transition: width 0.5s ease;
+  transition: width 0.6s ease;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+/* ==========================================
+   КНОПКА ПРИГЛАШЕНИЯ
+   ========================================== */
+.invite-btn {
+  margin-top: 20px;
+  padding: 14px 36px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 50px;
+  cursor: pointer;
+  color: #ffffff;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
 }
 
-@keyframes evolve {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.3); }
+.invite-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.3);
+  transform: translateY(-2px);
+}
+
+.invite-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* ==========================================
+   МАГАЗИН (ЗАГЛУШКА)
+   ========================================== */
+.placeholder-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+}
+
+.placeholder-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.placeholder-page h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+.placeholder-page p {
+  font-size: 14px;
+  color: #8888aa;
+  max-width: 260px;
+  line-height: 1.5;
+}
+
+/* ==========================================
+   НАСТРОЙКИ
+   ========================================== */
+.settings-page {
+  width: 100%;
+  padding-top: 10px;
+}
+
+.settings-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.setting-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.setting-icon {
+  font-size: 24px;
+}
+
+.setting-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.setting-desc {
+  font-size: 12px;
+  color: #7777aa;
+  margin-top: 2px;
+}
+
+/* Тоггл-переключатель */
+.toggle {
+  width: 50px;
+  height: 28px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255,255,255,0.15);
+  position: relative;
+  transition: background 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  padding: 0;
+}
+
+.toggle--on {
+  background: linear-gradient(135deg, #4CAF50, #66BB6A);
+}
+
+.toggle-knob {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.toggle--on .toggle-knob {
+  transform: translateX(22px);
+}
+
+/* ==========================================
+   НИЖНЕЕ МЕНЮ (TAB BAR)
+   ========================================== */
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: rgba(15, 15, 35, 0.95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #555577;
+  transition: color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  padding: 8px 16px;
+}
+
+.tab-btn--active {
+  color: #ffa751;
+}
+
+.tab-icon {
+  font-size: 22px;
+}
+
+.tab-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ==========================================
+   ОВЕРЛЕИ (ВЫЛУПЛЕНИЕ / ЭВОЛЮЦИЯ)
+   ========================================== */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+/* Вылупление */
+.hatch-overlay {
+  background: rgba(0,0,0,0.85);
+}
+
+.hatch-animation {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: hatchReveal 0.8s ease;
+}
+
+.hatch-flash {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,200,50,0.4), transparent 70%);
+  animation: flashPulse 1.5s ease infinite;
+}
+
+.hatch-pet-reveal {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  animation: petPopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  z-index: 1;
+}
+
+.hatch-animation h2 {
+  margin-top: 20px;
+  font-size: 28px;
+}
+
+.hatch-animation p {
+  font-size: 16px;
+  color: #ffa751;
+  margin-top: 6px;
+}
+
+@keyframes hatchReveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes flashPulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.3); opacity: 0.8; }
+}
+
+@keyframes petPopIn {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.2); opacity: 1; }
   100% { transform: scale(1); }
 }
 
+/* Эволюция */
+.evolve-overlay {
+  background: rgba(0,0,0,0.8);
+}
+
+.evolve-animation {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.evolve-pet {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  animation: evolveGlow 1s ease;
+}
+
+.evolve-animation h2 {
+  margin-top: 16px;
+  font-size: 26px;
+}
+
+.evolve-animation p {
+  font-size: 16px;
+  color: #c084fc;
+  margin-top: 4px;
+}
+
+@keyframes evolveGlow {
+  0% { transform: scale(0.5); filter: brightness(3); }
+  50% { transform: scale(1.2); filter: brightness(1.5); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* ==========================================
+   ОБЩИЕ АНИМАЦИИ
+   ========================================== */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

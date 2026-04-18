@@ -17,6 +17,25 @@ async function sendMessage(chatId, text, extra = {}) {
   });
 }
 
+const PET_STAGES = [
+  { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
+  { name: 'Малыш', emoji: '🐣', minPoints: 0 },
+  { name: 'Подросток', emoji: '🐲', minPoints: 200 },
+  { name: 'Взрослый', emoji: '🔥', minPoints: 500 },
+  { name: 'Легенда', emoji: '👑', minPoints: 1000 },
+];
+
+function getStage(points, hatched) {
+  if (!hatched) return PET_STAGES[0];
+  let stage = PET_STAGES[1];
+  for (let i = 2; i < PET_STAGES.length; i++) {
+    if (points >= PET_STAGES[i].minPoints) stage = PET_STAGES[i];
+  }
+  return stage;
+}
+
+const PET_NAMES = { muru: 'Муру', neco: 'Неко', pico: 'Пико', boba: 'Боба', egg: 'Яйцо' };
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 200, body: 'OK' };
@@ -40,7 +59,8 @@ exports.handler = async (event) => {
     // --- /start ---
     if (text === '/start') {
       await sendMessage(chatId,
-        '🐾 Привет! Я *Chumi* — бот для выращивания питомца!\n\n' +
+        '🐾 Привет! Я *Chumi* — бот для выращивания питомца вместе с другом!\n\n' +
+        '🥚 Создай пару, корми питомца 3 дня — и он вылупится!\n\n' +
         'Команды:\n' +
         '/create — создать пару и получить код\n' +
         '/join КОДИК — присоединиться к паре\n' +
@@ -69,7 +89,7 @@ exports.handler = async (event) => {
       }
 
       const code = generateCode();
-      await supabase.from('pairs').insert({ code, pet_type: 'grimm' });
+      await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
       await sendMessage(chatId,
@@ -122,7 +142,7 @@ exports.handler = async (event) => {
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
       await sendMessage(chatId,
-        '✅ Ты присоединился к паре! 🐾\n\nТеперь вы оба можете кормить питомца каждый день.',
+        '✅ Ты присоединился к паре! 🐾\n\nТеперь кормите питомца 3 дня подряд — и он вылупится!',
         {
           reply_markup: JSON.stringify({
             inline_keyboard: [[
@@ -168,22 +188,65 @@ exports.handler = async (event) => {
         .select('user_id')
         .eq('pair_code', pairUser.pair_code);
 
-      const PET_STAGES = [
-        { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
-        { name: 'Малыш', emoji: '🐣', minPoints: 50 },
-        { name: 'Подросток', emoji: '🐲', minPoints: 200 },
-        { name: 'Взрослый', emoji: '🔥', minPoints: 500 },
-        { name: 'Легенда', emoji: '👑', minPoints: 1000 },
-      ];
+      const hatched = pair.hatched || false;
+      const stage = getStage(pair.growth_points, hatched);
+      const petName = PET_NAMES[pair.pet_type] || pair.pet_type;
 
-      let stage = PET_STAGES[0];
-      for (const s of PET_STAGES) {
-        if (pair.growth_points >= s.minPoints) stage = s;
+      let statusText;
+      if (!hatched) {
+        const daysLeft = Math.max(0, 3 - pair.streak_days);
+        statusText =
+          `🥚 *Яйцо*\n\n` +
+          `🔥 Серия: ${pair.streak_days} дней\n` +
+          `⏳ До вылупления: ${daysLeft} дн.\n` +
+          `👥 Участников: ${users.length}/2`;
+      } else {
+        statusText =
+          `${stage.emoji} *${petName}* — ${stage.name}\n\n` +
+          `🔥 Серия: ${pair.streak_days} дней\n` +
+          `⭐ Очки роста: ${pair.growth_points}\n` +
+          `👥 Участников: ${users.length}/2`;
       }
 
-      await sendMessage(chatId,
-        `${stage.emoji} *${stage.name}*\n\n🔥 Серия: ${pair.streak_days} дней\n⭐ Очки роста: ${pair.growth_points}\n👥 Участников: ${users.length}/2`
+      await sendMessage(chatId, statusText);
+    }
+
+    // --- /remind (ручное напоминание партнёру) ---
+    else if (text === '/remind') {
+      const { data: pairUser } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId)
+        .single();
+
+      if (!pairUser) {
+        await sendMessage(chatId, '❌ Ты пока не в паре.');
+        return { statusCode: 200, body: 'OK' };
+      }
+
+      const { data: users } = await supabase
+        .from('pair_users')
+        .select('user_id')
+        .eq('pair_code', pairUser.pair_code);
+
+      const partner = users.find(u => u.user_id !== userId);
+      if (!partner) {
+        await sendMessage(chatId, '❌ У тебя пока нет напарника.');
+        return { statusCode: 200, body: 'OK' };
+      }
+
+      await sendMessage(partner.user_id,
+        '🔔 Твой напарник напоминает: не забудь покормить питомца сегодня! 🍖',
+        {
+          reply_markup: JSON.stringify({
+            inline_keyboard: [[
+              { text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }
+            ]]
+          })
+        }
       );
+
+      await sendMessage(chatId, '✅ Напоминание отправлено!');
     }
 
   } catch (error) {

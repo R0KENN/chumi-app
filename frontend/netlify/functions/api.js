@@ -4,18 +4,21 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 }
 
+const PET_TYPES = ['muru', 'neco', 'pico', 'boba'];
+
 const PET_STAGES = [
-  { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
-  { name: 'Малыш', emoji: '🐣', minPoints: 50 },
-  { name: 'Подросток', emoji: '🐲', minPoints: 200 },
-  { name: 'Взрослый', emoji: '🔥', minPoints: 500 },
-  { name: 'Легенда', emoji: '👑', minPoints: 1000 },
+  { name: 'Яйцо', minPoints: 0 },
+  { name: 'Малыш', minPoints: 0 },
+  { name: 'Подросток', minPoints: 200 },
+  { name: 'Взрослый', minPoints: 500 },
+  { name: 'Легенда', minPoints: 1000 },
 ];
 
-function getPetStage(points) {
-  let stage = PET_STAGES[0];
-  for (const s of PET_STAGES) {
-    if (points >= s.minPoints) stage = s;
+function getStage(points, hatched) {
+  if (!hatched) return PET_STAGES[0];
+  let stage = PET_STAGES[1];
+  for (let i = 2; i < PET_STAGES.length; i++) {
+    if (points >= PET_STAGES[i].minPoints) stage = PET_STAGES[i];
   }
   return stage;
 }
@@ -26,6 +29,10 @@ function generateCode() {
 
 function getTodayDate() {
   return new Date().toISOString().split('T')[0];
+}
+
+function randomPetType() {
+  return PET_TYPES[Math.floor(Math.random() * PET_TYPES.length)];
 }
 
 exports.handler = async (event) => {
@@ -45,10 +52,11 @@ exports.handler = async (event) => {
   try {
     const supabase = getSupabase();
 
-    // --- GET /pair/:userId ---
+    // ==========================================
+    // GET /pair/:userId
+    // ==========================================
     if (event.httpMethod === 'GET' && path.startsWith('/pair/')) {
       const userId = path.replace('/pair/', '');
-
       if (!userId) {
         return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'userId не указан' }) };
       }
@@ -90,7 +98,8 @@ exports.handler = async (event) => {
         todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
       }
 
-      const stage = getPetStage(pair.growth_points);
+      const hatched = pair.hatched || false;
+      const stage = getStage(pair.growth_points, hatched);
 
       return {
         statusCode: 200, headers,
@@ -101,6 +110,7 @@ exports.handler = async (event) => {
             petType: pair.pet_type,
             streakDays: pair.streak_days,
             growthPoints: pair.growth_points,
+            hatched,
             stage,
             users: users.map(u => u.user_id),
             lastFed
@@ -109,10 +119,11 @@ exports.handler = async (event) => {
       };
     }
 
-    // --- POST /feed ---
+    // ==========================================
+    // POST /feed
+    // ==========================================
     if (event.httpMethod === 'POST' && path === '/feed') {
       const { userId } = JSON.parse(event.body);
-
       if (!userId) {
         return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'userId не указан' }) };
       }
@@ -130,6 +141,7 @@ exports.handler = async (event) => {
       const pairCode = pairUser.pair_code;
       const today = getTodayDate();
 
+      // Уже кормил сегодня?
       const { data: existingFeed } = await supabase
         .from('feedings')
         .select('id')
@@ -142,6 +154,7 @@ exports.handler = async (event) => {
         return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже покормил сегодня! Приходи завтра 🌙' }) };
       }
 
+      // Записываем кормление
       const { error: insertError } = await supabase
         .from('feedings')
         .insert({ pair_code: pairCode, user_id: userId, fed_date: today });
@@ -150,6 +163,7 @@ exports.handler = async (event) => {
         return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ошибка записи кормления' }) };
       }
 
+      // Оба покормили?
       const { data: users } = await supabase
         .from('pair_users')
         .select('user_id')
@@ -165,23 +179,32 @@ exports.handler = async (event) => {
         users.every(u => todayFeedings.some(f => f.user_id === u.user_id));
 
       let evolved = false;
+      let justHatched = false;
       let pair = (await supabase.from('pairs').select('*').eq('code', pairCode).single()).data;
 
       if (allFedToday) {
+        // Защита от двойного начисления
         if (pair.last_streak_date === today) {
           const lastFed = {};
           todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
-          const stage = getPetStage(pair.growth_points);
+          const hatched = pair.hatched || false;
+          const stage = getStage(pair.growth_points, hatched);
 
           return {
             statusCode: 200, headers,
             body: JSON.stringify({
-              success: true, fed: true, allFedToday: true, evolved: false,
-              pair: { streakDays: pair.streak_days, growthPoints: pair.growth_points, stage, lastFed }
+              success: true, fed: true, allFedToday: true, evolved: false, hatched,
+              pair: {
+                code: pair.code, petType: pair.pet_type,
+                streakDays: pair.streak_days, growthPoints: pair.growth_points,
+                hatched, stage, lastFed,
+                users: users.map(u => u.user_id)
+              }
             })
           };
         }
 
+        // Считаем серию
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -193,36 +216,69 @@ exports.handler = async (event) => {
           newStreak = 1;
         }
 
-        const oldStage = getPetStage(pair.growth_points);
+        // Начисляем очки
+        const oldHatched = pair.hatched || false;
+        const oldStage = getStage(pair.growth_points, oldHatched);
         const newPoints = pair.growth_points + 10 + newStreak * 2;
-        const newStage = getPetStage(newPoints);
 
-        if (oldStage.name !== newStage.name) evolved = true;
+        // ==========================================
+        // ВЫЛУПЛЕНИЕ: после 3 дней серии подряд
+        // ==========================================
+        let newHatched = oldHatched;
+        let newPetType = pair.pet_type;
 
+        if (!oldHatched && newStreak >= 3) {
+          newHatched = true;
+          justHatched = true;
+          newPetType = randomPetType();
+        }
+
+        const newStage = getStage(newPoints, newHatched);
+        if (oldHatched && oldStage.name !== newStage.name) {
+          evolved = true;
+        }
+
+        // Обновляем в БД
         await supabase
           .from('pairs')
-          .update({ streak_days: newStreak, growth_points: newPoints, last_streak_date: today })
+          .update({
+            streak_days: newStreak,
+            growth_points: newPoints,
+            last_streak_date: today,
+            hatched: newHatched,
+            pet_type: newPetType
+          })
           .eq('code', pairCode);
 
         pair.streak_days = newStreak;
         pair.growth_points = newPoints;
+        pair.hatched = newHatched;
+        pair.pet_type = newPetType;
       }
 
       const lastFed = {};
       todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
 
-      const stage = getPetStage(pair.growth_points);
+      const hatched = pair.hatched || false;
+      const stage = getStage(pair.growth_points, hatched);
 
       return {
         statusCode: 200, headers,
         body: JSON.stringify({
-          success: true, fed: true, allFedToday, evolved,
-          pair: { streakDays: pair.streak_days, growthPoints: pair.growth_points, stage, lastFed }
+          success: true, fed: true, allFedToday, evolved, hatched: justHatched,
+          pair: {
+            code: pair.code, petType: pair.pet_type,
+            streakDays: pair.streak_days, growthPoints: pair.growth_points,
+            hatched, stage, lastFed,
+            users: users.map(u => u.user_id)
+          }
         })
       };
     }
 
-    // --- POST /create ---
+    // ==========================================
+    // POST /create
+    // ==========================================
     if (event.httpMethod === 'POST' && path === '/create') {
       const { userId } = JSON.parse(event.body);
 
@@ -237,13 +293,19 @@ exports.handler = async (event) => {
       }
 
       const code = generateCode();
-      await supabase.from('pairs').insert({ code, pet_type: 'grimm' });
+      await supabase.from('pairs').insert({
+        code,
+        pet_type: 'egg',
+        hatched: false
+      });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, code }) };
     }
 
-    // --- POST /join ---
+    // ==========================================
+    // POST /join
+    // ==========================================
     if (event.httpMethod === 'POST' && path === '/join') {
       const { userId, code } = JSON.parse(event.body);
 
