@@ -1,9 +1,9 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+function getSupabase() {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+}
+
 
 const PET_STAGES = [
   { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
@@ -44,6 +44,8 @@ exports.handler = async (event) => {
   const path = event.path.replace('/.netlify/functions/api', '').replace('/api', '');
 
   try {
+        const supabase = getSupabase();
+
 
     // --- GET /pair/:userId ---
     if (event.httpMethod === 'GET' && path.startsWith('/pair/')) {

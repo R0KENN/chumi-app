@@ -1,19 +1,15 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
-
-const WEBAPP_URL = process.env.WEBAPP_URL || 'https://astounding-faun-f4f6ae.netlify.app';
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+function getSupabase() {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+}
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
 async function sendMessage(chatId, text, extra = {}) {
+  const TELEGRAM_API = `https://api.telegram.org/bot${process.env.BOT_TOKEN}`;
   await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -25,6 +21,9 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 200, body: 'OK' };
   }
+
+  const supabase = getSupabase();
+  const WEBAPP_URL = process.env.WEBAPP_URL || 'https://astounding-faun-f4f6ae.netlify.app';
 
   try {
     const body = JSON.parse(event.body);
@@ -133,7 +132,6 @@ exports.handler = async (event) => {
         }
       );
 
-      // Уведомляем первого участника
       const firstUser = pairUsers[0].user_id;
       await sendMessage(firstUser, '🎉 Твой друг присоединился к паре! Теперь вы можете вместе растить питомца.',
         {
