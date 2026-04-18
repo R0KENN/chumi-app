@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "@telegram-apps/sdk": "^3.11.8"
+    "@netlify/functions": "^5.2.0",
+    "@telegram-apps/sdk": "^3.11.8",
+    "node-telegram-bot-api": "^0.67.0"
   }
 }

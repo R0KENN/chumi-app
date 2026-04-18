@@ -9,7 +9,7 @@ function App() {
   const [feeding, setFeeding] = useState(false);
   const [evolved, setEvolved] = useState(false);
 
-  const API_URL = 'http://localhost:3000';
+  const API_URL = '';
 
   // Получаем userId из Telegram
   useEffect(() => {
