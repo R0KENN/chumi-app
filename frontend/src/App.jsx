@@ -257,17 +257,22 @@ function App() {
 
       {activeTab === 'home' && (
         <div className="tab-content">
-          <div className="pet-area">
-            <div className={`pet-circle ${!hatched ? 'egg-wobble' : 'pet-bounce'}`}>
-              <img src={petImage} alt="pet" className="pet-img" />
-            </div>
-            <h2 className="pet-name">
-              {hatched ? (PET_NAMES[pair.petType] || pair.petType) : 'Яйцо'}
-            </h2>
-            <p className="pet-stage-label">
-              {hatched ? stage.name : `До вылупления: ${daysUntilHatch} дн.`}
-            </p>
-          </div>
+<div className="pet-area">
+  <div className="pet-platform">
+    <div className="pet-glow"></div>
+    <div className={`pet-container ${!hatched ? 'egg-wobble' : 'pet-idle'}`}>
+      <img src={petImage} alt="pet" className="pet-img" />
+    </div>
+    <div className="pet-shadow"></div>
+  </div>
+  <h2 className="pet-name">
+    {hatched ? (PET_NAMES[pair.petType] || pair.petType) : 'Яйцо'}
+  </h2>
+  <p className="pet-stage-label">
+    {hatched ? stage.name : `До вылупления: ${daysUntilHatch} дн.`}
+  </p>
+</div>
+
 
           <div className="stats-row">
             <div className="stat-card">
