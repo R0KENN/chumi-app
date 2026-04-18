@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
-// ==========================================
-// КОНФИГ ПЕРСОНАЖЕЙ И СТАДИЙ
-// ==========================================
 const PET_TYPES = ['muru', 'neco', 'pico', 'boba'];
 
 const PET_NAMES = {
@@ -13,18 +10,17 @@ const PET_NAMES = {
   boba: 'Боба',
 };
 
-// Стадии: 0=яйцо, 1=малыш, 2=подросток, 3=взрослый, 4=легенда
 const PET_STAGES = [
   { name: 'Яйцо', minPoints: 0, imageIndex: -1 },
-  { name: 'Малыш', minPoints: 0, imageIndex: 0 },      // после вылупления
+  { name: 'Малыш', minPoints: 0, imageIndex: 0 },
   { name: 'Подросток', minPoints: 200, imageIndex: 1 },
   { name: 'Взрослый', minPoints: 500, imageIndex: 2 },
   { name: 'Легенда', minPoints: 1000, imageIndex: 3 },
 ];
 
 function getStageByPoints(points, hatched) {
-  if (!hatched) return PET_STAGES[0]; // яйцо
-  let stage = PET_STAGES[1]; // малыш минимум после вылупления
+  if (!hatched) return PET_STAGES[0];
+  let stage = PET_STAGES[1];
   for (let i = 2; i < PET_STAGES.length; i++) {
     if (points >= PET_STAGES[i].minPoints) stage = PET_STAGES[i];
   }
@@ -61,16 +57,7 @@ function getTodayDate() {
   return new Date().toISOString().split('T')[0];
 }
 
-// ==========================================
-// ЗВУКИ
-// ==========================================
-const sounds = {
-  feed: null,
-  evolve: null,
-  hatch: null,
-  click: null,
-};
-
+const sounds = { feed: null, evolve: null, hatch: null, click: null };
 let soundEnabled = true;
 
 function initSounds() {
@@ -93,9 +80,6 @@ function playSound(name) {
   } catch (e) {}
 }
 
-// ==========================================
-// ОСНОВНОЙ КОМПОНЕНТ
-// ==========================================
 function App() {
   const [userId, setUserId] = useState(null);
   const [pair, setPair] = useState(null);
@@ -110,18 +94,11 @@ function App() {
 
   const API_URL = '/api';
 
-  // Инициализация
   useEffect(() => {
     initSounds();
-
-    // Загрузка настроек из localStorage
     const savedSound = localStorage.getItem('chumi_sound');
     const savedNotif = localStorage.getItem('chumi_notifications');
-    if (savedSound !== null) {
-      const val = savedSound === 'true';
-      setSoundOn(val);
-      soundEnabled = val;
-    }
+    if (savedSound !== null) { const val = savedSound === 'true'; setSoundOn(val); soundEnabled = val; }
     if (savedNotif !== null) setNotifications(savedNotif === 'true');
 
     let foundUser = false;
@@ -131,39 +108,24 @@ function App() {
         tg.ready();
         tg.expand();
         const user = tg.initDataUnsafe?.user;
-        if (user && user.id) {
-          setUserId(user.id.toString());
-          foundUser = true;
-        }
+        if (user && user.id) { setUserId(user.id.toString()); foundUser = true; }
       }
-    } catch (e) {
-      console.log('Telegram WebApp not available');
-    }
-
-    if (!foundUser) {
-      setUserId('test_user_123');
-    }
+    } catch (e) { console.log('Telegram WebApp not available'); }
+    if (!foundUser) setUserId('test_user_123');
   }, []);
 
-  // Загрузка данных пары
   useEffect(() => {
     if (!userId) return;
-
     fetch(`${API_URL}/pair/${userId}`)
       .then(res => res.json())
-      .then(data => {
-        if (data.success) setPair(data.pair);
-        setLoading(false);
-      })
+      .then(data => { if (data.success) setPair(data.pair); setLoading(false); })
       .catch(() => setLoading(false));
   }, [userId]);
 
-  // Кормление
   const feedPet = async () => {
     if (feeding) return;
     setFeeding(true);
     setMessage('');
-
     try {
       const res = await fetch(`${API_URL}/feed`, {
         method: 'POST',
@@ -171,30 +133,23 @@ function App() {
         body: JSON.stringify({ userId })
       });
       const data = await res.json();
-
       if (data.success) {
         playSound('feed');
-
-        // Проверка вылупления
         if (data.hatched) {
           setShowHatch(true);
           playSound('hatch');
           setTimeout(() => setShowHatch(false), 3000);
           setMessage(`🎉 Из яйца вылупился ${PET_NAMES[data.pair.petType] || data.pair.petType}!`);
-        }
-        // Проверка эволюции
-        else if (data.evolved) {
+        } else if (data.evolved) {
           setShowEvolve(true);
           playSound('evolve');
           setTimeout(() => setShowEvolve(false), 2000);
           setMessage(`✨ Питомец эволюционировал в "${data.pair.stage.name}"!`);
-        }
-        else if (data.allFedToday) {
+        } else if (data.allFedToday) {
           setMessage('✅ Оба покормили! Серия продолжается!');
         } else {
           setMessage('🍖 Ты покормил питомца! Ждём второго участника...');
         }
-
         setPair(data.pair);
       } else {
         setMessage(data.message);
@@ -202,11 +157,9 @@ function App() {
     } catch (err) {
       setMessage('❌ Ошибка соединения с сервером');
     }
-
     setFeeding(false);
   };
 
-  // Пригласить друга
   const inviteFriend = useCallback(() => {
     playSound('click');
     try {
@@ -217,7 +170,6 @@ function App() {
         tg.switchInlineQuery(text, ['users']);
       }
     } catch (e) {
-      // Fallback: копируем код
       if (pair?.code) {
         navigator.clipboard?.writeText(pair.code);
         setMessage('📋 Код скопирован! Отправь его другу.');
@@ -225,7 +177,6 @@ function App() {
     }
   }, [pair]);
 
-  // Переключение настроек
   const toggleSound = () => {
     const newVal = !soundOn;
     setSoundOn(newVal);
@@ -241,9 +192,6 @@ function App() {
     playSound('click');
   };
 
-  // ==========================================
-  // РЕНДЕР: ЗАГРУЗКА
-  // ==========================================
   if (loading) {
     return (
       <div className="app">
@@ -258,9 +206,6 @@ function App() {
     );
   }
 
-  // ==========================================
-  // РЕНДЕР: НЕТ ПАРЫ
-  // ==========================================
   if (!pair) {
     return (
       <div className="app">
@@ -269,7 +214,6 @@ function App() {
           <img src="/pets/egg.webp" alt="egg" className="no-pair-egg" />
           <h1>Chumi</h1>
           <p className="no-pair-subtitle">Вырастите питомца вместе с другом!</p>
-
           <div className="no-pair-instructions">
             <p>Открой бота и используй:</p>
             <div className="command"><span>/create</span> — создать пару</div>
@@ -280,23 +224,16 @@ function App() {
     );
   }
 
-  // ==========================================
-  // ДАННЫЕ ДЛЯ РЕНДЕРА
-  // ==========================================
   const hatched = pair.hatched || false;
   const stage = getStageByPoints(pair.growthPoints, hatched);
   const petImage = getPetImage(pair.petType, stage, hatched);
   const todayFed = pair.lastFed && pair.lastFed[userId] === getTodayDate();
   const daysUntilHatch = hatched ? 0 : Math.max(0, 3 - pair.streakDays);
 
-  // ==========================================
-  // РЕНДЕР: ГЛАВНЫЙ ЭКРАН
-  // ==========================================
   return (
     <div className="app">
       <div className="bg-stars"></div>
 
-      {/* Оверлей вылупления */}
       {showHatch && (
         <div className="overlay hatch-overlay">
           <div className="hatch-animation">
@@ -308,7 +245,6 @@ function App() {
         </div>
       )}
 
-      {/* Оверлей эволюции */}
       {showEvolve && (
         <div className="overlay evolve-overlay">
           <div className="evolve-animation">
@@ -319,15 +255,12 @@ function App() {
         </div>
       )}
 
-      {/* === ТАБ: HOME === */}
       {activeTab === 'home' && (
         <div className="tab-content">
-          {/* Питомец */}
           <div className="pet-area">
             <div className={`pet-circle ${!hatched ? 'egg-wobble' : 'pet-bounce'}`}>
               <img src={petImage} alt="pet" className="pet-img" />
             </div>
-
             <h2 className="pet-name">
               {hatched ? (PET_NAMES[pair.petType] || pair.petType) : 'Яйцо'}
             </h2>
@@ -336,7 +269,6 @@ function App() {
             </p>
           </div>
 
-          {/* Статы */}
           <div className="stats-row">
             <div className="stat-card">
               <div className="stat-icon">🔥</div>
@@ -355,7 +287,6 @@ function App() {
             </div>
           </div>
 
-          {/* Кнопка кормления */}
           <button
             className={`feed-btn ${todayFed ? 'feed-btn--done' : ''} ${feeding ? 'feed-btn--loading' : ''}`}
             onClick={feedPet}
@@ -364,29 +295,23 @@ function App() {
             {feeding ? '⏳ Кормлю...' : todayFed ? '✅ Покормлен!' : '🍖 Покормить'}
           </button>
 
-          {/* Сообщение */}
           {message && (
             <div className={`toast ${showHatch || showEvolve ? 'toast--special' : ''}`}>
               {message}
             </div>
           )}
 
-          {/* Прогресс */}
           {hatched && (
             <div className="progress-section">
               <div className="progress-label">
                 {stage.name} → {getNextStage(pair.growthPoints, hatched)}
               </div>
               <div className="progress-track">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${getProgress(pair.growthPoints, hatched)}%` }}
-                ></div>
+                <div className="progress-fill" style={{ width: `${getProgress(pair.growthPoints, hatched)}%` }}></div>
               </div>
             </div>
           )}
 
-          {/* Кнопка приглашения */}
           {pair.users?.length < 2 && (
             <button className="invite-btn" onClick={inviteFriend}>
               💌 Пригласить друга
@@ -395,7 +320,6 @@ function App() {
         </div>
       )}
 
-      {/* === ТАБ: МАГАЗИН === */}
       {activeTab === 'shop' && (
         <div className="tab-content">
           <div className="placeholder-page">
@@ -406,12 +330,10 @@ function App() {
         </div>
       )}
 
-      {/* === ТАБ: НАСТРОЙКИ === */}
       {activeTab === 'settings' && (
         <div className="tab-content">
           <div className="settings-page">
             <h2 className="settings-title">Настройки</h2>
-
             <div className="setting-item">
               <div className="setting-info">
                 <div className="setting-icon">🔔</div>
@@ -420,14 +342,10 @@ function App() {
                   <div className="setting-desc">Напоминания о кормлении</div>
                 </div>
               </div>
-              <button
-                className={`toggle ${notifications ? 'toggle--on' : ''}`}
-                onClick={toggleNotifications}
-              >
+              <button className={`toggle ${notifications ? 'toggle--on' : ''}`} onClick={toggleNotifications}>
                 <div className="toggle-knob"></div>
               </button>
             </div>
-
             <div className="setting-item">
               <div className="setting-info">
                 <div className="setting-icon">🔊</div>
@@ -436,14 +354,10 @@ function App() {
                   <div className="setting-desc">Звуковые эффекты</div>
                 </div>
               </div>
-              <button
-                className={`toggle ${soundOn ? 'toggle--on' : ''}`}
-                onClick={toggleSound}
-              >
+              <button className={`toggle ${soundOn ? 'toggle--on' : ''}`} onClick={toggleSound}>
                 <div className="toggle-knob"></div>
               </button>
             </div>
-
             {pair?.code && (
               <div className="setting-item setting-item--code">
                 <div className="setting-info">
@@ -459,26 +373,16 @@ function App() {
         </div>
       )}
 
-      {/* === НИЖНЕЕ МЕНЮ === */}
       <nav className="tab-bar">
-        <button
-          className={`tab-btn ${activeTab === 'home' ? 'tab-btn--active' : ''}`}
-          onClick={() => { setActiveTab('home'); playSound('click'); }}
-        >
+        <button className={`tab-btn ${activeTab === 'home' ? 'tab-btn--active' : ''}`} onClick={() => { setActiveTab('home'); playSound('click'); }}>
           <span className="tab-icon">🏠</span>
           <span className="tab-label">Главная</span>
         </button>
-        <button
-          className={`tab-btn ${activeTab === 'shop' ? 'tab-btn--active' : ''}`}
-          onClick={() => { setActiveTab('shop'); playSound('click'); }}
-        >
+        <button className={`tab-btn ${activeTab === 'shop' ? 'tab-btn--active' : ''}`} onClick={() => { setActiveTab('shop'); playSound('click'); }}>
           <span className="tab-icon">🏪</span>
           <span className="tab-label">Магазин</span>
         </button>
-        <button
-          className={`tab-btn ${activeTab === 'settings' ? 'tab-btn--active' : ''}`}
-          onClick={() => { setActiveTab('settings'); playSound('click'); }}
-        >
+        <button className={`tab-btn ${activeTab === 'settings' ? 'tab-btn--active' : ''}`} onClick={() => { setActiveTab('settings'); playSound('click'); }}>
           <span className="tab-icon">⚙️</span>
           <span className="tab-label">Настройки</span>
         </button>
