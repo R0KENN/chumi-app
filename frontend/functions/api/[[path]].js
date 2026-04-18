@@ -1,7 +1,7 @@
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+function getSupabase(env) {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
 }
 
 const PET_TYPES = ['muru', 'neco', 'pico', 'boba'];
@@ -35,31 +35,38 @@ function randomPetType() {
   return PET_TYPES[Math.floor(Math.random() * PET_TYPES.length)];
 }
 
-exports.handler = async (event) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Content-Type': 'application/json'
-  };
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    },
+  });
+}
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+export async function onRequest(context) {
+  const { request, env, params } = context;
+
+  // CORS preflight
+  if (request.method === 'OPTIONS') {
+    return json({});
   }
 
-  const path = event.path.replace('/.netlify/functions/api', '');
+  // params.path — массив сегментов после /api/
+  const segments = params.path || [];
+  const path = '/' + segments.join('/');
 
   try {
-    const supabase = getSupabase();
+    const supabase = getSupabase(env);
 
     // ==========================================
-    // GET /pair/:userId
+    // GET /api/pair/:userId
     // ==========================================
-    if (event.httpMethod === 'GET' && path.startsWith('/pair/')) {
-      const userId = path.replace('/pair/', '');
-      if (!userId) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'userId не указан' }) };
-      }
+    if (request.method === 'GET' && segments[0] === 'pair' && segments[1]) {
+      const userId = segments[1];
 
       const { data: pairUser, error: pairUserError } = await supabase
         .from('pair_users')
@@ -68,7 +75,7 @@ exports.handler = async (event) => {
         .single();
 
       if (!pairUser || pairUserError) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Пара не найдена' }) };
+        return json({ success: false, message: 'Пара не найдена' });
       }
 
       const { data: pair } = await supabase
@@ -78,7 +85,7 @@ exports.handler = async (event) => {
         .single();
 
       if (!pair) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Данные пары не найдены' }) };
+        return json({ success: false, message: 'Данные пары не найдены' });
       }
 
       const { data: users } = await supabase
@@ -101,31 +108,28 @@ exports.handler = async (event) => {
       const hatched = pair.hatched || false;
       const stage = getStage(pair.growth_points, hatched);
 
-      return {
-        statusCode: 200, headers,
-        body: JSON.stringify({
-          success: true,
-          pair: {
-            code: pair.code,
-            petType: pair.pet_type,
-            streakDays: pair.streak_days,
-            growthPoints: pair.growth_points,
-            hatched,
-            stage,
-            users: users.map(u => u.user_id),
-            lastFed
-          }
-        })
-      };
+      return json({
+        success: true,
+        pair: {
+          code: pair.code,
+          petType: pair.pet_type,
+          streakDays: pair.streak_days,
+          growthPoints: pair.growth_points,
+          hatched,
+          stage,
+          users: users.map(u => u.user_id),
+          lastFed,
+        },
+      });
     }
 
     // ==========================================
-    // POST /feed
+    // POST /api/feed
     // ==========================================
-    if (event.httpMethod === 'POST' && path === '/feed') {
-      const { userId } = JSON.parse(event.body);
+    if (request.method === 'POST' && segments[0] === 'feed') {
+      const { userId } = await request.json();
       if (!userId) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'userId не указан' }) };
+        return json({ success: false, message: 'userId не указан' });
       }
 
       const { data: pairUser } = await supabase
@@ -135,13 +139,12 @@ exports.handler = async (event) => {
         .single();
 
       if (!pairUser) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Пара не найдена' }) };
+        return json({ success: false, message: 'Пара не найдена' });
       }
 
       const pairCode = pairUser.pair_code;
       const today = getTodayDate();
 
-      // Уже кормил сегодня?
       const { data: existingFeed } = await supabase
         .from('feedings')
         .select('id')
@@ -151,19 +154,17 @@ exports.handler = async (event) => {
         .single();
 
       if (existingFeed) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже покормил сегодня! Приходи завтра 🌙' }) };
+        return json({ success: false, message: 'Ты уже покормил сегодня! Приходи завтра 🌙' });
       }
 
-      // Записываем кормление
       const { error: insertError } = await supabase
         .from('feedings')
         .insert({ pair_code: pairCode, user_id: userId, fed_date: today });
 
       if (insertError) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ошибка записи кормления' }) };
+        return json({ success: false, message: 'Ошибка записи кормления' });
       }
 
-      // Оба покормили?
       const { data: users } = await supabase
         .from('pair_users')
         .select('user_id')
@@ -183,28 +184,23 @@ exports.handler = async (event) => {
       let pair = (await supabase.from('pairs').select('*').eq('code', pairCode).single()).data;
 
       if (allFedToday) {
-        // Защита от двойного начисления
         if (pair.last_streak_date === today) {
           const lastFed = {};
           todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
           const hatched = pair.hatched || false;
           const stage = getStage(pair.growth_points, hatched);
 
-          return {
-            statusCode: 200, headers,
-            body: JSON.stringify({
-              success: true, fed: true, allFedToday: true, evolved: false, hatched,
-              pair: {
-                code: pair.code, petType: pair.pet_type,
-                streakDays: pair.streak_days, growthPoints: pair.growth_points,
-                hatched, stage, lastFed,
-                users: users.map(u => u.user_id)
-              }
-            })
-          };
+          return json({
+            success: true, fed: true, allFedToday: true, evolved: false, hatched,
+            pair: {
+              code: pair.code, petType: pair.pet_type,
+              streakDays: pair.streak_days, growthPoints: pair.growth_points,
+              hatched, stage, lastFed,
+              users: users.map(u => u.user_id),
+            },
+          });
         }
 
-        // Считаем серию
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -216,14 +212,10 @@ exports.handler = async (event) => {
           newStreak = 1;
         }
 
-        // Начисляем очки
         const oldHatched = pair.hatched || false;
         const oldStage = getStage(pair.growth_points, oldHatched);
         const newPoints = pair.growth_points + 10 + newStreak * 2;
 
-        // ==========================================
-        // ВЫЛУПЛЕНИЕ: после 3 дней серии подряд
-        // ==========================================
         let newHatched = oldHatched;
         let newPetType = pair.pet_type;
 
@@ -238,7 +230,6 @@ exports.handler = async (event) => {
           evolved = true;
         }
 
-        // Обновляем в БД
         await supabase
           .from('pairs')
           .update({
@@ -246,7 +237,7 @@ exports.handler = async (event) => {
             growth_points: newPoints,
             last_streak_date: today,
             hatched: newHatched,
-            pet_type: newPetType
+            pet_type: newPetType,
           })
           .eq('code', pairCode);
 
@@ -258,29 +249,25 @@ exports.handler = async (event) => {
 
       const lastFed = {};
       todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
-
       const hatched = pair.hatched || false;
       const stage = getStage(pair.growth_points, hatched);
 
-      return {
-        statusCode: 200, headers,
-        body: JSON.stringify({
-          success: true, fed: true, allFedToday, evolved, hatched: justHatched,
-          pair: {
-            code: pair.code, petType: pair.pet_type,
-            streakDays: pair.streak_days, growthPoints: pair.growth_points,
-            hatched, stage, lastFed,
-            users: users.map(u => u.user_id)
-          }
-        })
-      };
+      return json({
+        success: true, fed: true, allFedToday, evolved, hatched: justHatched,
+        pair: {
+          code: pair.code, petType: pair.pet_type,
+          streakDays: pair.streak_days, growthPoints: pair.growth_points,
+          hatched, stage, lastFed,
+          users: users.map(u => u.user_id),
+        },
+      });
     }
 
     // ==========================================
-    // POST /create
+    // POST /api/create
     // ==========================================
-    if (event.httpMethod === 'POST' && path === '/create') {
-      const { userId } = JSON.parse(event.body);
+    if (request.method === 'POST' && segments[0] === 'create') {
+      const { userId } = await request.json();
 
       const { data: existing } = await supabase
         .from('pair_users')
@@ -289,25 +276,21 @@ exports.handler = async (event) => {
         .single();
 
       if (existing) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже в паре!' }) };
+        return json({ success: false, message: 'Ты уже в паре!' });
       }
 
       const code = generateCode();
-      await supabase.from('pairs').insert({
-        code,
-        pet_type: 'egg',
-        hatched: false
-      });
+      await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
-      return { statusCode: 200, headers, body: JSON.stringify({ success: true, code }) };
+      return json({ success: true, code });
     }
 
     // ==========================================
-    // POST /join
+    // POST /api/join
     // ==========================================
-    if (event.httpMethod === 'POST' && path === '/join') {
-      const { userId, code } = JSON.parse(event.body);
+    if (request.method === 'POST' && segments[0] === 'join') {
+      const { userId, code } = await request.json();
 
       const { data: existing } = await supabase
         .from('pair_users')
@@ -316,7 +299,7 @@ exports.handler = async (event) => {
         .single();
 
       if (existing) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Ты уже в паре!' }) };
+        return json({ success: false, message: 'Ты уже в паре!' });
       }
 
       const { data: pair } = await supabase
@@ -326,7 +309,7 @@ exports.handler = async (event) => {
         .single();
 
       if (!pair) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'Код не найден' }) };
+        return json({ success: false, message: 'Код не найден' });
       }
 
       const { data: pairUsers } = await supabase
@@ -335,18 +318,17 @@ exports.handler = async (event) => {
         .eq('pair_code', code.toUpperCase());
 
       if (pairUsers.length >= 2) {
-        return { statusCode: 200, headers, body: JSON.stringify({ success: false, message: 'В этой паре уже 2 человека' }) };
+        return json({ success: false, message: 'В этой паре уже 2 человека' });
       }
 
       await supabase.from('pair_users').insert({ pair_code: code.toUpperCase(), user_id: userId });
 
-      return { statusCode: 200, headers, body: JSON.stringify({ success: true, message: 'Ты присоединился!' }) };
+      return json({ success: true, message: 'Ты присоединился!' });
     }
 
   } catch (error) {
-    console.log('API Error:', error);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
+    return json({ error: error.message }, 500);
   }
 
-  return { statusCode: 404, headers, body: JSON.stringify({ error: 'Not found' }) };
-};
+  return json({ error: 'Not found' }, 404);
+}

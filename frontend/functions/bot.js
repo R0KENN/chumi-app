@@ -1,19 +1,19 @@
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+function getSupabase(env) {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
 }
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-async function sendMessage(chatId, text, extra = {}) {
-  const TELEGRAM_API = `https://api.telegram.org/bot${process.env.BOT_TOKEN}`;
-  await fetch(`${TELEGRAM_API}/sendMessage`, {
+async function sendMessage(env, chatId, text, extra = {}) {
+  const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`;
+  await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', ...extra })
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', ...extra }),
   });
 }
 
@@ -36,29 +36,25 @@ function getStage(points, hatched) {
 
 const PET_NAMES = { muru: 'Муру', neco: 'Неко', pico: 'Пико', boba: 'Боба', egg: 'Яйцо' };
 
-exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 200, body: 'OK' };
-  }
-
-  const supabase = getSupabase();
-  const WEBAPP_URL = process.env.WEBAPP_URL || 'https://astounding-faun-f4f6ae.netlify.app';
+export async function onRequestPost(context) {
+  const { request, env } = context;
+  const supabase = getSupabase(env);
+  const WEBAPP_URL = env.WEBAPP_URL || 'https://chumi-app.pages.dev';
 
   try {
-    const body = JSON.parse(event.body);
+    const body = await request.json();
     const message = body.message;
 
     if (!message || !message.text) {
-      return { statusCode: 200, body: 'OK' };
+      return new Response('OK');
     }
 
     const chatId = message.chat.id;
     const userId = message.from.id.toString();
     const text = message.text.trim();
 
-    // --- /start ---
     if (text === '/start') {
-      await sendMessage(chatId,
+      await sendMessage(env, chatId,
         '🐾 Привет! Я *Chumi* — бот для выращивания питомца вместе с другом!\n\n' +
         '🥚 Создай пару, корми питомца 3 дня — и он вылупится!\n\n' +
         'Команды:\n' +
@@ -67,126 +63,99 @@ exports.handler = async (event) => {
         '/status — посмотреть питомца',
         {
           reply_markup: JSON.stringify({
-            inline_keyboard: [[
-              { text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }
-            ]]
-          })
+            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
+          }),
         }
       );
     }
 
-    // --- /create ---
     else if (text === '/create') {
       const { data: existing } = await supabase
-        .from('pair_users')
-        .select('pair_code')
-        .eq('user_id', userId)
-        .single();
+        .from('pair_users').select('pair_code').eq('user_id', userId).single();
 
       if (existing) {
-        await sendMessage(chatId, '⚠️ Ты уже в паре! Используй /status чтобы проверить питомца.');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '⚠️ Ты уже в паре! Используй /status чтобы проверить питомца.');
+        return new Response('OK');
       }
 
       const code = generateCode();
       await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
-      await sendMessage(chatId,
+      await sendMessage(env, chatId,
         `✅ Пара создана!\n\n🔑 Твой код: *${code}*\n\nОтправь этот код другу, чтобы он присоединился командой:\n/join ${code}`
       );
     }
 
-    // --- /join CODE ---
     else if (text.startsWith('/join')) {
       const parts = text.split(' ');
       if (parts.length < 2) {
-        await sendMessage(chatId, '❌ Укажи код! Пример: /join ABC123');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '❌ Укажи код! Пример: /join ABC123');
+        return new Response('OK');
       }
 
       const code = parts[1].trim().toUpperCase();
 
       const { data: existing } = await supabase
-        .from('pair_users')
-        .select('pair_code')
-        .eq('user_id', userId)
-        .single();
+        .from('pair_users').select('pair_code').eq('user_id', userId).single();
 
       if (existing) {
-        await sendMessage(chatId, '⚠️ Ты уже в паре!');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '⚠️ Ты уже в паре!');
+        return new Response('OK');
       }
 
       const { data: pair } = await supabase
-        .from('pairs')
-        .select('code')
-        .eq('code', code)
-        .single();
+        .from('pairs').select('code').eq('code', code).single();
 
       if (!pair) {
-        await sendMessage(chatId, '❌ Код не найден. Проверь и попробуй снова.');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '❌ Код не найден. Проверь и попробуй снова.');
+        return new Response('OK');
       }
 
       const { data: pairUsers } = await supabase
-        .from('pair_users')
-        .select('user_id')
-        .eq('pair_code', code);
+        .from('pair_users').select('user_id').eq('pair_code', code);
 
       if (pairUsers.length >= 2) {
-        await sendMessage(chatId, '❌ В этой паре уже 2 человека.');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '❌ В этой паре уже 2 человека.');
+        return new Response('OK');
       }
 
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
-      await sendMessage(chatId,
+      await sendMessage(env, chatId,
         '✅ Ты присоединился к паре! 🐾\n\nТеперь кормите питомца 3 дня подряд — и он вылупится!',
         {
           reply_markup: JSON.stringify({
-            inline_keyboard: [[
-              { text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }
-            ]]
-          })
+            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
+          }),
         }
       );
 
       const firstUser = pairUsers[0].user_id;
-      await sendMessage(firstUser, '🎉 Твой друг присоединился к паре! Теперь вы можете вместе растить питомца.',
+      await sendMessage(env, firstUser,
+        '🎉 Твой друг присоединился к паре! Теперь вы можете вместе растить питомца.',
         {
           reply_markup: JSON.stringify({
-            inline_keyboard: [[
-              { text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }
-            ]]
-          })
+            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
+          }),
         }
       );
     }
 
-    // --- /status ---
     else if (text === '/status') {
       const { data: pairUser } = await supabase
-        .from('pair_users')
-        .select('pair_code')
-        .eq('user_id', userId)
-        .single();
+        .from('pair_users').select('pair_code').eq('user_id', userId).single();
 
       if (!pairUser) {
-        await sendMessage(chatId, '❌ Ты пока не в паре. Используй /create или /join');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '❌ Ты пока не в паре. Используй /create или /join');
+        return new Response('OK');
       }
 
       const { data: pair } = await supabase
-        .from('pairs')
-        .select('*')
-        .eq('code', pairUser.pair_code)
-        .single();
+        .from('pairs').select('*').eq('code', pairUser.pair_code).single();
 
       const { data: users } = await supabase
-        .from('pair_users')
-        .select('user_id')
-        .eq('pair_code', pairUser.pair_code);
+        .from('pair_users').select('user_id').eq('pair_code', pairUser.pair_code);
 
       const hatched = pair.hatched || false;
       const stage = getStage(pair.growth_points, hatched);
@@ -208,50 +177,42 @@ exports.handler = async (event) => {
           `👥 Участников: ${users.length}/2`;
       }
 
-      await sendMessage(chatId, statusText);
+      await sendMessage(env, chatId, statusText);
     }
 
-    // --- /remind (ручное напоминание партнёру) ---
     else if (text === '/remind') {
       const { data: pairUser } = await supabase
-        .from('pair_users')
-        .select('pair_code')
-        .eq('user_id', userId)
-        .single();
+        .from('pair_users').select('pair_code').eq('user_id', userId).single();
 
       if (!pairUser) {
-        await sendMessage(chatId, '❌ Ты пока не в паре.');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '❌ Ты пока не в паре.');
+        return new Response('OK');
       }
 
       const { data: users } = await supabase
-        .from('pair_users')
-        .select('user_id')
-        .eq('pair_code', pairUser.pair_code);
+        .from('pair_users').select('user_id').eq('pair_code', pairUser.pair_code);
 
       const partner = users.find(u => u.user_id !== userId);
       if (!partner) {
-        await sendMessage(chatId, '❌ У тебя пока нет напарника.');
-        return { statusCode: 200, body: 'OK' };
+        await sendMessage(env, chatId, '❌ У тебя пока нет напарника.');
+        return new Response('OK');
       }
 
-      await sendMessage(partner.user_id,
+      await sendMessage(env, partner.user_id,
         '🔔 Твой напарник напоминает: не забудь покормить питомца сегодня! 🍖',
         {
           reply_markup: JSON.stringify({
-            inline_keyboard: [[
-              { text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }
-            ]]
-          })
+            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
+          }),
         }
       );
 
-      await sendMessage(chatId, '✅ Напоминание отправлено!');
+      await sendMessage(env, chatId, '✅ Напоминание отправлено!');
     }
 
   } catch (error) {
     console.log('Bot error:', error);
   }
 
-  return { statusCode: 200, body: 'OK' };
-};
+  return new Response('OK');
+}
