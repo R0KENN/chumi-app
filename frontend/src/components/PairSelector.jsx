@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { usePairs } from '../context/PairsContext';
+import { useLang } from '../context/LangContext';
 import NoPairs from './NoPairs';
 
-const PET_NAMES = { muru: 'Muru', neco: 'Neco', pico: 'Pico', boba: 'Boba', egg: 'Egg' };
+const PET_NAMES = { muru: 'Muru', neco: 'Neco', pico: 'Pico', boba: 'Boba' };
 
 function getPetImage(petType, hatched) {
   if (!hatched) return '/pets/egg.png';
@@ -11,33 +12,20 @@ function getPetImage(petType, hatched) {
 
 export default function PairSelector({ onCreate, onJoin }) {
   const { pairs, loading } = usePairs();
+  const { t } = useLang();
   const navigate = useNavigate();
 
-  if (loading) return <div className="loading">Loading...</div>;
+  if (loading) return <div className="app"><div className="center-screen"><div className="loader"></div></div></div>;
 
   if (pairs.length === 0) {
     return <NoPairs onCreate={onCreate} onJoin={onJoin} />;
   }
 
+  // Если есть пара — useEffect в App.jsx автоматически перенаправит
   return (
-    <div className="pair-selector">
-      <h2 className="selector-title">🐾 Your Pets</h2>
-      <div className="pairs-list">
-        {pairs.map(pair => (
-          <div
-            key={pair.id}
-            className="pair-card"
-            onClick={() => navigate(`/pair/${pair.id}`)}
-          >
-            <img src={getPetImage(pair.petType, pair.hatched)} alt={pair.petType} />
-            <h3>{pair.hatched ? (PET_NAMES[pair.petType] || pair.petType) : 'Egg'}</h3>
-            <p>{pair.hatched ? pair.stage.name : `🔥 ${pair.streakDays}/3`}</p>
-          </div>
-        ))}
-      </div>
-      <div className="action-buttons">
-        <button className="join-pair-button" onClick={onJoin}>🔗</button>
-        <button className="add-pair-button" onClick={onCreate}>➕</button>
+    <div className="app">
+      <div className="center-screen">
+        <div className="loader"></div>
       </div>
     </div>
   );

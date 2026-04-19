@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePairs } from '../context/PairsContext';
+import { useLang } from '../context/LangContext';
 
 const API_URL = '/api';
 
@@ -8,6 +9,7 @@ export default function JoinPairModal({ telegramUserId, onClose, onJoined }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { refreshPairs } = usePairs();
+  const { t } = useLang();
 
   const handleJoin = async (e) => {
     e.preventDefault();
@@ -28,7 +30,7 @@ export default function JoinPairModal({ telegramUserId, onClose, onJoined }) {
         setError(data.message);
       }
     } catch (err) {
-      setError('Connection error');
+      setError(t.connectionError);
     } finally {
       setLoading(false);
     }
@@ -36,11 +38,11 @@ export default function JoinPairModal({ telegramUserId, onClose, onJoined }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
-        <h2>🔗 Join a Pair</h2>
+      <div className="modal-glass">
+        <h2>🔗 {t.joinPair}</h2>
         <form onSubmit={handleJoin}>
           <label>
-            Pair code:
+            {t.pairCodeLabel}
             <input
               type="text"
               value={code}
@@ -52,9 +54,9 @@ export default function JoinPairModal({ telegramUserId, onClose, onJoined }) {
           </label>
           {error && <p className="error">{error}</p>}
           <div className="modal-buttons">
-            <button type="button" onClick={onClose} disabled={loading}>Cancel</button>
-            <button type="submit" disabled={loading || !code.trim()}>
-              {loading ? 'Joining...' : 'Join'}
+            <button type="button" className="glass-btn" onClick={onClose} disabled={loading}>{t.cancel}</button>
+            <button type="submit" className="glass-btn primary" disabled={loading || !code.trim()}>
+              {loading ? t.joining : t.join}
             </button>
           </div>
         </form>

@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { PairsProvider } from './context/PairsContext';
+import { PairsProvider, usePairs } from './context/PairsContext';
 import PairSelector from './components/PairSelector';
 import PairScreen from './components/PairScreen';
 import CreatePairModal from './components/CreatePairModal';
 import JoinPairModal from './components/JoinPairModal';
+import { LangProvider, useLang } from './context/LangContext';
 import './App.css';
 
 function AppContent({ telegramUserId }) {
+  const { pairs, loading } = usePairs();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const navigate = useNavigate();
@@ -21,6 +23,13 @@ function AppContent({ telegramUserId }) {
     setShowJoinModal(false);
     navigate(`/pair/${joinedPair.id}`);
   };
+
+  // Если есть хотя бы одна пара — автоматически открыть первую
+  useEffect(() => {
+    if (!loading && pairs.length > 0 && window.location.pathname === '/') {
+      navigate(`/pair/${pairs[0].id}`, { replace: true });
+    }
+  }, [loading, pairs, navigate]);
 
   return (
     <div className="app">
@@ -74,18 +83,19 @@ function App() {
     } catch (e) {
       console.warn('Telegram WebApp not available:', e);
     }
-    // Fallback for testing outside Telegram
     setTelegramUserId('test_user_123');
   }, []);
 
   if (!telegramUserId) {
-    return <div style={{ padding: 20, textAlign: 'center' }}>Loading...</div>;
+    return <div className="app"><div className="center-screen"><div className="loader"></div></div></div>;
   }
 
   return (
-    <PairsProvider telegramUserId={telegramUserId}>
-      <AppContent telegramUserId={telegramUserId} />
-    </PairsProvider>
+    <LangProvider>
+      <PairsProvider telegramUserId={telegramUserId}>
+        <AppContent telegramUserId={telegramUserId} />
+      </PairsProvider>
+    </LangProvider>
   );
 }
 

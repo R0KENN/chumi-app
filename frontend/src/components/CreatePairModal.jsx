@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePairs } from '../context/PairsContext';
+import { useLang } from '../context/LangContext';
 
 const API_URL = '/api';
 
@@ -8,6 +9,7 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
   const [error, setError] = useState('');
   const [code, setCode] = useState('');
   const { refreshPairs } = usePairs();
+  const { t } = useLang();
 
   const handleCreate = async () => {
     setLoading(true);
@@ -26,7 +28,7 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
         setError(data.message);
       }
     } catch (err) {
-      setError('Connection error');
+      setError(t.connectionError);
     } finally {
       setLoading(false);
     }
@@ -39,16 +41,16 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
   if (code) {
     return (
       <div className="modal-overlay">
-        <div className="modal">
-          <h2>✅ Pair Created!</h2>
-          <p>Share this code with your friend:</p>
+        <div className="modal-glass">
+          <h2>✅ {t.pairCreated}</h2>
+          <p>{t.shareCode}</p>
           <div className="code-display" onClick={handleCopy}>
             <span className="code-text">{code}</span>
             <span>📋</span>
           </div>
-          <p style={{ fontSize: 12, opacity: 0.5 }}>Tap to copy</p>
+          <p className="hint">{t.tapToCopy}</p>
           <div className="modal-buttons">
-            <button onClick={() => onCreated({ id: code })}>Done</button>
+            <button className="glass-btn primary" onClick={() => onCreated({ id: code })}>{t.done}</button>
           </div>
         </div>
       </div>
@@ -57,14 +59,14 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
-        <h2>🥚 Create New Pair</h2>
-        <p>An egg will appear. Feed it together for 3 days to hatch!</p>
+      <div className="modal-glass">
+        <h2>🥚 {t.createNewPair}</h2>
+        <p>{t.createDesc}</p>
         {error && <p className="error">{error}</p>}
         <div className="modal-buttons">
-          <button type="button" onClick={onClose} disabled={loading}>Cancel</button>
-          <button onClick={handleCreate} disabled={loading}>
-            {loading ? 'Creating...' : 'Create'}
+          <button className="glass-btn" onClick={onClose} disabled={loading}>{t.cancel}</button>
+          <button className="glass-btn primary" onClick={handleCreate} disabled={loading}>
+            {loading ? t.creating : t.create}
           </button>
         </div>
       </div>
