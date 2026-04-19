@@ -1,9 +1,19 @@
 {
+  "name": "chumi-app-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build"
+  },
   "dependencies": {
-    "@netlify/functions": "^5.2.0",
-    "@telegram-apps/sdk": "^3.11.8",
-    "axios": "^1.15.0",
-    "node-telegram-bot-api": "^0.67.0",
-    "react-router-dom": "^7.14.1"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0",
+    "axios": "^1.7.2",
+    "@twa-dev/sdk": "^8.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "@vitejs/plugin-react": "^4.3.1"
   }
 }
