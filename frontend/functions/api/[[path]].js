@@ -125,25 +125,26 @@ export async function onRequest(context) {
     const supabase = getSupabase(env);
 
     // ═══ GET /api/pairs/:userId ═══
-    if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
-      const userId = path.split('/')[3];
-      const { data: userPairs } = await supabase
-        .from('pair_users')
-        .select('pair_code')
-        .eq('telegram_user_id', userId);
+if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
+    const userId = path.split('/')[3];
+    const { data: userPairs } = await supabase
+      .from('pair_users')
+      .select('pair_code')
+      .eq('user_id', userId);
 
-      if (!userPairs || userPairs.length === 0) return json({ pairs: [] });
+    if (!userPairs || userPairs.length === 0) return json({ pairs: [] });
 
-      const pairs = [];
-      for (const up of userPairs) {
-        const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
-        if (!pair) continue;
-        const { data: members } = await supabase.from('pair_users').select('*').eq('pair_code', up.pair_code);
-        const { data: feeds } = await supabase.from('feedings').select('*').eq('pair_code', up.pair_code).eq('feed_date', getTodayDate());
-        pairs.push(formatPair(pair, members, feeds, userId));
-      }
-      return json({ pairs });
+    const pairs = [];
+    for (const up of userPairs) {
+      const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
+      if (!pair) continue;
+      const { data: members } = await supabase.from('pair_users').select('*').eq('pair_code', up.pair_code);
+      const { data: feeds } = await supabase.from('feedings').select('*').eq('pair_code', up.pair_code).eq('feed_date', getTodayDate());
+      pairs.push(formatPair(pair, members, feeds, userId));
     }
+    return json({ pairs });
+}
+
 
     // ═══ GET /api/pair/:pairCode/:userId ═══
     if (request.method === 'GET' && path.match(/^\/api\/pair\/[^/]+\/[^/]+$/)) {
