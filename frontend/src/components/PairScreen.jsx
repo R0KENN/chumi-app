@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
+import { usePairs } from '../context/PairsContext';
 
 const API = '/api';
 
@@ -12,13 +13,7 @@ const LEVELS = [
   { level: 4, name: 'Inferno',nameRu: 'Инферно', maxPoints: 200, bg: ['#B2DFDB','#4DB6AC'], accent: '#00897B', check: '#00897B' },
 ];
 
-const TASKS = [
-  { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
-  { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'chat' },
-  { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'chat' },
-  { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'chat' },
-  { key: 'pet_touch',    points: 1, ru: 'Погладить питомца',                 en: 'Pet your flame',                icon: '🔥', action: 'pet' },
-];
+const TOTAL_MAX = LEVELS.reduce((s, l) => s + l.maxPoints, 0); // 500
 
 function getLevel(totalPoints) {
   let acc = 0;
@@ -36,6 +31,7 @@ export default function PairScreen() {
   const { pairId } = useParams();
   const navigate = useNavigate();
   const { lang } = useLang();
+  const { pairs } = usePairs();
   const tg = window.Telegram?.WebApp;
   const userId = String(tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118');
 
@@ -50,6 +46,20 @@ export default function PairScreen() {
   const [showSoon, setShowSoon] = useState(false);
   const [confirmTask, setConfirmTask] = useState(null);
   const [completing, setCompleting] = useState(false);
+  const [showMyPairs, setShowMyPairs] = useState(false);
+  const [showRanking, setShowRanking] = useState(false);
+  const [ranking, setRanking] = useState([]);
+  const [rankingLoading, setRankingLoading] = useState(false);
+
+  // ── Динамические задания (с именем питомца) ──
+  const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
+  const TASKS = [
+    { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
+    { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'chat' },
+    { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'chat' },
+    { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'chat' },
+    { key: 'pet_touch',    points: 1, ru: `Тапнуть ${petName}`,                en: `Tap ${petName}`,                icon: '👆', action: 'pet' },
+  ];
 
   const completeTask = useCallback(async (taskKey) => {
     try {
@@ -96,12 +106,24 @@ export default function PairScreen() {
     });
   }, [pair?.members]);
 
+  // ── Load ranking ──
+  const loadRanking = async () => {
+    setRankingLoading(true);
+    try {
+      const res = await fetch(`${API}/ranking`);
+      const data = await res.json();
+      if (data.ranking) setRanking(data.ranking);
+    } catch (e) { console.error('ranking err:', e); }
+    finally { setRankingLoading(false); }
+  };
+
   if (loading) return <div className="sk-loading"><div className="sk-spinner" /></div>;
   if (!pair) return <div className="sk-loading">{lang === 'ru' ? 'Не найдено' : 'Not found'}</div>;
 
   const lv = getLevel(pair.growth_points || 0);
   const pct = Math.min(100, (lv.current / lv.needed) * 100);
   const partner = pair.members?.find(m => m.user_id !== userId);
+  const isMaxLevel = lv.idx === LEVELS.length - 1 && lv.remaining === 0;
 
   const mergedTasks = TASKS.map(t => ({
     ...t,
@@ -139,13 +161,11 @@ export default function PairScreen() {
     const uname = partner?.username;
     setCompleting(true);
 
-    // 1. Сразу засчитываем задание
     await completeTask(taskKey);
     await load();
     setConfirmTask(null);
     setCompleting(false);
 
-    // 2. Открываем чат партнёра
     if (uname) {
       const link = `https://t.me/${uname}`;
       try {
@@ -160,7 +180,6 @@ export default function PairScreen() {
     }
   };
 
-  // ── Для заданий без партнёра — сразу засчитать ──
   const completeWithoutPartner = async () => {
     if (!confirmTask || completing) return;
     setCompleting(true);
@@ -201,12 +220,52 @@ export default function PairScreen() {
                     en: 'Send a photo or video to your partner.\nThe task will be completed and chat will open.' },
   };
 
+  // ── Мои пары: логика ──
+  const myPairsData = pairs || [];
+  const maxPairs = 3;
+  const canAddPair = myPairsData.length < maxPairs;
+
+  const handleAddPair = () => {
+    if (canAddPair) {
+      navigate('/');
+    } else {
+      // Покупка через Telegram Stars
+      const openPayment = async () => {
+        try {
+          const res = await fetch(`${API}/create-invoice`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, productId: 'extra_slot' }),
+          });
+          const data = await res.json();
+          if (data.invoiceUrl && tg?.openInvoice) {
+            tg.openInvoice(data.invoiceUrl, (status) => {
+              if (status === 'paid') {
+                haptic('heavy');
+                setShowMyPairs(false);
+              }
+            });
+          } else if (data.invoiceUrl) {
+            window.open(data.invoiceUrl, '_blank');
+          }
+        } catch (e) { console.error('Invoice error:', e); }
+      };
+      openPayment();
+    }
+  };
+
   return (
     <div className="sk" style={{ background: `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 60%, #f5f5f5 100%)` }}>
 
-      {/* ── Top bar ── */}
+      {/* ── Top bar (имя + серия + •••) на одной линии ── */}
       <div className="sk-topbar">
-        <div className="sk-topbar-title">
+        <div className="sk-topbar-left">
+          <div className="sk-streak-inline">
+            <span className="sk-streak-fire">🔥</span>
+            <span className="sk-streak-inline-num">{pair.streak_days || 0}</span>
+          </div>
+        </div>
+        <div className="sk-topbar-center">
           {renaming ? (
             <div className="sk-rename-inline">
               <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={20} autoFocus
@@ -214,8 +273,9 @@ export default function PairScreen() {
               <button onClick={handleRename}>✓</button>
             </div>
           ) : (
-            <span onClick={() => { setNewName(pair.pet_name || ''); setRenaming(true); }}>
-              {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')} 🔥
+            <span className="sk-topbar-name" onClick={() => { setNewName(pair.pet_name || ''); setRenaming(true); }}>
+              {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')}
+              <span className="sk-edit-pencil">✏️</span>
             </span>
           )}
         </div>
@@ -225,25 +285,23 @@ export default function PairScreen() {
       {/* ── Menu ── */}
       {showMenu && (
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)}>
-          <div className="sk-menu" onClick={e => e.stopPropagation()}>
+          <div className="sk-menu glass-card" onClick={e => e.stopPropagation()}>
             <button onClick={() => { setRenaming(true); setShowMenu(false); }}>✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}</button>
             <button onClick={() => { navigator.clipboard?.writeText(pairId); setShowMenu(false); haptic('light'); }}>📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}</button>
-            <button onClick={() => navigate('/')}>🔥 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
+            <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🔥 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
+            <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
           </div>
         </div>
       )}
 
-      {/* ── Streak + Avatars ── */}
+      {/* ── Avatars ── */}
       <div className="sk-header">
-        <div className="sk-streak">
-          <div className="sk-streak-label">{lang === 'ru' ? 'Дней Серии' : 'Streak Days'}</div>
-          <div className="sk-streak-num">{pair.streak_days || 0}</div>
-        </div>
+        <div style={{ flex: 1 }}></div>
         <div className="sk-avatars">
-          <div className="sk-ava">
+          <div className="sk-ava glass-circle">
             {avatars[userId] ? <img src={avatars[userId]} alt="" onError={e => e.target.style.display='none'} /> : <span>👤</span>}
           </div>
-          <div className="sk-ava sk-ava-partner">
+          <div className="sk-ava sk-ava-partner glass-circle">
             {partner && avatars[partner.user_id] ? <img src={avatars[partner.user_id]} alt="" onError={e => e.target.style.display='none'} /> : <span>👤</span>}
           </div>
         </div>
@@ -260,24 +318,27 @@ export default function PairScreen() {
       </div>
 
       {/* ── Outfits button ── */}
-      <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
+      <div className="sk-outfits-btn glass-card" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
         <span>🔥</span><span>👕</span>
         <span className="sk-outfits-text">{showSoon ? (lang === 'ru' ? 'Скоро!' : 'Soon!') : (lang === 'ru' ? 'Наряды' : 'Outfits')}</span>
       </div>
 
       {/* ── Progress ── */}
       <div className="sk-progress-wrap" onClick={() => setShowLevels(true)}>
-        <div className="sk-progress">
+        <div className="sk-progress glass-bar">
           <div className="sk-progress-fill" style={{ width: `${pct}%`, background: lv.accent }} />
           <span className="sk-progress-text">{lv.current}/{lv.needed}</span>
         </div>
-        <div className="sk-progress-hint">
-          {lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›
-        </div>
+        {/* Показываем "больше образов" ТОЛЬКО на max уровне */}
+        {isMaxLevel && (
+          <div className="sk-progress-hint">
+            {lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›
+          </div>
+        )}
       </div>
 
       {/* ── Tasks ── */}
-      <div className="sk-tasks">
+      <div className="sk-tasks glass-card">
         <div className="sk-tasks-top">
           <h3>{lang === 'ru' ? 'Растите своего Серийчика' : 'Grow your Streak Pet'}</h3>
           <span className="sk-tasks-count" style={{ color: lv.accent, background: lv.accent + '18' }}>{doneCount}/{mergedTasks.length}</span>
@@ -301,7 +362,7 @@ export default function PairScreen() {
       {/* ── Confirm Chat Task Popup ── */}
       {confirmTask && (
         <div className="sk-overlay" onClick={() => setConfirmTask(null)}>
-          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+          <div className="sk-popup glass-card" onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>
               {confirmTask.icon || '💬'}
             </div>
@@ -316,11 +377,8 @@ export default function PairScreen() {
               <button
                 onClick={confirmAndOpenChat}
                 disabled={completing}
-                style={{
-                  width: '100%', padding: 14, borderRadius: 14,
-                  border: 'none', background: completing ? '#ccc' : lv.accent, color: '#fff',
-                  fontSize: 16, fontWeight: 700, cursor: completing ? 'wait' : 'pointer', marginBottom: 8,
-                }}
+                className="sk-btn-primary"
+                style={{ background: completing ? '#ccc' : lv.accent }}
               >
                 {completing
                   ? (lang === 'ru' ? 'Засчитываем...' : 'Completing...')
@@ -332,11 +390,8 @@ export default function PairScreen() {
               <button
                 onClick={completeWithoutPartner}
                 disabled={completing}
-                style={{
-                  width: '100%', padding: 14, borderRadius: 14,
-                  border: 'none', background: completing ? '#ccc' : lv.accent, color: '#fff',
-                  fontSize: 16, fontWeight: 700, cursor: completing ? 'wait' : 'pointer', marginBottom: 8,
-                }}
+                className="sk-btn-primary"
+                style={{ background: completing ? '#ccc' : lv.accent }}
               >
                 {completing
                   ? (lang === 'ru' ? 'Засчитываем...' : 'Completing...')
@@ -351,10 +406,78 @@ export default function PairScreen() {
         </div>
       )}
 
+      {/* ── Мои пары popup ── */}
+      {showMyPairs && (
+        <div className="sk-overlay" onClick={() => setShowMyPairs(false)}>
+          <div className="sk-popup sk-popup-wide glass-card" onClick={e => e.stopPropagation()}>
+            <h3>{lang === 'ru' ? 'Мои пары' : 'My pairs'}</h3>
+            <div className="sk-pairs-grid">
+              {myPairsData.map(p => {
+                const plv = getLevel(p.growth_points || 0);
+                return (
+                  <div
+                    key={p.code}
+                    className={`sk-pair-card glass-card ${p.code === pairId ? 'sk-pair-card-active' : ''}`}
+                    onClick={() => { setShowMyPairs(false); navigate(`/pair/${p.code}`); }}
+                  >
+                    <div className="sk-pair-card-emoji">{plv.idx >= 3 ? '🔥' : '✨'}</div>
+                    <div className="sk-pair-card-name">{p.pet_name || plv.name}</div>
+                    <div className="sk-pair-card-info">
+                      <span>🔥 {p.streak_days || 0}</span>
+                      <span>⭐ {p.growth_points || 0}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Кнопка "+" */}
+              <div className="sk-pair-card sk-pair-card-add glass-card" onClick={handleAddPair}>
+                <div className="sk-pair-card-plus">+</div>
+                <div className="sk-pair-card-name" style={{ fontSize: 12 }}>
+                  {canAddPair
+                    ? (lang === 'ru' ? 'Новая пара' : 'New pair')
+                    : (lang === 'ru' ? '50 ⭐ Stars' : '50 ⭐ Stars')}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', textAlign: 'center', marginTop: 12 }}>
+              {myPairsData.length}/{maxPairs} {lang === 'ru' ? 'пар' : 'pairs'}
+            </div>
+            <button className="sk-popup-close" onClick={() => setShowMyPairs(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Ranking popup ── */}
+      {showRanking && (
+        <div className="sk-overlay" onClick={() => setShowRanking(false)}>
+          <div className="sk-popup sk-popup-wide glass-card" onClick={e => e.stopPropagation()}>
+            <h3>🏆 {lang === 'ru' ? 'Рейтинг пар' : 'Pairs ranking'}</h3>
+            {rankingLoading ? (
+              <div style={{ textAlign: 'center', padding: 20 }}><div className="sk-spinner" /></div>
+            ) : ranking.length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#888' }}>{lang === 'ru' ? 'Пока нет данных' : 'No data yet'}</p>
+            ) : (
+              <div className="sk-ranking-list">
+                {ranking.map((r, i) => (
+                  <div key={r.code} className={`sk-ranking-row ${r.code === pairId ? 'sk-ranking-me' : ''}`}>
+                    <span className="sk-ranking-pos">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</span>
+                    <span className="sk-ranking-name">{r.pet_name || 'Unnamed'}</span>
+                    <span className="sk-ranking-stats">
+                      ⭐{r.growth_points || 0} &nbsp; 🔥{r.streak_days || 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="sk-popup-close" onClick={() => setShowRanking(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Levels popup ── */}
       {showLevels && (
         <div className="sk-overlay" onClick={() => setShowLevels(false)}>
-          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+          <div className="sk-popup glass-card" onClick={e => e.stopPropagation()}>
             <h3>{lang === 'ru' ? 'Уровни' : 'Levels'}</h3>
             {LEVELS.map((l, i) => (
               <div key={l.level} className={`sk-lvl-row ${i === lv.idx ? 'sk-lvl-active' : ''}`}>

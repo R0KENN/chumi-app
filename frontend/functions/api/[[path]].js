@@ -606,6 +606,26 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       return json({ success: true });
     }
 
+        // ═══════════════════════════════════════
+    // GET /api/ranking
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path === '/api/ranking') {
+      const { data: allPairs } = await supabase
+        .from('pairs')
+        .select('code, pet_name, growth_points, streak_days')
+        .order('growth_points', { ascending: false })
+        .limit(50);
+
+      const ranking = (allPairs || []).map(p => ({
+        code: p.code,
+        pet_name: p.pet_name,
+        growth_points: p.growth_points || 0,
+        streak_days: p.streak_days || 0,
+      }));
+
+      return json({ ranking });
+    }
+
     // ═══════════════════════════════════════
     // 404
     // ═══════════════════════════════════════
