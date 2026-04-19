@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { PairsProvider, usePairs } from './context/PairsContext';
 import { LangProvider } from './context/LangContext';
 import PairSelector from './components/PairSelector';
@@ -9,15 +9,15 @@ import './App.css';
 function AppContent() {
   const { pairs, loading } = usePairs();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!loading && pairs && pairs.length > 0) {
-      const current = window.location.pathname;
-      if (current === '/' || current === '') {
+      if (location.pathname === '/' || location.pathname === '') {
         navigate(`/pair/${pairs[0].code}`);
       }
     }
-  }, [pairs, loading, navigate]);
+  }, [pairs, loading, navigate, location.pathname]);
 
   return (
     <Routes>
@@ -37,19 +37,15 @@ function App() {
         tg.ready();
         tg.expand();
         const uid = tg.initDataUnsafe?.user?.id?.toString();
-        if (uid) {
-          setTelegramUserId(uid);
-          return;
-        }
+        if (uid) { setTelegramUserId(uid); return; }
       }
     } catch (e) {}
-    // Fallback for testing
     const testId = localStorage.getItem('chumi_test_uid') || '713156118';
     localStorage.setItem('chumi_test_uid', testId);
     setTelegramUserId(testId);
   }, []);
 
-  if (!telegramUserId) return <div className="loading">Loading…</div>;
+  if (!telegramUserId) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 
   return (
     <BrowserRouter>

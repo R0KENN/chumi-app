@@ -5,11 +5,11 @@ import { useLang } from '../context/LangContext';
 const API = '/api';
 
 const LEVELS = [
-  { level: 0, name: 'Spark',   nameRu: 'Искра',   maxPoints: 30,  bg: ['#FFF8E1','#FFECB3'] },
-  { level: 1, name: 'Flame',   nameRu: 'Огонёк',  maxPoints: 70,  bg: ['#FFF3D0','#FFE082'] },
-  { level: 2, name: 'Blaze',   nameRu: 'Пламя',   maxPoints: 50,  bg: ['#FFE0CC','#FFB088'] },
-  { level: 3, name: 'Fire',    nameRu: 'Костёр',   maxPoints: 150, bg: ['#FFD0C0','#FF8A65'] },
-  { level: 4, name: 'Inferno', nameRu: 'Инферно', maxPoints: 200, bg: ['#FFC0B0','#FF5722'] },
+  { level: 0, name: 'Spark',   nameRu: 'Искра',    maxPoints: 30,  bg: ['#FFF3D0','#FFE082'], accent: '#FF9800', checkColor: '#FF9800' },
+  { level: 1, name: 'Flame',   nameRu: 'Огонёк',   maxPoints: 70,  bg: ['#E8D5F5','#B39DDB'], accent: '#7C4DFF', checkColor: '#7C4DFF' },
+  { level: 2, name: 'Blaze',   nameRu: 'Пламя',    maxPoints: 50,  bg: ['#FCE4EC','#F48FB1'], accent: '#E91E63', checkColor: '#E91E63' },
+  { level: 3, name: 'Fire',    nameRu: 'Костёр',    maxPoints: 150, bg: ['#FFCCBC','#FF8A65'], accent: '#FF5722', checkColor: '#FF5722' },
+  { level: 4, name: 'Inferno', nameRu: 'Инферно',  maxPoints: 200, bg: ['#B2EBF2','#4DD0E1'], accent: '#00BCD4', checkColor: '#00BCD4' },
 ];
 
 const TASKS = [
@@ -24,12 +24,12 @@ function getLevel(totalPoints) {
   let acc = 0;
   for (let i = 0; i < LEVELS.length; i++) {
     if (totalPoints < acc + LEVELS[i].maxPoints) {
-      return { ...LEVELS[i], current: totalPoints - acc, needed: LEVELS[i].maxPoints, remaining: acc + LEVELS[i].maxPoints - totalPoints };
+      return { ...LEVELS[i], current: totalPoints - acc, needed: LEVELS[i].maxPoints, remaining: acc + LEVELS[i].maxPoints - totalPoints, index: i };
     }
     acc += LEVELS[i].maxPoints;
   }
   const last = LEVELS[LEVELS.length - 1];
-  return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0 };
+  return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0, index: LEVELS.length - 1 };
 }
 
 export default function PairScreen() {
@@ -48,7 +48,6 @@ export default function PairScreen() {
   const [petAnim, setPetAnim] = useState(false);
   const [avatars, setAvatars] = useState({});
 
-  // Задание, которое ждёт завершения после возврата из inline
   const pendingTaskRef = useRef(null);
 
   const completeTask = useCallback(async (taskKey) => {
@@ -60,10 +59,7 @@ export default function PairScreen() {
       });
       const data = await res.json();
       return !data.error;
-    } catch (e) {
-      console.error('complete-task error:', e);
-      return false;
-    }
+    } catch (e) { return false; }
   }, [pairId, userId]);
 
   const load = useCallback(async () => {
@@ -73,8 +69,6 @@ export default function PairScreen() {
       if (data.error) { navigate('/'); return; }
       setPair(data);
       setNewName(data.pet_name || '');
-
-      // Auto-complete daily_open
       const alreadyOpened = data.daily_tasks?.some(t => t.task_key === 'daily_open');
       if (!alreadyOpened) {
         await completeTask('daily_open');
@@ -88,9 +82,7 @@ export default function PairScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ──────────────────────────────────────────
-  // При возврате в приложение — завершить pending задание
-  // ──────────────────────────────────────────
+  // Return from inline → complete pending task
   useEffect(() => {
     const finishPending = async () => {
       if (pendingTaskRef.current) {
@@ -100,102 +92,64 @@ export default function PairScreen() {
         load();
       }
     };
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') finishPending();
-    };
-
+    const onVisible = () => { if (document.visibilityState === 'visible') finishPending(); };
     document.addEventListener('visibilitychange', onVisible);
     tg?.onEvent?.('activated', finishPending);
-
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       tg?.offEvent?.('activated', finishPending);
     };
   }, [completeTask, load, tg]);
 
-  // ──────────────────────────────────────────
-  // Аватарки — загрузка через прокси (для мобильных)
-  // ──────────────────────────────────────────
+  // Avatars via proxy
   useEffect(() => {
     if (!pair?.members) return;
-
     pair.members.forEach(async (m) => {
-      // Если avatar_url уже есть от сервера — попробуем через прокси
-      // Прямые ссылки на api.telegram.org блокируются на мобильных
       try {
         const res = await fetch(`${API}/avatar/${m.user_id}`);
         const data = await res.json();
-        if (data.avatar_url) {
-          setAvatars(prev => ({ ...prev, [m.user_id]: data.avatar_url }));
-        }
-      } catch (e) {
-        console.error('Avatar load error:', e);
-      }
+        if (data.avatar_url) setAvatars(prev => ({ ...prev, [m.user_id]: data.avatar_url }));
+      } catch (e) {}
     });
   }, [pair?.members]);
 
-  if (loading) return <div className="streak-loading">{lang === 'ru' ? 'Загрузка...' : 'Loading...'}</div>;
-  if (!pair) return <div className="streak-loading">{lang === 'ru' ? 'Не найдено' : 'Not found'}</div>;
+  if (loading) return <div className="sk-loading"><div className="sk-spinner" /></div>;
+  if (!pair) return <div className="sk-loading">{lang === 'ru' ? 'Не найдено' : 'Not found'}</div>;
 
   const lv = getLevel(pair.growth_points || 0);
   const pct = Math.min(100, (lv.current / lv.needed) * 100);
-  const bg = `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 100%)`;
   const partner = pair.members?.find(m => m.user_id !== userId);
 
   const mergedTasks = TASKS.map(t => ({
     ...t,
     completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false,
   }));
-  const donePoints = mergedTasks.filter(t => t.completed).reduce((s, t) => s + t.points, 0);
-  const totalPoints = TASKS.reduce((s, t) => s + t.points, 0);
+  const doneCount = mergedTasks.filter(t => t.completed).length;
 
   const haptic = (type = 'medium') => {
     try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {}
   };
 
-  // ──────────────────────────────────────────
-  // Нажатие на задание
-  // ──────────────────────────────────────────
   const handleTask = async (task) => {
-    // Если уже выполнено — ничего не делаем
-    if (task.completed) {
-      haptic('light');
-      return;
-    }
+    if (task.completed) return;
+    haptic('light');
 
-    // === Inline задания (открывают выбор чата) ===
     if (task.action === 'inline') {
       if (!tg?.switchInlineQuery) {
-        // Fallback: если switchInlineQuery не поддерживается
-        haptic('warning');
-        tg?.showAlert?.(
-          lang === 'ru'
-            ? 'Обновите Telegram для выполнения этого задания'
-            : 'Update Telegram to complete this task'
-        );
+        tg?.showAlert?.(lang === 'ru' ? 'Обновите Telegram' : 'Update Telegram');
         return;
       }
-
-      haptic('light');
-
-      // Запоминаем задание — завершим при возврате
       pendingTaskRef.current = task.key;
-
-      // Открываем выбор чата с inline query
-      // choose_chat_types: ['users'] — только личные чаты
       tg.switchInlineQuery('', ['users']);
       return;
     }
 
-    // === Погладить питомца ===
     if (task.action === 'pet') {
       haptic('medium');
       setPetAnim(true);
       setTimeout(() => setPetAnim(false), 800);
       await completeTask(task.key);
       load();
-      return;
     }
   };
 
@@ -221,128 +175,141 @@ export default function PairScreen() {
     setRenaming(false);
   };
 
-  const petImage = `/pets/${pair.pet_type || 'spark'}_${Math.min(lv.level, 4)}.png`;
+  const handleClose = () => {
+    if (tg?.close) tg.close();
+    else navigate('/');
+  };
+
+  const petImage = `/pets/${pair.pet_type || 'spark'}_${Math.min(lv.index, 4)}.png`;
 
   return (
-    <div className="streak-screen" style={{ background: bg }}>
-      {/* Header */}
-      <div className="streak-header">
-        <div className="streak-header-left">
-          <div className="streak-label">{lang === 'ru' ? 'Дней Серии' : 'Streak Days'}</div>
-          <div className="streak-count">{pair.streak_days || 0}</div>
-        </div>
-        <div className="streak-header-right">
-          <button className="streak-menu-btn" onClick={() => setShowMenu(!showMenu)}>•••</button>
-          <div className="streak-avatars">
-            <div className="streak-avatar">
-              {avatars[userId]
-                ? <img src={avatars[userId]} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='inline'); }} />
-                : null}
-              <span style={avatars[userId] ? {display:'none'} : {}}>👤</span>
+    <div className="sk" style={{ background: `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 60%, #f5f5f5 100%)` }}>
+
+      {/* ── Top bar ── */}
+      <div className="sk-topbar">
+        <button className="sk-topbar-btn" onClick={handleClose}>✕</button>
+        <div className="sk-topbar-title">
+          {renaming ? (
+            <div className="sk-rename-inline">
+              <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={20} autoFocus
+                onKeyDown={e => e.key === 'Enter' && handleRename()} />
+              <button onClick={handleRename}>✓</button>
             </div>
-            <div className="streak-avatar partner">
-              {partner && avatars[partner.user_id]
-                ? <img src={avatars[partner.user_id]} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='inline'); }} />
-                : null}
-              <span style={partner && avatars[partner.user_id] ? {display:'none'} : {}}>👤</span>
-            </div>
-          </div>
+          ) : (
+            <span onClick={() => { setNewName(pair.pet_name || ''); setRenaming(true); }}>
+              {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')} 🔥
+            </span>
+          )}
         </div>
+        <button className="sk-topbar-btn" onClick={() => setShowMenu(!showMenu)}>•••</button>
       </div>
 
+      {/* ── Menu dropdown ── */}
       {showMenu && (
-        <div className="streak-dropdown" onClick={() => setShowMenu(false)}>
-          <button onClick={() => { setRenaming(true); setShowMenu(false); }}>
-            ✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}
-          </button>
-          <button onClick={() => { navigator.clipboard.writeText(pairId); }}>
-            📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}
-          </button>
-          <button onClick={() => navigate('/')}>
-            ↩️ {lang === 'ru' ? 'Мои пары' : 'My pairs'}
-          </button>
+        <div className="sk-menu-overlay" onClick={() => setShowMenu(false)}>
+          <div className="sk-menu" onClick={e => e.stopPropagation()}>
+            <button onClick={() => { setRenaming(true); setShowMenu(false); }}>
+              ✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}
+            </button>
+            <button onClick={() => { navigator.clipboard?.writeText(pairId); setShowMenu(false); }}>
+              📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}
+            </button>
+            <button onClick={() => navigate('/')}>
+              📋 {lang === 'ru' ? 'Мои пары' : 'My pairs'}
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="streak-pet-area" onClick={handlePetClick}>
-        <div className={`streak-pet-img ${petAnim ? 'pet-bounce' : ''}`}>
+      {/* ── Streak + Avatars ── */}
+      <div className="sk-header">
+        <div className="sk-streak">
+          <div className="sk-streak-label">{lang === 'ru' ? 'Дней Серии' : 'Streak Days'}</div>
+          <div className="sk-streak-num">{pair.streak_days || 0}</div>
+        </div>
+        <div className="sk-avatars">
+          <div className="sk-ava">
+            {avatars[userId]
+              ? <img src={avatars[userId]} alt="" onError={e => { e.target.style.display='none'; }} />
+              : <span>👤</span>}
+          </div>
+          <div className="sk-ava sk-ava-partner">
+            {partner && avatars[partner.user_id]
+              ? <img src={avatars[partner.user_id]} alt="" onError={e => { e.target.style.display='none'; }} />
+              : <span>👤</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Pet area with arrows ── */}
+      <div className="sk-pet-area">
+        <div className="sk-arrow sk-arrow-left" style={{ visibility: 'hidden' }}>‹</div>
+        <div className={`sk-pet ${petAnim ? 'sk-pet-bounce' : ''}`} onClick={handlePetClick}>
           <img src={petImage} alt="pet" onError={e => { e.target.outerHTML = '<div style="font-size:120px">🔥</div>'; }} />
         </div>
+        <div className="sk-arrow sk-arrow-right" style={{ visibility: 'hidden' }}>›</div>
       </div>
 
-      <div className="streak-pet-name">
-        {renaming ? (
-          <div className="streak-rename">
-            <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={20} autoFocus />
-            <button onClick={handleRename}>✓</button>
-            <button onClick={() => setRenaming(false)}>✕</button>
-          </div>
-        ) : (
-          <span onClick={() => setRenaming(true)}>
-            {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')} ✏️
-          </span>
-        )}
+      {/* ── Outfits button ── */}
+      <div className="sk-outfits-btn">
+        <span>🔥</span><span>👕</span>
+        <span className="sk-outfits-text">{lang === 'ru' ? 'Наряды' : 'Outfits'}</span>
       </div>
 
-      <div className="streak-progress-wrap" onClick={() => setShowLevels(true)}>
-        <div className="streak-progress-bar">
-          <div className="streak-progress-fill" style={{ width: `${pct}%` }} />
-          <span className="streak-progress-text">{lv.current}/{lv.needed}</span>
+      {/* ── Progress bar ── */}
+      <div className="sk-progress-wrap" onClick={() => setShowLevels(true)}>
+        <div className="sk-progress">
+          <div className="sk-progress-fill" style={{ width: `${pct}%`, background: lv.accent }} />
+          <span className="sk-progress-text">{lv.current}/{lv.needed}</span>
         </div>
-        <div className="streak-progress-hint">
+        <div className="sk-progress-hint">
           {lv.remaining > 0
-            ? (lang === 'ru' ? `Осталось ${lv.remaining} очков до следующего уровня` : `${lv.remaining} points to next level`)
-            : (lang === 'ru' ? 'Максимальный уровень!' : 'Max level!')} {lv.remaining > 0 ? '›' : ''}
+            ? (lang === 'ru' ? `Скоро появится больше образов >` : `More outfits coming soon >`)
+            : (lang === 'ru' ? 'Максимальный уровень!' : 'Max level!')}
         </div>
       </div>
 
-      {/* Tasks */}
-      <div className="streak-tasks-card">
-        <div className="streak-tasks-header">
+      {/* ── Tasks card ── */}
+      <div className="sk-tasks">
+        <div className="sk-tasks-top">
           <h3>{lang === 'ru' ? 'Растите своего Серийчика' : 'Grow your Streak Pet'}</h3>
-          <span className="streak-tasks-counter">{donePoints}/{totalPoints}</span>
+          <span className="sk-tasks-count" style={{ color: lv.accent }}>{doneCount}/{mergedTasks.length}</span>
         </div>
-        <div className="streak-tasks-list">
-          {mergedTasks.map(task => (
-            <div
-              key={task.key}
-              className={`streak-task ${task.completed ? 'done' : ''}`}
-              onClick={() => handleTask(task)}
-              style={task.completed ? { opacity: 0.6, pointerEvents: 'none' } : { cursor: 'pointer' }}
-            >
-              <div className={`streak-task-icon ${task.completed ? 'completed' : ''}`}>
-                {task.completed ? '✅' : task.icon}
-              </div>
-              <div className="streak-task-info">
-                <div className="streak-task-text">
-                  {lang === 'ru' ? task.ru : task.en}
-                </div>
-                <div className="streak-task-points" style={task.completed ? { color: '#4CAF50', fontWeight: 600 } : {}}>
-                  {task.completed
-                    ? (lang === 'ru' ? 'Выполнено ✓' : 'Completed ✓')
-                    : `+${task.points} ${lang === 'ru' ? 'очков роста' : 'growth pts'}`
-                  }
-                </div>
-              </div>
-              {!task.completed && task.action === 'inline' && <div className="streak-task-arrow">›</div>}
+        {mergedTasks.map(task => (
+          <div
+            key={task.key}
+            className={`sk-task ${task.completed ? 'sk-task-done' : ''}`}
+            onClick={() => handleTask(task)}
+          >
+            <div className="sk-task-check" style={task.completed ? { background: lv.checkColor, borderColor: lv.checkColor } : {}}>
+              {task.completed && <span>✓</span>}
             </div>
-          ))}
-        </div>
+            <div className="sk-task-body">
+              <div className="sk-task-title">{lang === 'ru' ? task.ru : task.en}</div>
+              <div className="sk-task-pts" style={{ color: task.completed ? '#999' : lv.accent }}>
+                {task.completed
+                  ? (lang === 'ru' ? 'Выполнено' : 'Completed')
+                  : `+${task.points} ${lang === 'ru' ? 'очка роста' : 'growth pts'}`}
+              </div>
+            </div>
+            {!task.completed && task.action === 'inline' && <div className="sk-task-go">›</div>}
+          </div>
+        ))}
       </div>
 
-      {/* Levels popup */}
+      {/* ── Levels popup ── */}
       {showLevels && (
-        <div className="streak-popup-overlay" onClick={() => setShowLevels(false)}>
-          <div className="streak-popup" onClick={e => e.stopPropagation()}>
+        <div className="sk-overlay" onClick={() => setShowLevels(false)}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <h3>{lang === 'ru' ? 'Уровни' : 'Levels'}</h3>
-            {LEVELS.map(l => (
-              <div key={l.level} className={`streak-level-row ${l.level === lv.level ? 'active' : ''}`}>
-                <span className="streak-level-badge">{l.level}</span>
-                <span className="streak-level-name">{lang === 'ru' ? l.nameRu : l.name}</span>
-                <span className="streak-level-pts">{l.maxPoints} pts</span>
+            {LEVELS.map((l, i) => (
+              <div key={l.level} className={`sk-lvl-row ${i === lv.index ? 'sk-lvl-active' : ''}`}>
+                <div className="sk-lvl-badge" style={{ background: l.accent + '22', color: l.accent }}>{l.level}</div>
+                <span className="sk-lvl-name">{lang === 'ru' ? l.nameRu : l.name}</span>
+                <span className="sk-lvl-pts">{l.maxPoints} pts</span>
               </div>
             ))}
-            <button onClick={() => setShowLevels(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+            <button className="sk-popup-close" onClick={() => setShowLevels(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>
       )}
