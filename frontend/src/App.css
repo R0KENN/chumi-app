@@ -1,5 +1,5 @@
 /* ==========================================
-   CHUMI — CLEAN IMMERSIVE UI
+   CHUMI — CLEAN UI v3
    ========================================== */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -104,7 +104,7 @@
 .cmd span { color: #ffa751; font-weight: 600; }
 
 /* ==========================================
-   TOP BAR (progress)
+   TOP BAR
    ========================================== */
 .topbar {
   width: 100%;
@@ -158,9 +158,10 @@
   justify-content: center;
 }
 
+/* --- Static image pet (PNG) --- */
 .pet-pic {
-  width: 65vw;
-  max-width: 280px;
+  width: 75vw;
+  max-width: 320px;
   height: auto;
   object-fit: contain;
   filter: drop-shadow(0 8px 30px rgba(140, 100, 255, 0.3));
@@ -178,25 +179,25 @@
   90% { transform: rotate(1deg) translateY(-1px); }
 }
 
-/* Alive idle */
-.pet-wrap--alive { animation: petIdle 3s ease-in-out infinite; }
+/* Static image idle */
+.pet-wrap--img { animation: petIdle 3s ease-in-out infinite; }
 @keyframes petIdle {
   0%,100% { transform: translateY(0) scale(1); }
   30% { transform: translateY(-10px) scale(1.02); }
   60% { transform: translateY(-4px) scale(1.01); }
 }
 
-/* Sparkles */
-.pet-wrap--alive::before,
-.pet-wrap--alive::after {
+/* Sparkles for static images */
+.pet-wrap--img::before,
+.pet-wrap--img::after {
   content: '✨';
   position: absolute;
   font-size: 14px;
   opacity: 0;
   pointer-events: none;
 }
-.pet-wrap--alive::before { animation: sp1 4.5s ease-in-out infinite; }
-.pet-wrap--alive::after { animation: sp2 4.5s ease-in-out 2s infinite; }
+.pet-wrap--img::before { animation: sp1 4.5s ease-in-out infinite; }
+.pet-wrap--img::after { animation: sp2 4.5s ease-in-out 2s infinite; }
 
 @keyframes sp1 {
   0%,100% { opacity: 0; top: 20%; left: -5%; }
@@ -209,6 +210,24 @@
   20% { opacity: 1; }
   50% { opacity: 0.5; top: 10%; right: 5%; }
   70% { opacity: 0; top: 0%; right: 10%; }
+}
+
+/* --- Video pet --- */
+.pet-wrap--video {
+  animation: none;
+  overflow: hidden;
+  border-radius: 50%;
+  mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, black 55%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, black 55%, transparent 100%);
+}
+
+.pet-video {
+  width: 75vw;
+  max-width: 320px;
+  height: auto;
+  object-fit: contain;
+  mix-blend-mode: screen;
+  filter: brightness(1.1) contrast(1.15) saturate(1.2);
 }
 
 /* Ground shadow */
@@ -230,7 +249,7 @@
    PET LABEL
    ========================================== */
 .pet-label {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   text-align: center;
   margin-top: 4px;
@@ -404,25 +423,6 @@
 .ov-img--ev { animation: evGlow 1s ease; }
 .ov-inner h2 { margin-top: 18px; font-size: 26px; }
 .ov-sub { font-size: 16px; color: #ffa751; margin-top: 4px; }
-
-/* ==========================================
-   PET VIDEO
-   ========================================== */
-.pet-video {
-  width: 85vw;
-  max-width: 360px;
-  height: auto;
-  object-fit: contain;
-  mix-blend-mode: screen;
-  filter: brightness(1.05) contrast(1.1);
-}
-
-.pet-wrap--alive {
-  animation: none;
-  mask-image: radial-gradient(ellipse 85% 90% at 50% 50%, black 60%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 85% 90% at 50% 50%, black 60%, transparent 100%);
-}
-
 
 @keyframes glowPulse { 0%,100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.2); opacity: 0.8; } }
 @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
