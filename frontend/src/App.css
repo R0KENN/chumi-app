@@ -188,3 +188,21 @@ body {
   align-items: center; justify-content: center; padding: 32px;
   background: linear-gradient(180deg, #FFF8E1, #FFECB3);
 }
+.pet-animated {
+  width: 200px;
+  height: 260px;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+}
+
+.pet-animated.tapped {
+  animation: pet-tap 0.4s ease forwards;
+}
+
+@keyframes pet-tap {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(0.85) rotate(-5deg); }
+  50%  { transform: scale(1.15) rotate(3deg); }
+  75%  { transform: scale(1.05) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}

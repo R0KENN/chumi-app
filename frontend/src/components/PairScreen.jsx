@@ -244,11 +244,19 @@ export default function PairScreen() {
       </div>
 
       {/* ── Pet ── */}
-      <div className="sk-pet-area">
-        <div className={`sk-pet ${petAnim ? 'sk-pet-bounce' : ''}`} onClick={handlePetClick}>
-          <img src={petImage} alt="pet" onError={e => { e.target.outerHTML = '<div style="font-size:120px">🔥</div>'; }} />
-        </div>
-      </div>
+<div className="sk-pet-area" onClick={handlePetClick}>
+  <img 
+    src="/pets/flame_idle.webp"
+    alt="pet"
+    className={`pet-animated ${petAnim ? 'tapped' : ''}`}
+    style={{
+      width: 200,
+      height: 260,
+      objectFit: 'contain',
+    }}
+  />
+</div>
+
 
       {/* ── Outfits button (заглушка) ── */}
       <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
