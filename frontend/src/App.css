@@ -216,8 +216,8 @@
 .pet-wrap--video {
   animation: none;
   overflow: hidden;
-  mask-image: radial-gradient(ellipse 75% 80% at 50% 45%, black 45%, transparent 75%);
-  -webkit-mask-image: radial-gradient(ellipse 75% 80% at 50% 45%, black 45%, transparent 75%);
+  mask-image: radial-gradient(ellipse 85% 85% at 50% 48%, black 50%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 85% 85% at 50% 48%, black 50%, transparent 80%);
 }
 
 .pet-video {
