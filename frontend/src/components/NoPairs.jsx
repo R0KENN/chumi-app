@@ -23,7 +23,7 @@ export default function NoPairs({ onCreate, onJoin }) {
       padding: '20px',
       textAlign: 'center'
     }}>
-      <div style={{ fontSize: '80px', marginBottom: '20px' }}>🥚</div>
+<div style={{ fontSize: '80px', marginBottom: '20px' }}>✨</div>
       <h2 style={{ color: '#fff', marginBottom: '8px' }}>{t('noPets')}</h2>
       <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '32px' }}>{t('createOrJoin')}</p>
       

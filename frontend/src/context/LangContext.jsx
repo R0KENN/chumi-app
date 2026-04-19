@@ -3,9 +3,10 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const strings = {
   en: {
     loading: 'Loading…',
-    noPets: 'No pets yet',
+noPets: 'Light your spark!', 
     noPetsDesc: 'Create a pair or join one',
     createPair: 'Create pair',
+    createOrJoin: 'Create a pair and grow your flame together',
     join: 'Join',
     feed: 'Feed',
     petAction: 'Pet',
@@ -71,9 +72,10 @@ const strings = {
   },
   ru: {
     loading: 'Загрузка…',
-    noPets: 'Питомцев пока нет',
+noPets: 'Зажги свою искру!',  
     noPetsDesc: 'Создай пару или присоединись',
     createPair: 'Создать пару',
+    createOrJoin: 'Создай пару и начни растить огонёк вместе', 
     join: 'Вступить',
     feed: 'Покормить',
     petAction: 'Погладить',

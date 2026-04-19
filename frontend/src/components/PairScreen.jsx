@@ -6,12 +6,13 @@ const API = '/api';
 
 // Уровни питомца
 const LEVELS = [
-  { level: 1, name: 'Baby',   maxPoints: 30,  bg: ['#FFF8E1','#FFE082'] },
-  { level: 2, name: 'Kid',    maxPoints: 100, bg: ['#FFF3D0','#FFD54F'] },
-  { level: 3, name: 'Teen',   maxPoints: 150, bg: ['#FFE0CC','#FFB088'] },
-  { level: 4, name: 'Adult',  maxPoints: 300, bg: ['#FFD0C0','#FF8A65'] },
-  { level: 5, name: 'Legend', maxPoints: 500, bg: ['#FFC0B0','#FF5722'] },
+  { level: 0, name: 'Spark',   nameRu: 'Искра',    maxPoints: 30,  bg: ['#FFF8E1','#FFECB3'] },
+  { level: 1, name: 'Flame',   nameRu: 'Огонёк',   maxPoints: 70,  bg: ['#FFF3D0','#FFE082'] },
+  { level: 2, name: 'Blaze',   nameRu: 'Пламя',    maxPoints: 50,  bg: ['#FFE0CC','#FFB088'] },
+  { level: 3, name: 'Fire',    nameRu: 'Костёр',    maxPoints: 150, bg: ['#FFD0C0','#FF8A65'] },
+  { level: 4, name: 'Inferno', nameRu: 'Инферно',  maxPoints: 200, bg: ['#FFC0B0','#FF5722'] },
 ];
+
 
 function getLevel(totalPoints) {
   let accumulated = 0;
