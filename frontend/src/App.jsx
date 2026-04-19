@@ -1,23 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import WebApp from '@twa-dev/sdk';
-import { PairsProvider, usePairs } from './context/PairsContext';
+import { PairsProvider } from './context/PairsContext';
 import PairSelector from './components/PairSelector';
 import PairScreen from './components/PairScreen';
 import CreatePairModal from './components/CreatePairModal';
-import './App.css';
 import JoinPairModal from './components/JoinPairModal';
+import './App.css';
 
-// Этот внутренний компонент будет использовать хуки
 function AppContent({ telegramUserId }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showJoinModal, setShowJoinModal] = useState(false); // <-- новое
+  const [showJoinModal, setShowJoinModal] = useState(false);
   const navigate = useNavigate();
-
-  const handleOpenCreateModal = () => setShowCreateModal(true);
-  const handleCloseCreateModal = () => setShowCreateModal(false);
-  const handleOpenJoinModal = () => setShowJoinModal(true); // <--
-  const handleCloseJoinModal = () => setShowJoinModal(false); // <--
 
   const handlePairCreated = (newPair) => {
     setShowCreateModal(false);
@@ -36,21 +29,21 @@ function AppContent({ telegramUserId }) {
           path="/"
           element={
             <>
-              <PairSelector 
-                onCreate={handleOpenCreateModal} 
-                onJoin={handleOpenJoinModal} 
+              <PairSelector
+                onCreate={() => setShowCreateModal(true)}
+                onJoin={() => setShowJoinModal(true)}
               />
               {showCreateModal && (
                 <CreatePairModal
                   telegramUserId={telegramUserId}
-                  onClose={handleCloseCreateModal}
+                  onClose={() => setShowCreateModal(false)}
                   onCreated={handlePairCreated}
                 />
               )}
               {showJoinModal && (
                 <JoinPairModal
                   telegramUserId={telegramUserId}
-                  onClose={handleCloseJoinModal}
+                  onClose={() => setShowJoinModal(false)}
                   onJoined={handlePairJoined}
                 />
               )}
@@ -66,25 +59,27 @@ function AppContent({ telegramUserId }) {
   );
 }
 
-// Главный компонент App отвечает за получение ID пользователя и оборачивание в провайдер
 function App() {
   const [telegramUserId, setTelegramUserId] = useState(null);
 
   useEffect(() => {
-    WebApp.ready();
-    WebApp.expand();
-
-    const initData = WebApp.initDataUnsafe;
-    if (initData && initData.user) {
-      setTelegramUserId(initData.user.id);
-    } else {
-      console.warn('Не удалось получить данные пользователя Telegram');
-      setTelegramUserId(12345678); // ID для тестирования
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg && tg.initDataUnsafe?.user?.id) {
+        tg.ready();
+        tg.expand();
+        setTelegramUserId(tg.initDataUnsafe.user.id.toString());
+        return;
+      }
+    } catch (e) {
+      console.warn('Telegram WebApp not available:', e);
     }
+    // Fallback for testing outside Telegram
+    setTelegramUserId('test_user_123');
   }, []);
 
   if (!telegramUserId) {
-    return <div>Загрузка...</div>;
+    return <div style={{ padding: 20, textAlign: 'center' }}>Loading...</div>;
   }
 
   return (
