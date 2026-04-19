@@ -153,3 +153,62 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; o
   border: none; background: rgba(0,0,0,0.06); font-size: 15px;
   font-weight: 600; cursor: pointer; color: #333;
 }
+/* Pet bounce animation */
+.pet-bounce {
+  animation: petBounce 0.8s ease;
+}
+@keyframes petBounce {
+  0% { transform: scale(1); }
+  20% { transform: scale(1.15); }
+  40% { transform: scale(0.95); }
+  60% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* Avatars with real images */
+.streak-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* Task arrow */
+.streak-task-arrow {
+  font-size: 20px;
+  color: rgba(0,0,0,0.25);
+  font-weight: 700;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+/* Tasks header with counter */
+.streak-tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.streak-tasks-header h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.streak-tasks-counter {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,120,0,0.7);
+  background: rgba(255,120,0,0.1);
+  padding: 4px 10px;
+  border-radius: 10px;
+}
+
+/* Completed task style */
+.streak-task.done {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.streak-task-icon.completed {
+  filter: grayscale(0);
+}

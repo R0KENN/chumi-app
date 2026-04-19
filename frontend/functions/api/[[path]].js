@@ -653,6 +653,108 @@ if (request.method === 'POST' && path === '/api/complete-task') {
     return json({ error: 'Already completed' });
   }
 
+  // === GET /api/avatar/:userId ===
+if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
+  const tgUserId = path.split('/')[3];
+  const BOT_TOKEN = env.BOT_TOKEN;
+
+  try {
+    // Get user profile photos
+    const photosRes = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
+    );
+    const photosData = await photosRes.json();
+
+    if (!photosData.ok || !photosData.result.photos.length) {
+      return json({ avatar_url: null });
+    }
+
+    // Get smallest photo (last in array = smallest)
+    const photo = photosData.result.photos[0];
+    const fileId = photo[photo.length - 1].file_id;
+
+    // Get file path
+    const fileRes = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
+    );
+    const fileData = await fileRes.json();
+
+    if (!fileData.ok) {
+      return json({ avatar_url: null });
+    }
+
+    const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
+    return json({ avatar_url: avatarUrl });
+
+  } catch (e) {
+    return json({ avatar_url: null });
+  }
+}
+
+// === POST /api/complete-task ===
+if (request.method === 'POST' && path === '/api/complete-task') {
+  const { code, userId, taskKey } = await request.json();
+  const today = getTodayDate();
+
+  // Check if already completed today
+  const { data: existing } = await supabase
+    .from('daily_tasks')
+    .select('*')
+    .eq('pair_code', code)
+    .eq('user_id', userId)
+    .eq('task_key', taskKey)
+    .eq('task_date', today)
+    .single();
+
+  if (existing?.completed) {
+    return json({ error: 'Already completed' });
+  }
+
+  // Task points
+  const taskPoints = { send_msg: 1, send_sticker: 2, send_media: 4, pet_touch: 1, daily_open: 1 };
+  const points = taskPoints[taskKey] || 0;
+
+  // Upsert task
+  await supabase.from('daily_tasks').upsert({
+    pair_code: code,
+    user_id: userId,
+    task_key: taskKey,
+    task_date: today,
+    completed: true,
+    completed_at: new Date().toISOString()
+  }, { onConflict: 'pair_code,user_id,task_key,task_date' });
+
+  // Add growth points to pair
+  const { data: currentPair } = await supabase
+    .from('pairs')
+    .select('growth_points')
+    .eq('code', code)
+    .single();
+
+  await supabase.from('pairs').update({
+    growth_points: (currentPair.growth_points || 0) + points
+  }).eq('code', code);
+
+  return json({ success: true, points_added: points });
+}
+
+// === GET /api/daily-tasks/:pairCode/:userId ===
+if (request.method === 'GET' && path.match(/^\/api\/daily-tasks\/[^/]+\/[^/]+$/)) {
+  const parts = path.split('/');
+  const pairCode = parts[3];
+  const userId = parts[4];
+  const today = getTodayDate();
+
+  const { data: tasks } = await supabase
+    .from('daily_tasks')
+    .select('*')
+    .eq('pair_code', pairCode)
+    .eq('user_id', userId)
+    .eq('task_date', today);
+
+  return json({ tasks: tasks || [] });
+}
+
   // Find task points
   const taskPoints = { msg_1: 1, post_2: 2, photo_video: 4, msg_10: 2 };
   const points = taskPoints[taskKey] || 0;

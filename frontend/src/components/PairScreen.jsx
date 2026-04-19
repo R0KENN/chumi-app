@@ -4,15 +4,21 @@ import { useLang } from '../context/LangContext';
 
 const API = '/api';
 
-// Уровни питомца
 const LEVELS = [
-  { level: 0, name: 'Spark',   nameRu: 'Искра',    maxPoints: 30,  bg: ['#FFF8E1','#FFECB3'] },
-  { level: 1, name: 'Flame',   nameRu: 'Огонёк',   maxPoints: 70,  bg: ['#FFF3D0','#FFE082'] },
-  { level: 2, name: 'Blaze',   nameRu: 'Пламя',    maxPoints: 50,  bg: ['#FFE0CC','#FFB088'] },
-  { level: 3, name: 'Fire',    nameRu: 'Костёр',    maxPoints: 150, bg: ['#FFD0C0','#FF8A65'] },
-  { level: 4, name: 'Inferno', nameRu: 'Инферно',  maxPoints: 200, bg: ['#FFC0B0','#FF5722'] },
+  { level: 0, name: 'Spark',   nameRu: 'Искра',   maxPoints: 30,  bg: ['#FFF8E1','#FFECB3'] },
+  { level: 1, name: 'Flame',   nameRu: 'Огонёк',  maxPoints: 70,  bg: ['#FFF3D0','#FFE082'] },
+  { level: 2, name: 'Blaze',   nameRu: 'Пламя',   maxPoints: 50,  bg: ['#FFE0CC','#FFB088'] },
+  { level: 3, name: 'Fire',    nameRu: 'Костёр',   maxPoints: 150, bg: ['#FFD0C0','#FF8A65'] },
+  { level: 4, name: 'Inferno', nameRu: 'Инферно', maxPoints: 200, bg: ['#FFC0B0','#FF5722'] },
 ];
 
+const TASKS = [
+  { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',                  en: 'Open the app',                    icon: '📱', action: 'auto' },
+  { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',          en: 'Send partner a message',           icon: '💬', action: 'open_chat' },
+  { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',            en: 'Send partner a sticker',           icon: '🎨', action: 'open_chat' },
+  { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео',    en: 'Send partner a photo or video',    icon: '📸', action: 'open_chat' },
+  { key: 'pet_touch',    points: 1, ru: 'Погладить питомца',                    en: 'Pet your flame',                   icon: '🔥', action: 'pet' },
+];
 
 function getLevel(totalPoints) {
   let accumulated = 0;
@@ -23,26 +29,19 @@ function getLevel(totalPoints) {
         current: totalPoints - accumulated,
         needed: LEVELS[i].maxPoints,
         remaining: (accumulated + LEVELS[i].maxPoints) - totalPoints,
+        totalPoints,
       };
     }
     accumulated += LEVELS[i].maxPoints;
   }
-  // Max level
-  return { ...LEVELS[LEVELS.length - 1], current: LEVELS[LEVELS.length - 1].maxPoints, needed: LEVELS[LEVELS.length - 1].maxPoints, remaining: 0 };
+  const last = LEVELS[LEVELS.length - 1];
+  return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0, totalPoints };
 }
-
-// Задания
-const TASKS_TEMPLATE = [
-  { key: 'msg_1',       points: 1, ru: 'Отправьте друг другу 1 сообщение', en: 'Send each other 1 message' },
-  { key: 'post_2',      points: 2, ru: 'Отправьте в чат по 2 публикации',  en: 'Send 2 posts in chat each' },
-  { key: 'photo_video', points: 4, ru: 'Отправляйте друг другу фото или видео', en: 'Send each other a photo or video' },
-  { key: 'msg_10',      points: 2, ru: 'Отправьте друг другу 10 сообщений', en: 'Send each other 10 messages' },
-];
 
 export default function PairScreen() {
   const { pairId } = useParams();
   const navigate = useNavigate();
-  const { t, lang } = useLang();
+  const { lang } = useLang();
 
   const tg = window.Telegram?.WebApp;
   const userId = String(tg?.initDataUnsafe?.user?.id || localStorage.getItem('test_user_id') || '713156118');
@@ -54,6 +53,9 @@ export default function PairScreen() {
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState('');
   const [showLevels, setShowLevels] = useState(false);
+  const [petAnim, setPetAnim] = useState(false);
+  const [myAvatar, setMyAvatar] = useState(null);
+  const [partnerAvatar, setPartnerAvatar] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -63,10 +65,26 @@ export default function PairScreen() {
       setPair(data);
       setNewName(data.pet_name || '');
 
-      // Load tasks
       const tRes = await fetch(`${API}/daily-tasks/${pairId}/${userId}`);
       const tData = await tRes.json();
       setTasks(tData.tasks || []);
+
+      // Auto-complete daily_open task
+      const alreadyOpened = (tData.tasks || []).find(t => t.task_key === 'daily_open' && t.completed);
+      if (!alreadyOpened) {
+        await fetch(`${API}/complete-task`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: pairId, userId, taskKey: 'daily_open' })
+        });
+        // Reload
+        const r2 = await fetch(`${API}/pair/${pairId}/${userId}`);
+        const d2 = await r2.json();
+        setPair(d2);
+        const t2 = await fetch(`${API}/daily-tasks/${pairId}/${userId}`);
+        const td2 = await t2.json();
+        setTasks(td2.tasks || []);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -74,59 +92,110 @@ export default function PairScreen() {
     }
   }, [pairId, userId, navigate]);
 
+  // Load avatars
+  useEffect(() => {
+    if (!pair?.members) return;
+    pair.members.forEach(m => {
+      fetch(`${API}/avatar/${m.user_id}`)
+        .then(r => r.json())
+        .then(d => {
+          if (String(m.user_id) === userId) {
+            setMyAvatar(d.avatar_url);
+          } else {
+            setPartnerAvatar(d.avatar_url);
+          }
+        })
+        .catch(() => {});
+    });
+  }, [pair?.members, userId]);
+
   useEffect(() => { load(); }, [load]);
 
-  if (loading) {
-    return <div className="streak-loading">Loading...</div>;
-  }
-
-  if (!pair) {
-    return <div className="streak-loading">Pair not found</div>;
-  }
+  if (loading) return <div className="streak-loading">{lang === 'ru' ? 'Загрузка...' : 'Loading...'}</div>;
+  if (!pair) return <div className="streak-loading">{lang === 'ru' ? 'Пара не найдена' : 'Pair not found'}</div>;
 
   const lv = getLevel(pair.growth_points || 0);
   const progressPct = Math.min(100, (lv.current / lv.needed) * 100);
   const bgGrad = `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 100%)`;
 
-  // Members
   const partner = pair.members?.find(m => String(m.user_id) !== userId);
   const me = pair.members?.find(m => String(m.user_id) === userId);
 
-  // Merge tasks with template
-  const mergedTasks = TASKS_TEMPLATE.map(tmpl => {
+  const mergedTasks = TASKS.map(tmpl => {
     const done = tasks.find(t => t.task_key === tmpl.key && t.completed);
     return { ...tmpl, completed: !!done };
   });
 
+  const completedPoints = mergedTasks.filter(t => t.completed).reduce((s, t) => s + t.points, 0);
+  const totalPossible = TASKS.reduce((s, t) => s + t.points, 0);
+
+  // Open partner's chat in Telegram
+  const openPartnerChat = () => {
+    if (partner?.user_id && tg) {
+      tg.openTelegramLink(`https://t.me/${partner.user_id}`);
+    } else if (partner?.user_id) {
+      window.open(`https://t.me/${partner.user_id}`, '_blank');
+    }
+  };
+
+  // Handle task click
+  const handleTask = async (task) => {
+    if (task.completed) return;
+
+    if (task.action === 'open_chat') {
+      // First complete the task, then open chat
+      await fetch(`${API}/complete-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: pairId, userId, taskKey: task.key })
+      });
+      load();
+      openPartnerChat();
+      return;
+    }
+
+    if (task.action === 'pet') {
+      setPetAnim(true);
+      setTimeout(() => setPetAnim(false), 800);
+      await fetch(`${API}/complete-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: pairId, userId, taskKey: task.key })
+      });
+      load();
+      return;
+    }
+  };
+
   const handleRename = async () => {
     if (!newName.trim()) return;
-    try {
-      await fetch(`${API}/rename`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pairId, pet_name: newName.trim() })
-      });
-      setPair(prev => ({ ...prev, pet_name: newName.trim() }));
-      setRenaming(false);
-    } catch (e) { console.error(e); }
+    await fetch(`${API}/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: pairId, pet_name: newName.trim() })
+    });
+    setPair(prev => ({ ...prev, pet_name: newName.trim() }));
+    setRenaming(false);
   };
 
-  const handleCompleteTask = async (taskKey) => {
-    try {
-      const res = await fetch(`${API}/complete-task`, {
+  const handlePetClick = async () => {
+    const petTask = mergedTasks.find(t => t.key === 'pet_touch');
+    if (petTask && !petTask.completed) {
+      setPetAnim(true);
+      setTimeout(() => setPetAnim(false), 800);
+      await fetch(`${API}/complete-task`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pairId, userId, taskKey })
+        body: JSON.stringify({ code: pairId, userId, taskKey: 'pet_touch' })
       });
-      const data = await res.json();
-      if (!data.error) {
-        load(); // reload pair + tasks
-      }
-    } catch (e) { console.error(e); }
+      load();
+    } else {
+      setPetAnim(true);
+      setTimeout(() => setPetAnim(false), 800);
+    }
   };
 
-  // Pet image based on level
-  const petImage = `/pets/${pair.pet_type || 'muru'}_${Math.min(lv.level - 1, 3)}.png`;
+  const petImage = `/pets/${pair.pet_type || 'flame'}_${Math.min(lv.level, 4)}.png`;
 
   return (
     <div className="streak-screen" style={{ background: bgGrad }}>
@@ -140,19 +209,29 @@ export default function PairScreen() {
         <div className="streak-header-right">
           <button className="streak-menu-btn" onClick={() => setShowMenu(!showMenu)}>•••</button>
           <div className="streak-avatars">
-            <div className="streak-avatar">{me?.display_name?.[0] || '👤'}</div>
-            <div className="streak-avatar partner">{partner?.display_name?.[0] || '👤'}</div>
+            <div className="streak-avatar">
+              {myAvatar
+                ? <img src={myAvatar} alt="" />
+                : <span>👤</span>
+              }
+            </div>
+            <div className="streak-avatar partner">
+              {partnerAvatar
+                ? <img src={partnerAvatar} alt="" />
+                : <span>👤</span>
+              }
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Menu dropdown */}
+      {/* Dropdown menu */}
       {showMenu && (
-        <div className="streak-dropdown">
+        <div className="streak-dropdown" onClick={() => setShowMenu(false)}>
           <button onClick={() => { setRenaming(true); setShowMenu(false); }}>
             ✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}
           </button>
-          <button onClick={() => { navigator.clipboard.writeText(pairId); setShowMenu(false); }}>
+          <button onClick={() => { navigator.clipboard.writeText(pairId); }}>
             📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}
           </button>
           <button onClick={() => navigate('/')}>
@@ -161,64 +240,65 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* Pet display */}
-      <div className="streak-pet-area">
-        <div className="streak-pet-img">
-          <img src={petImage} alt="pet" onError={e => { e.target.src = '/pets/muru_0.png'; }} />
+      {/* Pet */}
+      <div className="streak-pet-area" onClick={handlePetClick}>
+        <div className={`streak-pet-img ${petAnim ? 'pet-bounce' : ''}`}>
+          <img src={petImage} alt="pet" onError={e => { e.target.style.fontSize = '120px'; e.target.replaceWith(Object.assign(document.createElement('div'), { innerHTML: '🔥', style: 'font-size:120px' })); }} />
         </div>
       </div>
 
-      {/* Pet name */}
+      {/* Name */}
       <div className="streak-pet-name">
         {renaming ? (
           <div className="streak-rename">
-            <input
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              maxLength={20}
-              autoFocus
-            />
+            <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={20} autoFocus />
             <button onClick={handleRename}>✓</button>
             <button onClick={() => setRenaming(false)}>✕</button>
           </div>
         ) : (
           <span onClick={() => setRenaming(true)}>
-            {pair.pet_name || 'Unnamed'} ✏️
+            {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')} ✏️
           </span>
         )}
       </div>
 
-      {/* Progress bar */}
+      {/* Progress */}
       <div className="streak-progress-wrap" onClick={() => setShowLevels(true)}>
         <div className="streak-progress-bar">
           <div className="streak-progress-fill" style={{ width: `${progressPct}%` }} />
           <span className="streak-progress-text">{lv.current}/{lv.needed}</span>
         </div>
         <div className="streak-progress-hint">
-          {lang === 'ru'
-            ? `${lv.remaining > 0 ? `Осталось ${lv.remaining} очка до следующего уровня` : 'Максимальный уровень!'}`
-            : `${lv.remaining > 0 ? `${lv.remaining} points to next level` : 'Max level!'}`
+          {lv.remaining > 0
+            ? (lang === 'ru' ? `Осталось ${lv.remaining} очков до следующего уровня` : `${lv.remaining} points to next level`)
+            : (lang === 'ru' ? 'Максимальный уровень!' : 'Max level!')
           } {lv.remaining > 0 ? '›' : ''}
         </div>
       </div>
 
-      {/* Tasks card */}
+      {/* Tasks */}
       <div className="streak-tasks-card">
-        <h3>{lang === 'ru' ? 'Растите своего Серийчика' : 'Grow your Streak Pet'}</h3>
+        <div className="streak-tasks-header">
+          <h3>{lang === 'ru' ? 'Растите своего Серийчика' : 'Grow your Streak Pet'}</h3>
+          <span className="streak-tasks-counter">{completedPoints}/{totalPossible}</span>
+        </div>
         <div className="streak-tasks-list">
           {mergedTasks.map(task => (
             <div
               key={task.key}
               className={`streak-task ${task.completed ? 'done' : ''}`}
-              onClick={() => !task.completed && handleCompleteTask(task.key)}
+              onClick={() => handleTask(task)}
             >
               <div className={`streak-task-icon ${task.completed ? 'completed' : ''}`}>
-                {task.completed ? '✅' : '⭐'}
+                {task.completed ? '✅' : task.icon}
               </div>
               <div className="streak-task-info">
                 <div className="streak-task-text">{lang === 'ru' ? task.ru : task.en}</div>
-                <div className="streak-task-points">+{task.points} {lang === 'ru' ? 'очка роста' : 'growth points'}</div>
+                <div className="streak-task-points">+{task.points} {lang === 'ru' ? 'очков роста' : 'growth pts'}</div>
               </div>
+              {!task.completed && task.action === 'open_chat' && (
+                <div className="streak-task-arrow">›</div>
+              )}
             </div>
           ))}
         </div>
@@ -232,7 +312,7 @@ export default function PairScreen() {
             {LEVELS.map(l => (
               <div key={l.level} className={`streak-level-row ${l.level === lv.level ? 'active' : ''}`}>
                 <span className="streak-level-badge">{l.level}</span>
-                <span className="streak-level-name">{l.name}</span>
+                <span className="streak-level-name">{lang === 'ru' ? l.nameRu : l.name}</span>
                 <span className="streak-level-pts">{l.maxPoints} pts</span>
               </div>
             ))}
