@@ -290,6 +290,48 @@ export default function PairScreen() {
             <button onClick={() => { navigator.clipboard?.writeText(pairId); setShowMenu(false); haptic('light'); }}>📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}</button>
             <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🔥 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
+            {/* Внутри sk-menu, после кнопки рейтинга */}
+<button onClick={async () => {
+  // addToHomeScreen (Bot API 8.0+)
+  if (tg?.addToHomeScreen) {
+    tg.addToHomeScreen();
+    haptic('light');
+  }
+  setShowMenu(false);
+}}>📌 {lang === 'ru' ? 'На главный экран' : 'Add to Home Screen'}</button>
+
+<button onClick={async () => {
+  // shareMessage (Bot API 8.0+)
+  try {
+    const res = await fetch(`${API}/prepare-share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        pairCode: pairId,
+        text: lang === 'ru'
+          ? `🔥 Растим огонёк "${pair.pet_name || 'Chumi'}" уже ${pair.streak_days || 0} дней подряд! Присоединяйся!`
+          : `🔥 Growing "${pair.pet_name || 'Chumi'}" for ${pair.streak_days || 0} days! Join us!`,
+      }),
+    });
+    const data = await res.json();
+    if (data.prepared_message_id && tg?.shareMessage) {
+      tg.shareMessage(data.prepared_message_id, (sent) => {
+        if (sent) haptic('heavy');
+      });
+    } else {
+      // Fallback: share link
+      const link = `https://t.me/chumi_pet_bot?start=join_${pairId}`;
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Присоединяйся к Chumi! 🔥')}`;
+      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+      else window.open(shareUrl, '_blank');
+    }
+  } catch (e) {
+    console.error('Share error:', e);
+  }
+  setShowMenu(false);
+}}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
+
           </div>
         </div>
       )}

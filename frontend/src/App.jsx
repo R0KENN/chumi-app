@@ -36,10 +36,39 @@ function App() {
       if (tg) {
         tg.ready();
         tg.expand();
+
+        // ─── Полноэкранный режим (Bot API 8.0+) ───
+        if (tg.isVersionAtLeast?.('8.0')) {
+          try {
+            tg.requestFullscreen();
+          } catch (e) {
+            console.log('Fullscreen not supported:', e);
+          }
+
+          // Слушаем выход из fullscreen
+          tg.onEvent?.('fullscreenFailed', () => {
+            console.log('Fullscreen request failed');
+          });
+        }
+
+        // ─── Disable vertical swipes (не закрывать при свайпе вниз) ───
+        if (tg.disableVerticalSwipes) {
+          tg.disableVerticalSwipes();
+        }
+
+        // ─── Цвета UI ───
+        tg.setHeaderColor?.('#FFF8E1');
+        tg.setBackgroundColor?.('#FFF8E1');
+        if (tg.setBottomBarColor) {
+          tg.setBottomBarColor('#FFF8E1');
+        }
+
         const uid = tg.initDataUnsafe?.user?.id?.toString();
         if (uid) { setTelegramUserId(uid); return; }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('TG init error:', e);
+    }
     const testId = localStorage.getItem('chumi_test_uid') || '713156118';
     localStorage.setItem('chumi_test_uid', testId);
     setTelegramUserId(testId);

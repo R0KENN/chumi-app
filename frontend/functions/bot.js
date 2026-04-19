@@ -23,6 +23,10 @@ const ADMIN_IDS = ['713156118'];
 const MAX_PAIRS_BASE = 2;
 const WEBAPP_URL = 'https://chumi-app.pages.dev';
 
+// 🔥 Кастомный эмоджи огонька — замени на свой ID если есть Premium
+// Найти ID: отправь кастомный эмоджи боту @sticker, он вернёт custom_emoji_id
+const FIRE_EMOJI_ID = '5368324170671202286'; // стандартный 🔥 custom emoji
+
 const LEVELS = [
   { name: 'Spark', emoji: '✨', maxPoints: 30 },
   { name: 'Flame', emoji: '🔥', maxPoints: 70 },
@@ -53,14 +57,40 @@ async function getMaxPairs(supabase, userId) {
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
 
+// ─── Цветные кнопки с кастомными эмоджи ───
 const webAppButton = {
   reply_markup: JSON.stringify({
     inline_keyboard: [[{
       text: '🔥 Открыть Chumi',
       web_app: { url: WEBAPP_URL },
+      // Цветная кнопка (Bot API 9.4+): "primary" = синяя, "secondary" = серая, "destructive" = красная
+      style: 'primary',
+      // Кастомный эмоджи на кнопке (Bot API 9.4+, нужен Premium у владельца бота)
+      // icon_custom_emoji_id: FIRE_EMOJI_ID,
     }]],
   }),
 };
+
+// Кнопка "Пригласить" — зелёная
+function inviteButton(code) {
+  const botUsername = 'chumi_pet_bot'; // замени на env.BOT_USERNAME если нужно
+  return {
+    reply_markup: JSON.stringify({
+      inline_keyboard: [
+        [{
+          text: '🔥 Открыть Chumi',
+          web_app: { url: WEBAPP_URL },
+          style: 'primary',
+        }],
+        [{
+          text: '📨 Пригласить партнёра',
+          url: `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botUsername}?start=join_${code}`)}&text=${encodeURIComponent(`Присоединяйся к моей паре в Chumi! 🔥 Код: ${code}`)}`,
+          style: 'secondary',
+        }],
+      ],
+    }),
+  };
+}
 
 const CUTE_MESSAGES = [
   "Ты моё солнышко ☀️",
@@ -225,7 +255,7 @@ export async function onRequestPost(context) {
       return new Response('OK');
     }
 
-    // /create
+    // /create — теперь с кнопкой "Пригласить"
     if (text === '/create') {
       const maxPairs = await getMaxPairs(supabase, userId);
       const isAdmin = ADMIN_IDS.includes(userId);
@@ -239,7 +269,8 @@ export async function onRequestPost(context) {
       const code = generateCode();
       await supabase.from('pairs').insert({ code, pet_type: 'spark', streak_days: 0, growth_points: 0, hatched: false, bg_id: 'room', pet_name: null, streak_recoveries_used: 0, is_dead: false });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
-      await sendMessage(env, chatId, `✅ *Пара создана!*\n\nКод: \`${code}\`\n\nОтправь другу: /join ${code}`, webAppButton);
+      // Используем кнопку с "Пригласить партнёра"
+      await sendMessage(env, chatId, `✅ *Пара создана!*\n\nКод: \`${code}\`\n\nОтправь другу или нажми кнопку ниже:`, inviteButton(code));
       return new Response('OK');
     }
 

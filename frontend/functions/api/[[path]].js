@@ -626,6 +626,44 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       return json({ ranking });
     }
 
+        // ═══════════════════════════════════════
+    // POST /api/prepare-share  (для shareMessage)
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/prepare-share') {
+      const body = await request.json();
+      const userId = String(body.userId);
+      const pairCode = body.pairCode;
+      const messageText = body.text || '🔥 Присоединяйся к Chumi — растим огонёк вместе!';
+
+      // savePreparedInlineMessage — Bot API 8.0+
+      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: parseInt(userId),
+          result: {
+            type: 'article',
+            id: 'share_' + pairCode + '_' + Date.now(),
+            title: 'Chumi — Вырасти огонёк!',
+            input_message_content: {
+              message_text: messageText + `\n\nhttps://t.me/chumi_pet_bot?start=join_${pairCode}`,
+            },
+            description: 'Нажми чтобы пригласить в пару 🔥',
+          },
+          allow_user_chats: true,
+          allow_bot_chats: false,
+          allow_group_chats: true,
+          allow_channel_chats: false,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.result?.id) {
+        return json({ prepared_message_id: data.result.id });
+      }
+      return json({ error: 'Failed to prepare message', details: data }, 500);
+    }
+
     // ═══════════════════════════════════════
     // 404
     // ═══════════════════════════════════════
