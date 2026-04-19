@@ -326,6 +326,72 @@ export async function onRequestPost(context) {
       return new Response('OK');
     }
 
+    // ═══════════════════════════════════════
+// Inline Query — милые сообщения для заданий
+// ═══════════════════════════════════════
+if (update.inline_query) {
+  const queryId = update.inline_query.id;
+
+  const CUTE_MESSAGES = [
+    "Ты моё солнышко ☀️",
+    "Думаю о тебе 💭💕",
+    "Ты делаешь мой день лучше 🌈",
+    "Обнимаю тебя мысленно 🤗",
+    "Ты самый лучший человек на свете 💖",
+    "Скучаю по тебе 🥺",
+    "Ты мой любимый человечек 💗",
+    "Спасибо что ты есть 🙏💕",
+    "Хочу обнять тебя прямо сейчас 🫂",
+    "Ты заслуживаешь всего самого лучшего ✨",
+    "Улыбнись, ты прекрасен(на) 😊",
+    "Ты согреваешь моё сердце 💓",
+    "Мне так повезло что ты у меня есть 🍀",
+    "Посылаю тебе много любви 💌",
+    "Ты мой самый близкий человек 🫶",
+    "Каждый день с тобой — подарок 🎁",
+    "Ты делаешь мир ярче 🌟",
+    "Люблю твою улыбку 😄💕",
+    "Ты — причина моего счастья 😍",
+    "Давай проведём вечер вместе? 🌙",
+    "Горжусь тобой! 🏆💕",
+    "Ты невероятный человек 💎",
+    "Хочу увидеть тебя поскорее 👀💗",
+    "Наш огонёк растёт благодаря тебе 🔥",
+    "Отправляю тебе виртуальный поцелуй 😘",
+    "Ты мой лучший друг и любимый человек 💞",
+    "Без тебя день не тот 🥹",
+    "Ты заряжаешь меня энергией ⚡💕",
+    "Давай никогда не теряем наш стрик! 🔥",
+    "Ты — моя самая тёплая мысль 💭❤️",
+  ];
+
+  // Перемешиваем и берём 10 случайных
+  const shuffled = CUTE_MESSAGES.sort(() => Math.random() - 0.5).slice(0, 10);
+
+  const results = shuffled.map((text, i) => ({
+    type: 'article',
+    id: String(i),
+    title: text,
+    description: 'Нажми чтобы отправить 💕',
+    input_message_content: {
+      message_text: text,
+    },
+  }));
+
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerInlineQuery`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      inline_query_id: queryId,
+      results,
+      cache_time: 0,
+      is_personal: true,
+    }),
+  });
+
+  return new Response('ok');
+}
+
     // /status
     if (text === '/status') {
       const { data: userPairs } = await supabase

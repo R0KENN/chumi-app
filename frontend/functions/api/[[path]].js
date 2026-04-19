@@ -204,45 +204,83 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // GET /api/avatar/:userId
-    // ═══════════════════════════════════════
-    if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
-      const tgUserId = path.split('/')[3];
-      const BOT_TOKEN = env.BOT_TOKEN;
+// ═══════════════════════════════════════
+// GET /api/avatar/:userId
+// ═══════════════════════════════════════
+if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
+  const tgUserId = path.split('/')[3];
+  const BOT_TOKEN = env.BOT_TOKEN;
 
-      try {
-        const photosRes = await fetch(
-          `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
-        );
-        const photosData = await photosRes.json();
+  // Если запрос с ?proxy=1 — отдаём саму картинку (бинарно)
+  const url2 = new URL(request.url);
+  const wantProxy = url2.searchParams.get('proxy');
 
-        if (!photosData.ok || !photosData.result.photos.length) {
-          return json({ avatar_url: null });
-        }
+  try {
+    // Сначала проверяем кэш в БД
+    const { data: cached } = await supabase
+      .from('pair_users')
+      .select('avatar_url')
+      .eq('user_id', tgUserId)
+      .limit(1)
+      .maybeSingle();
 
-        const photo = photosData.result.photos[0];
-        const fileId = photo[photo.length - 1].file_id;
+    let avatarUrl = cached?.avatar_url;
 
-        const fileRes = await fetch(
-          `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
-        );
-        const fileData = await fileRes.json();
+    // Если нет кэша — запрашиваем у Telegram
+    if (!avatarUrl) {
+      const photosRes = await fetch(
+        `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
+      );
+      const photosData = await photosRes.json();
 
-        if (!fileData.ok) return json({ avatar_url: null });
-
-        const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
-
-        // Cache avatar in pair_users
-        await supabase
-          .from('pair_users')
-          .update({ avatar_url: avatarUrl })
-          .eq('user_id', tgUserId);
-
-        return json({ avatar_url: avatarUrl });
-      } catch (e) {
+      if (!photosData.ok || !photosData.result.photos.length) {
         return json({ avatar_url: null });
       }
+
+      const photo = photosData.result.photos[0];
+      const fileId = photo[photo.length - 1].file_id;
+
+      const fileRes = await fetch(
+        `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
+      );
+      const fileData = await fileRes.json();
+      if (!fileData.ok) return json({ avatar_url: null });
+
+      avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
+
+      // Кэшируем
+      await supabase
+        .from('pair_users')
+        .update({ avatar_url: avatarUrl })
+        .eq('user_id', tgUserId);
     }
+
+    // Если просят прокси — скачиваем картинку и отдаём бинарно
+    if (wantProxy) {
+      const imgRes = await fetch(avatarUrl);
+      if (!imgRes.ok) return json({ avatar_url: null });
+
+      const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+      const imgBuffer = await imgRes.arrayBuffer();
+
+      return new Response(imgBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=86400',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // Обычный режим — отдаём прокси-URL (на наш домен)
+    return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1` });
+
+  } catch (e) {
+    return json({ avatar_url: null });
+  }
+}
+
 
     // ═══════════════════════════════════════
     // GET /api/daily-tasks/:pairCode/:userId
