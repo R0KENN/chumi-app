@@ -23,9 +23,11 @@ const ADMIN_IDS = ['713156118'];
 const MAX_PAIRS_BASE = 2;
 const WEBAPP_URL = 'https://chumi-app.pages.dev';
 
-// 🔥 Кастомный эмоджи огонька — замени на свой ID если есть Premium
-// Найти ID: отправь кастомный эмоджи боту @sticker, он вернёт custom_emoji_id
-const FIRE_EMOJI_ID = '5368324170671202286'; // стандартный 🔥 custom emoji
+// ── 🔥 Custom emoji ID ──
+// Чтобы найти свой: отправь кастомный эмоджи огонька боту @sticker → он вернёт custom_emoji_id
+// Или вызови Bot API: getCustomEmojiStickers с нужным ID
+// Стандартный animated fire: 5368324170671202286
+const FIRE_EMOJI_ID = '5368324170671202286';
 
 const LEVELS = [
   { name: 'Spark', emoji: '✨', maxPoints: 30 },
@@ -57,23 +59,22 @@ async function getMaxPairs(supabase, userId) {
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
 
-// ─── Цветные кнопки с кастомными эмоджи ───
+// ─── Кнопка "Открыть Chumi" — цветная с кастомным эмоджи ───
 const webAppButton = {
   reply_markup: JSON.stringify({
     inline_keyboard: [[{
       text: '🔥 Открыть Chumi',
       web_app: { url: WEBAPP_URL },
-      // Цветная кнопка (Bot API 9.4+): "primary" = синяя, "secondary" = серая, "destructive" = красная
       style: 'primary',
-      // Кастомный эмоджи на кнопке (Bot API 9.4+, нужен Premium у владельца бота)
-      // icon_custom_emoji_id: FIRE_EMOJI_ID,
+      icon_custom_emoji_id: FIRE_EMOJI_ID,
     }]],
   }),
 };
 
-// Кнопка "Пригласить" — зелёная
-function inviteButton(code) {
-  const botUsername = 'chumi_pet_bot'; // замени на env.BOT_USERNAME если нужно
+// ─── Кнопка после создания пары — "Открыть" + "Пригласить" ───
+function inviteButton(code, botUsername = 'chumi_pet_bot') {
+  const inviteUrl = `https://t.me/${botUsername}?start=join_${code}`;
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(`Присоединяйся к моей паре в Chumi! 🔥\nКод: ${code}`)}`;
   return {
     reply_markup: JSON.stringify({
       inline_keyboard: [
@@ -81,10 +82,11 @@ function inviteButton(code) {
           text: '🔥 Открыть Chumi',
           web_app: { url: WEBAPP_URL },
           style: 'primary',
+          icon_custom_emoji_id: FIRE_EMOJI_ID,
         }],
         [{
           text: '📨 Пригласить партнёра',
-          url: `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botUsername}?start=join_${code}`)}&text=${encodeURIComponent(`Присоединяйся к моей паре в Chumi! 🔥 Код: ${code}`)}`,
+          url: shareUrl,
           style: 'secondary',
         }],
       ],
@@ -133,13 +135,10 @@ export async function onRequestPost(context) {
     const update = await request.json();
     const supabase = getSupabase(env);
 
-    // ═══════════════════════════════════════
-    // INLINE QUERY — милые сообщения
-    // ═══════════════════════════════════════
+    // ═══ INLINE QUERY ═══
     if (update.inline_query) {
       const queryId = update.inline_query.id;
       const shuffled = [...CUTE_MESSAGES].sort(() => Math.random() - 0.5).slice(0, 10);
-
       const results = shuffled.map((text, i) => ({
         type: 'article',
         id: String(Date.now()) + '_' + i,
@@ -147,21 +146,15 @@ export async function onRequestPost(context) {
         description: 'Нажми чтобы отправить 💕',
         input_message_content: { message_text: text },
       }));
-
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerInlineQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          inline_query_id: queryId,
-          results,
-          cache_time: 0,
-          is_personal: true,
-        }),
+        body: JSON.stringify({ inline_query_id: queryId, results, cache_time: 0, is_personal: true }),
       });
       return new Response('OK');
     }
 
-    // Handle pre_checkout_query
+    // ═══ PRE CHECKOUT ═══
     if (update.pre_checkout_query) {
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
         method: 'POST',
@@ -171,35 +164,24 @@ export async function onRequestPost(context) {
       return new Response('OK');
     }
 
-    // Handle successful_payment
+    // ═══ PAYMENT ═══
     if (update.message?.successful_payment) {
       const payment = update.message.successful_payment;
       const userId = String(update.message.from.id);
       const payload = JSON.parse(payment.invoice_payload);
-
       if (payload.productId === 'extra_slot') {
-        const { data: existing } = await supabase
-          .from('user_slots').select('extra_slots')
-          .eq('telegram_user_id', userId).single();
-
+        const { data: existing } = await supabase.from('user_slots').select('extra_slots').eq('telegram_user_id', userId).single();
         if (existing) {
-          await supabase.from('user_slots')
-            .update({ extra_slots: existing.extra_slots + 1 })
-            .eq('telegram_user_id', userId);
+          await supabase.from('user_slots').update({ extra_slots: existing.extra_slots + 1 }).eq('telegram_user_id', userId);
         } else {
-          await supabase.from('user_slots')
-            .insert({ telegram_user_id: userId, extra_slots: 1 });
+          await supabase.from('user_slots').insert({ telegram_user_id: userId, extra_slots: 1 });
         }
-
-        await sendMessage(env, update.message.chat.id,
-          '✅ *Слот куплен!*\nТеперь у тебя на 1 место для пары больше.',
-          webAppButton
-        );
+        await sendMessage(env, update.message.chat.id, '✅ *Слот куплен!*\nТеперь у тебя на 1 место для пары больше.', webAppButton);
       }
       return new Response('OK');
     }
 
-    // Regular messages
+    // ═══ MESSAGES ═══
     const message = update.message;
     if (!message || !message.text) return new Response('OK');
 
@@ -212,28 +194,19 @@ export async function onRequestPost(context) {
     // /start
     if (text === '/start' || text.startsWith('/start ')) {
       const startParam = text.split(' ')[1] || '';
-
       if (startParam.startsWith('join_')) {
         const joinCode = startParam.replace('join_', '').toUpperCase();
         const maxP = await getMaxPairs(supabase, userId);
         const { data: ex } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
         const isAdmin = ADMIN_IDS.includes(userId);
-
-        if (!isAdmin && ex && ex.length >= maxP) {
-          await sendMessage(env, chatId, `⚠️ У тебя уже ${ex.length} пар.`, webAppButton);
-          return new Response('OK');
-        }
-
+        if (!isAdmin && ex && ex.length >= maxP) { await sendMessage(env, chatId, `⚠️ У тебя уже ${ex.length} пар.`, webAppButton); return new Response('OK'); }
         const { data: pair } = await supabase.from('pairs').select('*').eq('code', joinCode).single();
         if (!pair) { await sendMessage(env, chatId, `❌ Пара \`${joinCode}\` не найдена.`); return new Response('OK'); }
-
         const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', joinCode);
         if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, '✅ Ты уже в этой паре!', webAppButton); return new Response('OK'); }
         if (members && members.length >= 2) { await sendMessage(env, chatId, '⚠️ В паре уже 2 участника.'); return new Response('OK'); }
-
         await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username });
         await sendMessage(env, chatId, `✅ *Ты присоединился к паре!*\nКод: \`${joinCode}\``, webAppButton);
-
         for (const m of members || []) {
           if (m.user_id !== userId) {
             await sendMessage(env, m.user_id, `🎉 *${firstName}* присоединился к паре \`${joinCode}\`!`, webAppButton);
@@ -241,7 +214,6 @@ export async function onRequestPost(context) {
         }
         return new Response('OK');
       }
-
       await sendMessage(env, chatId,
         `Привет, ${firstName}! 🔥\n\n*Chumi* — растите огонёк вместе с другом!\n\n📝 Команды:\n/create — создать пару\n/join КОД — вступить в пару\n/mypairs — мои огоньки\n/status — подробный статус\n/help — справка`,
         webAppButton
@@ -255,45 +227,35 @@ export async function onRequestPost(context) {
       return new Response('OK');
     }
 
-    // /create — теперь с кнопкой "Пригласить"
+    // /create — с кнопкой "Пригласить партнёра"
     if (text === '/create') {
       const maxPairs = await getMaxPairs(supabase, userId);
       const isAdmin = ADMIN_IDS.includes(userId);
       const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
-
-      if (!isAdmin && existing && existing.length >= maxPairs) {
-        await sendMessage(env, chatId, `⚠️ У тебя ${existing.length}/${maxPairs} пар.`, webAppButton);
-        return new Response('OK');
-      }
-
+      if (!isAdmin && existing && existing.length >= maxPairs) { await sendMessage(env, chatId, `⚠️ У тебя ${existing.length}/${maxPairs} пар.`, webAppButton); return new Response('OK'); }
       const code = generateCode();
       await supabase.from('pairs').insert({ code, pet_type: 'spark', streak_days: 0, growth_points: 0, hatched: false, bg_id: 'room', pet_name: null, streak_recoveries_used: 0, is_dead: false });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
-      // Используем кнопку с "Пригласить партнёра"
-      await sendMessage(env, chatId, `✅ *Пара создана!*\n\nКод: \`${code}\`\n\nОтправь другу или нажми кнопку ниже:`, inviteButton(code));
+      const botUser = env.BOT_USERNAME || 'chumi_pet_bot';
+      await sendMessage(env, chatId, `✅ *Пара создана!*\n\nКод: \`${code}\`\n\nОтправь другу или нажми кнопку ниже:`, inviteButton(code, botUser));
       return new Response('OK');
     }
 
-    // /join CODE
+    // /join
     if (text.startsWith('/join')) {
       const code = text.split(' ')[1]?.trim()?.toUpperCase();
       if (!code) { await sendMessage(env, chatId, '⚠️ Укажи код: `/join ABCDEF`'); return new Response('OK'); }
-
       const maxPairs = await getMaxPairs(supabase, userId);
       const isAdmin = ADMIN_IDS.includes(userId);
       const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
       if (!isAdmin && existing && existing.length >= maxPairs) { await sendMessage(env, chatId, `⚠️ Лимит пар: ${maxPairs}.`, webAppButton); return new Response('OK'); }
-
       const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).single();
       if (!pair) { await sendMessage(env, chatId, '❌ Пара не найдена.'); return new Response('OK'); }
-
       const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', code);
       if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, '✅ Ты уже в паре!', webAppButton); return new Response('OK'); }
       if (members && members.length >= 2) { await sendMessage(env, chatId, '⚠️ Пара заполнена.'); return new Response('OK'); }
-
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
       await sendMessage(env, chatId, `✅ *Ты в паре!* Код: \`${code}\``, webAppButton);
-
       for (const m of members || []) {
         if (m.user_id !== userId) {
           await sendMessage(env, m.user_id, `🎉 *${firstName}* присоединился к \`${code}\`!`, webAppButton);
@@ -306,7 +268,6 @@ export async function onRequestPost(context) {
     if (text === '/mypairs') {
       const { data: userPairs } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
       if (!userPairs || userPairs.length === 0) { await sendMessage(env, chatId, '😔 Нет пар. Создай: /create'); return new Response('OK'); }
-
       let msg = '🔥 *Мои огоньки:*\n\n';
       for (const up of userPairs) {
         const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
@@ -323,7 +284,6 @@ export async function onRequestPost(context) {
     if (text === '/status') {
       const { data: userPairs } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
       if (!userPairs || userPairs.length === 0) { await sendMessage(env, chatId, '😔 Нет пар.'); return new Response('OK'); }
-
       let msg = '📊 *Статус:*\n\n';
       for (const up of userPairs) {
         const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
