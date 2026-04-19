@@ -62,6 +62,14 @@ function getPetImage(petType, stage, hatched) {
   return `/pets/${petType}_${idx}.png`;
 }
 
+function getPetVideo(petType, stage, hatched) {
+  if (!hatched) return null;
+  const idx = stage.imageIndex;
+  if (idx < 0) return null;
+  return `/pets/${petType}_${idx}.mp4`;
+}
+
+
 function getTodayDate() {
   return new Date().toISOString().split('T')[0];
 }
@@ -178,6 +186,7 @@ function App() {
   const hatched = pair.hatched || false;
   const stage = getStageByPoints(pair.growthPoints, hatched);
   const petImage = getPetImage(pair.petType, stage, hatched);
+  const petVideo = getPetVideo(pair.petType, stage, hatched);
   const todayFed = pair.lastFed && pair.lastFed[userId] === getTodayDate();
   const daysUntilHatch = hatched ? 0 : Math.max(0, 3 - pair.streakDays);
   const progress = getProgress(pair.growthPoints, hatched);
@@ -220,12 +229,24 @@ function App() {
           </div>
 
           {/* Pet */}
-          <div className="pet-zone">
-            <div className={`pet-wrap ${!hatched ? 'pet-wrap--egg' : 'pet-wrap--alive'}`}>
-              <img src={petImage} alt="pet" className="pet-pic" />
-            </div>
-            <div className="pet-shadow"></div>
-          </div>
+<div className="pet-zone">
+  <div className={`pet-wrap ${!hatched ? 'pet-wrap--egg' : 'pet-wrap--alive'}`}>
+    {petVideo ? (
+      <video
+        src={petVideo}
+        className="pet-video"
+        autoPlay
+        loop
+        muted
+        playsInline
+      />
+    ) : (
+      <img src={petImage} alt="pet" className="pet-pic" />
+    )}
+  </div>
+  <div className="pet-shadow"></div>
+</div>
+
 
           {/* Name */}
           <div className="pet-label">

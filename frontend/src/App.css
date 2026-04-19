@@ -405,6 +405,23 @@
 .ov-inner h2 { margin-top: 18px; font-size: 26px; }
 .ov-sub { font-size: 16px; color: #ffa751; margin-top: 4px; }
 
+/* ==========================================
+   PET VIDEO
+   ========================================== */
+.pet-video {
+  width: 85vw;
+  max-width: 360px;
+  height: auto;
+  object-fit: contain;
+  mix-blend-mode: screen;
+  border-radius: 0;
+}
+
+.pet-wrap--alive {
+  animation: none;
+}
+
+
 @keyframes glowPulse { 0%,100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.2); opacity: 0.8; } }
 @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
 @keyframes evGlow { 0% { transform: scale(0.5); filter: brightness(3); } 50% { transform: scale(1.2); filter: brightness(1.5); } 100% { transform: scale(1); filter: brightness(1); } }
