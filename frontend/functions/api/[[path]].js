@@ -634,6 +634,49 @@ if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
       });
     }
 
+    // POST /api/complete-task
+if (request.method === 'POST' && path === '/api/complete-task') {
+  const { code, userId, taskKey } = await request.json();
+  const today = getTodayDate();
+
+  // Check if already completed
+  const { data: existing } = await supabase
+    .from('daily_tasks')
+    .select('*')
+    .eq('pair_code', code)
+    .eq('user_id', userId)
+    .eq('task_key', taskKey)
+    .eq('task_date', today)
+    .single();
+
+  if (existing?.completed) {
+    return json({ error: 'Already completed' });
+  }
+
+  // Find task points
+  const taskPoints = { msg_1: 1, post_2: 2, photo_video: 4, msg_10: 2 };
+  const points = taskPoints[taskKey] || 0;
+
+  // Upsert task
+  await supabase.from('daily_tasks').upsert({
+    pair_code: code,
+    user_id: userId,
+    task_key: taskKey,
+    task_date: today,
+    completed: true,
+    completed_at: new Date().toISOString()
+  }, { onConflict: 'pair_code,user_id,task_key,task_date' });
+
+  // Add growth points
+  await supabase.rpc('increment_growth_points', { p_code: code, p_points: points });
+
+  // Fallback if RPC doesn't exist: direct update
+  // const { data: pair } = await supabase.from('pairs').select('growth_points').eq('code', code).single();
+  // await supabase.from('pairs').update({ growth_points: (pair.growth_points || 0) + points }).eq('code', code);
+
+  return json({ success: true, points_added: points });
+}
+
     return json({ error: 'Not found' }, 404);
   } catch (e) {
     console.error('API Error:', e);
