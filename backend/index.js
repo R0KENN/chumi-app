@@ -61,12 +61,12 @@ async function getOrCreateUser(telegramId, username, firstName) {
 
 // ---------- API ДЛЯ MINI APP (ФРОНТЕНД БУДЕТ СЮДА ОБРАЩАТЬСЯ) ----------
 
-// Получить данные о паре для пользователя
+// Получить ВСЕ пары пользователя
 app.post('/api/pair', async (req, res) => {
   try {
-    const { userId } = req.body; // userId — это telegram_id (число)
+    const { userId } = req.body;
 
-    // Находим внутренний ID пользователя
+    // 1. Находим внутренний ID пользователя
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id')
@@ -74,27 +74,25 @@ app.post('/api/pair', async (req, res) => {
       .single();
 
     if (userError || !user) {
-      return res.json({ pair: null });
+      return res.json({ pairs: [] }); // Возвращаем пустой массив
     }
 
-    // Получаем первую пару, в которой состоит пользователь
+    // 2. Получаем ВСЕ пары пользователя
     const { data: userPairs, error: pairsError } = await supabase
       .from('user_pairs')
-      .select('pair_id, pairs(*)')
-      .eq('user_id', user.id)
-      .limit(1);
+      .select('pair_id, pairs(*)') // Получаем полные данные о паре
+      .eq('user_id', user.id);
 
     if (pairsError) throw pairsError;
 
-    if (userPairs.length === 0) {
-      return res.json({ pair: null });
-    }
+    // Извлекаем только данные о парах в массив
+    const pairs = userPairs.map(up => up.pairs);
 
-    const pairData = userPairs[0].pairs;
-    res.json({ pair: pairData });
+    // 3. Возвращаем массив пар
+    res.json({ pairs: pairs });
   } catch (error) {
     console.error('/api/pair error:', error);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
