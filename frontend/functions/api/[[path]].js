@@ -18,6 +18,7 @@ const TASK_POINTS = {
   send_sticker: 2,
   send_media: 4,
   pet_touch: 1,
+  add_to_home: 3,
 };
 
 // ────────── HELPERS ──────────
@@ -71,6 +72,7 @@ function getLevel(totalPoints) {
 }
 
 async function getMaxPairs(supabase, userId) {
+  if (ADMIN_IDS.includes(userId)) return 999;
   const { data } = await supabase
     .from('user_slots')
     .select('extra_slots')
@@ -91,7 +93,7 @@ async function sendTelegramMessage(env, chatId, text) {
   }
 }
 
-function formatPair(pair, members, tasksToday, userId) {
+function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
   const lv = getLevel(pair.growth_points || 0);
   const partner = members?.find(m => m.user_id !== userId);
   const me = members?.find(m => m.user_id === userId);
@@ -120,7 +122,27 @@ function formatPair(pair, members, tasksToday, userId) {
     my_name: me?.display_name || null,
     member_count: members?.length || 0,
     daily_tasks: tasksToday || [],
+    one_time_tasks: oneTimeTasks || [],
   };
+}
+
+// ────────── Seeded random for daily shuffle ──────────
+function seededRandom(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+function shuffleWithSeed(arr, seed) {
+  const shuffled = [...arr];
+  const rng = seededRandom(seed);
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
 
 // ────────── MAIN HANDLER ──────────
@@ -172,7 +194,13 @@ export async function onRequest(context) {
           .eq('user_id', userId)
           .eq('task_date', today);
 
-        pairs.push(formatPair(pair, members, tasks, userId));
+        // One-time tasks for this user+pair
+        const { data: otTasks } = await supabase
+          .from('one_time_tasks').select('task_key')
+          .eq('pair_code', up.pair_code)
+          .eq('user_id', userId);
+
+        pairs.push(formatPair(pair, members, tasks, userId, otTasks));
       }
 
       return json({ pairs });
@@ -200,87 +228,81 @@ export async function onRequest(context) {
         .eq('user_id', userId)
         .eq('task_date', today);
 
-      return json(formatPair(pair, members, tasks, userId));
+      // One-time tasks
+      const { data: otTasks } = await supabase
+        .from('one_time_tasks').select('task_key')
+        .eq('pair_code', pairCode)
+        .eq('user_id', userId);
+
+      return json(formatPair(pair, members, tasks, userId, otTasks));
     }
 
     // ═══════════════════════════════════════
-// ═══════════════════════════════════════
-// GET /api/avatar/:userId
-// ═══════════════════════════════════════
-if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
-  const tgUserId = path.split('/')[3];
-  const BOT_TOKEN = env.BOT_TOKEN;
+    // GET /api/avatar/:userId
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
+      const tgUserId = path.split('/')[3];
+      const BOT_TOKEN = env.BOT_TOKEN;
+      const url2 = new URL(request.url);
+      const wantProxy = url2.searchParams.get('proxy');
 
-  // Если запрос с ?proxy=1 — отдаём саму картинку (бинарно)
-  const url2 = new URL(request.url);
-  const wantProxy = url2.searchParams.get('proxy');
+      try {
+        const { data: cached } = await supabase
+          .from('pair_users')
+          .select('avatar_url')
+          .eq('user_id', tgUserId)
+          .limit(1)
+          .maybeSingle();
 
-  try {
-    // Сначала проверяем кэш в БД
-    const { data: cached } = await supabase
-      .from('pair_users')
-      .select('avatar_url')
-      .eq('user_id', tgUserId)
-      .limit(1)
-      .maybeSingle();
+        let avatarUrl = cached?.avatar_url;
 
-    let avatarUrl = cached?.avatar_url;
+        if (!avatarUrl) {
+          const photosRes = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
+          );
+          const photosData = await photosRes.json();
 
-    // Если нет кэша — запрашиваем у Telegram
-    if (!avatarUrl) {
-      const photosRes = await fetch(
-        `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
-      );
-      const photosData = await photosRes.json();
+          if (!photosData.ok || !photosData.result.photos.length) {
+            return json({ avatar_url: null });
+          }
 
-      if (!photosData.ok || !photosData.result.photos.length) {
+          const photo = photosData.result.photos[0];
+          const fileId = photo[photo.length - 1].file_id;
+
+          const fileRes = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
+          );
+          const fileData = await fileRes.json();
+          if (!fileData.ok) return json({ avatar_url: null });
+
+          avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
+
+          await supabase
+            .from('pair_users')
+            .update({ avatar_url: avatarUrl })
+            .eq('user_id', tgUserId);
+        }
+
+        if (wantProxy) {
+          const imgRes = await fetch(avatarUrl);
+          if (!imgRes.ok) return json({ avatar_url: null });
+          const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+          const imgBuffer = await imgRes.arrayBuffer();
+          return new Response(imgBuffer, {
+            status: 200,
+            headers: {
+              'Content-Type': contentType,
+              'Cache-Control': 'public, max-age=86400',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+
+        return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1` });
+      } catch (e) {
         return json({ avatar_url: null });
       }
-
-      const photo = photosData.result.photos[0];
-      const fileId = photo[photo.length - 1].file_id;
-
-      const fileRes = await fetch(
-        `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
-      );
-      const fileData = await fileRes.json();
-      if (!fileData.ok) return json({ avatar_url: null });
-
-      avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
-
-      // Кэшируем
-      await supabase
-        .from('pair_users')
-        .update({ avatar_url: avatarUrl })
-        .eq('user_id', tgUserId);
     }
-
-    // Если просят прокси — скачиваем картинку и отдаём бинарно
-    if (wantProxy) {
-      const imgRes = await fetch(avatarUrl);
-      if (!imgRes.ok) return json({ avatar_url: null });
-
-      const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-      const imgBuffer = await imgRes.arrayBuffer();
-
-      return new Response(imgBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=86400',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
-    }
-
-    // Обычный режим — отдаём прокси-URL (на наш домен)
-    return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1` });
-
-  } catch (e) {
-    return json({ avatar_url: null });
-  }
-}
-
 
     // ═══════════════════════════════════════
     // GET /api/daily-tasks/:pairCode/:userId
@@ -325,12 +347,11 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       const username = body.username || null;
 
       const maxPairs = await getMaxPairs(supabase, userId);
-      const isAdmin = ADMIN_IDS.includes(userId);
 
       const { data: existing } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);
 
-      if (!isAdmin && existing && existing.length >= maxPairs) {
+      if (existing && existing.length >= maxPairs) {
         return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
       }
 
@@ -370,12 +391,11 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       const username = body.username || null;
 
       const maxPairs = await getMaxPairs(supabase, userId);
-      const isAdmin = ADMIN_IDS.includes(userId);
 
       const { data: existing } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);
 
-      if (!isAdmin && existing && existing.length >= maxPairs) {
+      if (existing && existing.length >= maxPairs) {
         return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
       }
 
@@ -400,7 +420,6 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
         username: username,
       });
 
-      // Notify partner
       for (const m of members || []) {
         if (m.user_id !== userId) {
           await sendTelegramMessage(env, m.user_id,
@@ -422,11 +441,39 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       const taskKey = body.taskKey;
       const today = getTodayDate();
 
-      // Validate task key
       const points = TASK_POINTS[taskKey];
       if (points === undefined) return json({ error: 'Invalid task' }, 400);
 
-      // Check if already done
+      // ── One-time task (add_to_home) ──
+      if (taskKey === 'add_to_home') {
+        const { data: alreadyDone } = await supabase
+          .from('one_time_tasks').select('id')
+          .eq('pair_code', code)
+          .eq('user_id', userId)
+          .eq('task_key', taskKey)
+          .maybeSingle();
+
+        if (alreadyDone) return json({ error: 'Already completed' }, 400);
+
+        await supabase.from('one_time_tasks').insert({
+          pair_code: code,
+          user_id: userId,
+          task_key: taskKey,
+          completed_at: new Date().toISOString(),
+        });
+
+        const { data: pair } = await supabase
+          .from('pairs').select('growth_points').eq('code', code).single();
+        if (pair) {
+          await supabase.from('pairs')
+            .update({ growth_points: (pair.growth_points || 0) + points })
+            .eq('code', code);
+        }
+
+        return json({ success: true, points_added: points });
+      }
+
+      // ── Daily tasks ──
       const { data: existing } = await supabase
         .from('daily_tasks').select('id')
         .eq('pair_code', code)
@@ -437,7 +484,6 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
 
       if (existing) return json({ error: 'Already completed' }, 400);
 
-      // Insert task
       await supabase.from('daily_tasks').insert({
         pair_code: code,
         user_id: userId,
@@ -447,7 +493,6 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
         completed_at: new Date().toISOString(),
       });
 
-      // Add growth points
       const { data: pair } = await supabase
         .from('pairs').select('growth_points').eq('code', code).single();
 
@@ -480,7 +525,22 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
     if (request.method === 'POST' && path === '/api/delete') {
       const body = await request.json();
       const code = body.pairCode || body.code;
+      const userId = String(body.userId || '');
 
+      // Notify partner before deleting
+      if (userId) {
+        const { data: members } = await supabase
+          .from('pair_users').select('user_id, display_name').eq('pair_code', code);
+        for (const m of members || []) {
+          if (m.user_id !== userId) {
+            await sendTelegramMessage(env, m.user_id,
+              `😢 Пара \`${code}\` была удалена.`
+            );
+          }
+        }
+      }
+
+      await supabase.from('one_time_tasks').delete().eq('pair_code', code);
       await supabase.from('daily_tasks').delete().eq('pair_code', code);
       await supabase.from('feedings').delete().eq('pair_code', code);
       await supabase.from('pair_users').delete().eq('pair_code', code);
@@ -578,13 +638,13 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/send-invite') {
       const body = await request.json();
-      const botUsername = env.BOT_USERNAME || 'chumi_pet_bot';
+      const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
       const inviteLink = `https://t.me/${botUsername}?start=join_${body.pairCode}`;
       return json({ inviteLink, pairCode: body.pairCode });
     }
 
     // ═══════════════════════════════════════
-    // POST /api/create-egg (restart after death)
+    // POST /api/create-egg
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/create-egg') {
       const body = await request.json();
@@ -602,11 +662,11 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
 
       await supabase.from('feedings').delete().eq('pair_code', code);
       await supabase.from('daily_tasks').delete().eq('pair_code', code);
+      await supabase.from('one_time_tasks').delete().eq('pair_code', code);
 
       return json({ success: true });
     }
 
-        // ═══════════════════════════════════════
     // ═══════════════════════════════════════
     // GET /api/ranking  (Топ 100 пар с участниками)
     // ═══════════════════════════════════════
@@ -619,7 +679,6 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
 
       const ranking = [];
       for (const p of (allPairs || [])) {
-        // Получаем участников каждой пары
         const { data: members } = await supabase
           .from('pair_users')
           .select('user_id, display_name, username, avatar_url')
@@ -641,9 +700,47 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       return json({ ranking });
     }
 
+    // ═══════════════════════════════════════
+    // GET /api/ranking-random  (Случайные 50, обновляется раз в сутки)
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path === '/api/ranking-random') {
+      // Загружаем все пары
+      const { data: allPairs } = await supabase
+        .from('pairs')
+        .select('code, pet_name, growth_points, streak_days');
 
-        // ═══════════════════════════════════════
-    // POST /api/prepare-share  (для shareMessage)
+      if (!allPairs || allPairs.length === 0) return json({ ranking: [] });
+
+      // Seed = день (YYYYMMDD число) — одинаковый для всех в течение дня
+      const today = getTodayDate().replace(/-/g, '');
+      const seed = parseInt(today);
+      const shuffled = shuffleWithSeed(allPairs, seed).slice(0, 50);
+
+      const ranking = [];
+      for (const p of shuffled) {
+        const { data: members } = await supabase
+          .from('pair_users')
+          .select('user_id, display_name, username, avatar_url')
+          .eq('pair_code', p.code);
+
+        ranking.push({
+          code: p.code,
+          pet_name: p.pet_name,
+          growth_points: p.growth_points || 0,
+          streak_days: p.streak_days || 0,
+          members: (members || []).map(m => ({
+            user_id: m.user_id,
+            display_name: m.display_name || null,
+            avatar_url: m.avatar_url || null,
+          })),
+        });
+      }
+
+      return json({ ranking });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/prepare-share
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/prepare-share') {
       const body = await request.json();
@@ -651,7 +748,6 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       const pairCode = body.pairCode;
       const messageText = body.text || '🔥 Присоединяйся к Chumi — растим огонёк вместе!';
 
-      // savePreparedInlineMessage — Bot API 8.0+
       const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -662,7 +758,7 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
             id: 'share_' + pairCode + '_' + Date.now(),
             title: 'Chumi — Вырасти огонёк!',
             input_message_content: {
-              message_text: messageText + `\n\nhttps://t.me/chumi_pet_bot?start=join_${pairCode}`,
+              message_text: messageText + `\n\nhttps://t.me/ChumiPetBot?start=join_${pairCode}`,
             },
             description: 'Нажми чтобы пригласить в пару 🔥',
           },

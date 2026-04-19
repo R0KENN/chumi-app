@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════
-   STREAK PET — Liquid Glass Style v2
+   STREAK PET — Liquid Glass Style v3
    ══════════════════════════════════════ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -16,7 +16,7 @@ body {
   overscroll-behavior: none; -webkit-font-smoothing: antialiased;
 }
 
-/* ── Liquid Glass helpers (менее прозрачные) ── */
+/* ── Liquid Glass helpers ── */
 .glass-card {
   background: rgba(255,255,255,0.82) !important;
   backdrop-filter: blur(24px) saturate(1.6);
@@ -54,11 +54,11 @@ body {
   padding: 0 16px 32px; transition: background 0.4s ease;
 }
 
-/* ── Имя питомца — чуть выше остального ── */
+/* ── Имя питомца — сверху, но ниже кнопок бота ── */
 .sk-pet-name-row {
   width: 100%;
   text-align: center;
-  padding-top: max(12px, env(safe-area-inset-top));
+  padding-top: max(56px, calc(env(safe-area-inset-top) + 48px));
   padding-bottom: 4px;
 }
 .sk-pet-name-label {
@@ -79,10 +79,10 @@ body {
   background: rgba(0,0,0,0.08); border: none; cursor: pointer; font-size: 14px;
 }
 
-/* ── Строка: серия + аватарки + ••• — ниже имени ── */
+/* ── Строка: серия + аватарки + ••• ── */
 .sk-info-row {
   display: flex; align-items: center; justify-content: space-between;
-  width: 100%; padding: 6px 0 2px;
+  width: 100%; padding: 8px 0 4px;
 }
 .sk-info-row-left {
   display: flex; align-items: center;
@@ -91,7 +91,7 @@ body {
   display: flex; align-items: center; gap: 10px;
 }
 
-/* ── Streak badge (дизайн как на референсе) ── */
+/* ── Streak badge ── */
 .sk-streak-badge {
   display: flex; align-items: center; gap: 6px;
   background: rgba(255,255,255,0.82);
@@ -107,16 +107,10 @@ body {
   filter: drop-shadow(0 2px 4px rgba(255,100,0,0.3));
 }
 .sk-streak-num {
-  font-size: 22px;
-  font-weight: 900;
-  color: #1a1a1a;
-  letter-spacing: -0.5px;
+  font-size: 22px; font-weight: 900; color: #1a1a1a; letter-spacing: -0.5px;
 }
 .sk-streak-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(0,0,0,0.4);
-  margin-left: -2px;
+  font-size: 11px; font-weight: 600; color: rgba(0,0,0,0.4); margin-left: -2px;
 }
 
 /* ── Avatars ── */
@@ -133,20 +127,18 @@ body {
 .sk-topbar-btn {
   width: 36px; height: 36px; border-radius: 50%;
   background: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   font-size: 14px; cursor: pointer; color: #555;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
 /* ── Menu ── */
 .sk-menu-overlay { position: fixed; inset: 0; z-index: 200; }
 .sk-menu {
-  position: absolute; top: 110px; right: 16px;
+  position: absolute; top: 130px; right: 16px;
   border-radius: 16px; padding: 6px;
-  min-width: 200px; z-index: 201;
+  min-width: 220px; z-index: 201;
 }
 .sk-menu button {
   display: block; width: 100%; text-align: left; padding: 14px 16px;
@@ -154,6 +146,31 @@ body {
   border-radius: 12px; color: #333; font-weight: 500;
 }
 .sk-menu button:active { background: rgba(0,0,0,0.04); }
+.sk-menu-danger { color: #e53935 !important; }
+
+/* ── Waiting for partner overlay ── */
+.sk-waiting-partner {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 40px 20px; flex: 1; gap: 16px;
+}
+.sk-waiting-emoji { font-size: 64px; }
+.sk-waiting-title { font-size: 20px; font-weight: 700; color: #1a1a1a; }
+.sk-waiting-desc { font-size: 15px; color: rgba(0,0,0,0.5); line-height: 1.5; max-width: 280px; }
+.sk-waiting-code {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.82); backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.6);
+  border-radius: 14px; padding: 12px 20px;
+  font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #1a1a1a;
+  cursor: pointer;
+}
+.sk-waiting-code-copy { font-size: 16px; opacity: 0.5; }
+.sk-waiting-btn {
+  padding: 14px 32px; border-radius: 14px; border: none;
+  font-size: 16px; font-weight: 700; color: #fff; cursor: pointer;
+  margin-top: 4px;
+}
 
 /* ── Pet area ── */
 .sk-pet-area {
@@ -174,7 +191,7 @@ body {
   100% { transform: scale(1) rotate(0deg); }
 }
 
-/* ── Outfits btn (фон чтобы эмодзи не сливалось) ── */
+/* ── Outfits btn ── */
 .sk-outfits-btn {
   display: flex; align-items: center; gap: 6px;
   border-radius: 20px; padding: 8px 18px; margin: 4px 0 16px;
@@ -185,9 +202,7 @@ body {
 .sk-outfits-btn:active { transform: scale(0.96); }
 .sk-outfits-icon {
   display: flex; align-items: center; gap: 2px;
-  background: rgba(255,100,0,0.12);
-  border-radius: 10px;
-  padding: 3px 6px;
+  background: rgba(255,100,0,0.12); border-radius: 10px; padding: 3px 6px;
 }
 .sk-outfits-text { font-weight: 600; color: #333; margin-left: 4px; font-size: 14px; }
 
@@ -196,8 +211,7 @@ body {
   width: 100%; max-width: 260px; text-align: center; margin-bottom: 20px; cursor: pointer;
 }
 .sk-progress {
-  height: 28px; border-radius: 14px;
-  position: relative; overflow: hidden;
+  height: 28px; border-radius: 14px; position: relative; overflow: hidden;
 }
 .sk-progress-fill { height: 100%; border-radius: 14px; transition: width 0.6s ease; }
 .sk-progress-text {
@@ -207,9 +221,7 @@ body {
 .sk-progress-hint { font-size: 12px; color: rgba(0,0,0,0.35); margin-top: 8px; font-weight: 500; }
 
 /* ── Tasks ── */
-.sk-tasks {
-  width: 100%; border-radius: 24px; padding: 20px;
-}
+.sk-tasks { width: 100%; border-radius: 24px; padding: 20px; }
 .sk-tasks-top {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
 }
@@ -218,8 +230,7 @@ body {
 
 .sk-task {
   display: flex; align-items: center; gap: 14px; padding: 13px 0;
-  cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.04);
-  transition: opacity 0.3s;
+  cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.04); transition: opacity 0.3s;
 }
 .sk-task:last-child { border-bottom: none; }
 .sk-task-done { opacity: 0.45; pointer-events: none; }
@@ -227,8 +238,7 @@ body {
 .sk-task-check {
   width: 28px; height: 28px; border-radius: 50%;
   border: 2.5px solid rgba(0,0,0,0.12); flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.3s;
+  display: flex; align-items: center; justify-content: center; transition: all 0.3s;
 }
 .sk-task-check span { color: #fff; font-size: 14px; font-weight: 700; }
 
@@ -236,11 +246,21 @@ body {
 .sk-task-title { font-size: 15px; font-weight: 600; color: #1a1a1a; }
 .sk-task-pts { font-size: 13px; font-weight: 600; margin-top: 2px; }
 .sk-task-go { font-size: 22px; color: rgba(0,0,0,0.2); font-weight: 600; }
+.sk-task-badge {
+  font-size: 10px; font-weight: 700; color: #fff;
+  background: #F5A623; border-radius: 6px; padding: 2px 6px;
+  margin-left: 6px; vertical-align: middle;
+}
 
 /* ── Primary button ── */
 .sk-btn-primary {
   width: 100%; padding: 14px; border-radius: 14px;
   border: none; color: #fff;
+  font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 8px;
+}
+.sk-btn-danger {
+  width: 100%; padding: 14px; border-radius: 14px;
+  border: none; color: #fff; background: #e53935;
   font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 8px;
 }
 
@@ -258,7 +278,7 @@ body {
   border: 1px solid rgba(255,255,255,0.7);
   box-shadow: 0 8px 40px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8);
 }
-.sk-popup-wide { max-width: 380px; }
+.sk-popup-wide { max-width: 400px; }
 .sk-popup h3 { text-align: center; margin-bottom: 16px; color: #1a1a1a; font-size: 18px; }
 .sk-lvl-row {
   display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; margin-bottom: 4px;
@@ -275,7 +295,50 @@ body {
   border: none; background: rgba(0,0,0,0.05); font-size: 15px; font-weight: 600; cursor: pointer; color: #333;
 }
 
-/* ── Pairs grid (Мои пары) ── */
+/* ── Ranking tabs ── */
+.sk-ranking-tabs {
+  display: flex; gap: 0; margin-bottom: 14px;
+  background: rgba(0,0,0,0.04); border-radius: 12px; padding: 3px;
+}
+.sk-ranking-tab {
+  flex: 1; padding: 8px 12px; border: none; background: none;
+  font-size: 14px; font-weight: 600; cursor: pointer; color: rgba(0,0,0,0.45);
+  border-radius: 10px; transition: all 0.2s;
+}
+.sk-ranking-tab-active {
+  background: #fff; color: #1a1a1a;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* ── Ranking list ── */
+.sk-ranking-list { max-height: 420px; overflow-y: auto; }
+.sk-ranking-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 8px;
+  border-bottom: 1px solid rgba(0,0,0,0.04); border-radius: 10px;
+  cursor: pointer;
+}
+.sk-ranking-row:last-child { border-bottom: none; }
+.sk-ranking-me { background: rgba(245,166,35,0.1); }
+.sk-ranking-pos { width: 28px; font-weight: 800; font-size: 14px; text-align: center; flex-shrink: 0; color: #1a1a1a; }
+.sk-ranking-avatars { display: flex; align-items: center; flex-shrink: 0; }
+.sk-ranking-ava {
+  width: 32px; height: 32px; border-radius: 50%; overflow: hidden;
+  background: rgba(255,255,255,0.7); border: 2px solid #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+.sk-ranking-ava img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.sk-ranking-ava + .sk-ranking-ava { margin-left: -10px; }
+.sk-ranking-name {
+  flex: 1; font-weight: 600; font-size: 14px; color: #1a1a1a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sk-ranking-name-full {
+  flex: 1; font-weight: 600; font-size: 14px; color: #1a1a1a;
+  word-break: break-word; white-space: normal;
+}
+.sk-ranking-stats { font-size: 12px; color: rgba(0,0,0,0.45); white-space: nowrap; flex-shrink: 0; }
+
+/* ── Pairs grid ── */
 .sk-pairs-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;
 }
@@ -290,30 +353,6 @@ body {
 .sk-pair-card-info { display: flex; justify-content: center; gap: 10px; font-size: 12px; color: rgba(0,0,0,0.45); }
 .sk-pair-card-add { border: 2px dashed rgba(0,0,0,0.12) !important; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .sk-pair-card-plus { font-size: 32px; font-weight: 300; color: rgba(0,0,0,0.25); }
-
-/* ── Ranking (Топ 100 пар с аватарками) ── */
-.sk-ranking-list { max-height: 400px; overflow-y: auto; }
-.sk-ranking-row {
-  display: flex; align-items: center; gap: 10px; padding: 10px 8px;
-  border-bottom: 1px solid rgba(0,0,0,0.04); border-radius: 10px;
-}
-.sk-ranking-row:last-child { border-bottom: none; }
-.sk-ranking-me { background: rgba(245,166,35,0.1); }
-.sk-ranking-pos { width: 28px; font-weight: 800; font-size: 14px; text-align: center; flex-shrink: 0; color: #1a1a1a; }
-.sk-ranking-avatars {
-  display: flex; align-items: center; flex-shrink: 0;
-}
-.sk-ranking-ava {
-  width: 32px; height: 32px; border-radius: 50%; overflow: hidden;
-  background: rgba(255,255,255,0.7);
-  border: 2px solid #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-}
-.sk-ranking-ava img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.sk-ranking-ava + .sk-ranking-ava { margin-left: -10px; }
-.sk-ranking-name { flex: 1; font-weight: 600; font-size: 14px; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sk-ranking-stats { font-size: 12px; color: rgba(0,0,0,0.45); white-space: nowrap; flex-shrink: 0; }
 
 /* ── NoPairs ── */
 .no-pairs-wrap {
