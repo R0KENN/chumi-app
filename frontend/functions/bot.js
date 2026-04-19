@@ -24,12 +24,14 @@ const MAX_PAIRS_BASE = 2;
 const WEBAPP_URL = 'https://chumi-app.pages.dev';
 
 const LEVELS = [
-  { name: 'Spark',   emoji: '✨', maxPoints: 30  },
-  { name: 'Flame',   emoji: '🔥', maxPoints: 70  },
-  { name: 'Blaze',   emoji: '🔥', maxPoints: 50  },
-  { name: 'Fire',    emoji: '🔥', maxPoints: 150 },
+  { name: 'Spark', emoji: '✨', maxPoints: 30 },
+  { name: 'Flame', emoji: '🔥', maxPoints: 70 },
+  { name: 'Blaze', emoji: '🔥', maxPoints: 50 },
+  { name: 'Fire', emoji: '🔥', maxPoints: 150 },
   { name: 'Inferno', emoji: '👑', maxPoints: 200 },
 ];
+
+const PET_NAMES = ['Spark', 'Flame', 'Blaze', 'Fire', 'Inferno'];
 
 function getLevel(totalPoints) {
   let accumulated = 0;
@@ -60,15 +62,78 @@ const webAppButton = {
   }),
 };
 
+const CUTE_MESSAGES = [
+  "Ты моё солнышко ☀️",
+  "Думаю о тебе 💭💕",
+  "Ты делаешь мой день лучше 🌈",
+  "Обнимаю тебя мысленно 🤗",
+  "Ты самый лучший человек на свете 💖",
+  "Скучаю по тебе 🥺",
+  "Ты мой любимый человечек 💗",
+  "Спасибо что ты есть 🙏💕",
+  "Хочу обнять тебя прямо сейчас 🫂",
+  "Ты заслуживаешь всего самого лучшего ✨",
+  "Улыбнись, ты прекрасен(на) 😊",
+  "Ты согреваешь моё сердце 💓",
+  "Мне так повезло что ты у меня есть 🍀",
+  "Посылаю тебе много любви 💌",
+  "Ты мой самый близкий человек 🫶",
+  "Каждый день с тобой — подарок 🎁",
+  "Ты делаешь мир ярче 🌟",
+  "Люблю твою улыбку 😄💕",
+  "Ты — причина моего счастья 😍",
+  "Давай проведём вечер вместе? 🌙",
+  "Горжусь тобой! 🏆💕",
+  "Ты невероятный человек 💎",
+  "Хочу увидеть тебя поскорее 👀💗",
+  "Наш огонёк растёт благодаря тебе 🔥",
+  "Отправляю тебе виртуальный поцелуй 😘",
+  "Ты мой лучший друг и любимый человек 💞",
+  "Без тебя день не тот 🥹",
+  "Ты заряжаешь меня энергией ⚡💕",
+  "Давай никогда не теряем наш стрик! 🔥",
+  "Ты — моя самая тёплая мысль 💭❤️",
+];
+
 export async function onRequestPost(context) {
   const { env, request } = context;
+  const BOT_TOKEN = env.BOT_TOKEN;
+
   try {
     const update = await request.json();
     const supabase = getSupabase(env);
 
-    // Handle pre_checkout_query (Stars payments)
+    // ═══════════════════════════════════════
+    // INLINE QUERY — милые сообщения
+    // ═══════════════════════════════════════
+    if (update.inline_query) {
+      const queryId = update.inline_query.id;
+      const shuffled = [...CUTE_MESSAGES].sort(() => Math.random() - 0.5).slice(0, 10);
+
+      const results = shuffled.map((text, i) => ({
+        type: 'article',
+        id: String(Date.now()) + '_' + i,
+        title: text,
+        description: 'Нажми чтобы отправить 💕',
+        input_message_content: { message_text: text },
+      }));
+
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerInlineQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inline_query_id: queryId,
+          results,
+          cache_time: 0,
+          is_personal: true,
+        }),
+      });
+      return new Response('OK');
+    }
+
+    // Handle pre_checkout_query
     if (update.pre_checkout_query) {
-      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/answerPreCheckoutQuery`, {
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pre_checkout_query_id: update.pre_checkout_query.id, ok: true }),
@@ -118,12 +183,10 @@ export async function onRequestPost(context) {
     if (text === '/start' || text.startsWith('/start ')) {
       const startParam = text.split(' ')[1] || '';
 
-      // Deep-link join
       if (startParam.startsWith('join_')) {
         const joinCode = startParam.replace('join_', '').toUpperCase();
         const maxP = await getMaxPairs(supabase, userId);
-        const { data: ex } = await supabase
-          .from('pair_users').select('pair_code').eq('user_id', userId);
+        const { data: ex } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
         const isAdmin = ADMIN_IDS.includes(userId);
 
         if (!isAdmin && ex && ex.length >= maxP) {
@@ -131,58 +194,26 @@ export async function onRequestPost(context) {
           return new Response('OK');
         }
 
-        const { data: pair } = await supabase
-          .from('pairs').select('*').eq('code', joinCode).single();
-        if (!pair) {
-          await sendMessage(env, chatId, `❌ Пара \`${joinCode}\` не найдена.`);
-          return new Response('OK');
-        }
+        const { data: pair } = await supabase.from('pairs').select('*').eq('code', joinCode).single();
+        if (!pair) { await sendMessage(env, chatId, `❌ Пара \`${joinCode}\` не найдена.`); return new Response('OK'); }
 
-        const { data: members } = await supabase
-          .from('pair_users').select('user_id').eq('pair_code', joinCode);
+        const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', joinCode);
+        if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, '✅ Ты уже в этой паре!', webAppButton); return new Response('OK'); }
+        if (members && members.length >= 2) { await sendMessage(env, chatId, '⚠️ В паре уже 2 участника.'); return new Response('OK'); }
 
-        if (members?.some(m => m.user_id === userId)) {
-          await sendMessage(env, chatId, '✅ Ты уже в этой паре!', webAppButton);
-          return new Response('OK');
-        }
-        if (members && members.length >= 2) {
-          await sendMessage(env, chatId, '⚠️ В паре уже 2 участника.');
-          return new Response('OK');
-        }
-
-        await supabase.from('pair_users').insert({
-          pair_code: joinCode,
-          user_id: userId,
-          display_name: firstName,
-          username: username,
-        });
-
-        await sendMessage(env, chatId,
-          `✅ *Ты присоединился к паре!*\nКод: \`${joinCode}\``,
-          webAppButton
-        );
+        await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username });
+        await sendMessage(env, chatId, `✅ *Ты присоединился к паре!*\nКод: \`${joinCode}\``, webAppButton);
 
         for (const m of members || []) {
           if (m.user_id !== userId) {
-            await sendMessage(env, m.user_id,
-              `🎉 *${firstName}* присоединился к паре \`${joinCode}\`!`,
-              webAppButton
-            );
+            await sendMessage(env, m.user_id, `🎉 *${firstName}* присоединился к паре \`${joinCode}\`!`, webAppButton);
           }
         }
         return new Response('OK');
       }
 
-      // Normal /start
       await sendMessage(env, chatId,
-        `Привет, ${firstName}! 🔥\n\n` +
-        `*Chumi* — растите огонёк вместе с другом!\n\n` +
-        `📝 Команды:\n` +
-        `/create — создать пару\n` +
-        `/join КОД — вступить в пару\n` +
-        `/mypairs — мои огоньки\n` +
-        `/status — подробный статус\n` +
-        `/help — справка`,
+        `Привет, ${firstName}! 🔥\n\n*Chumi* — растите огонёк вместе с другом!\n\n📝 Команды:\n/create — создать пару\n/join КОД — вступить в пару\n/mypairs — мои огоньки\n/status — подробный статус\n/help — справка`,
         webAppButton
       );
       return new Response('OK');
@@ -190,16 +221,7 @@ export async function onRequestPost(context) {
 
     // /help
     if (text === '/help') {
-      await sendMessage(env, chatId,
-        `📖 *Команды:*\n\n` +
-        `/start — начать\n` +
-        `/create — создать пару\n` +
-        `/join КОД — вступить\n` +
-        `/mypairs — список\n` +
-        `/status — статус\n\n` +
-        `🔥 Выполняйте задания каждый день!`,
-        webAppButton
-      );
+      await sendMessage(env, chatId, `📖 *Команды:*\n\n/start — начать\n/create — создать пару\n/join КОД — вступить\n/mypairs — список\n/status — статус\n\n🔥 Выполняйте задания каждый день!`, webAppButton);
       return new Response('OK');
     }
 
@@ -207,96 +229,43 @@ export async function onRequestPost(context) {
     if (text === '/create') {
       const maxPairs = await getMaxPairs(supabase, userId);
       const isAdmin = ADMIN_IDS.includes(userId);
-      const { data: existing } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
+      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
 
       if (!isAdmin && existing && existing.length >= maxPairs) {
-        await sendMessage(env, chatId,
-          `⚠️ У тебя ${existing.length}/${maxPairs} пар. Купи слот или удали пару.`,
-          webAppButton
-        );
+        await sendMessage(env, chatId, `⚠️ У тебя ${existing.length}/${maxPairs} пар.`, webAppButton);
         return new Response('OK');
       }
 
       const code = generateCode();
-      await supabase.from('pairs').insert({
-        code,
-        pet_type: 'spark',
-        streak_days: 0,
-        growth_points: 0,
-        hatched: false,
-        bg_id: 'room',
-        pet_name: null,
-        streak_recoveries_used: 0,
-        is_dead: false,
-      });
-
-      await supabase.from('pair_users').insert({
-        pair_code: code,
-        user_id: userId,
-        display_name: firstName,
-        username: username,
-      });
-
-      await sendMessage(env, chatId,
-        `✅ *Пара создана!*\n\nКод: \`${code}\`\n\n` +
-        `Отправь другу: /join ${code}`,
-        webAppButton
-      );
+      await supabase.from('pairs').insert({ code, pet_type: 'spark', streak_days: 0, growth_points: 0, hatched: false, bg_id: 'room', pet_name: null, streak_recoveries_used: 0, is_dead: false });
+      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
+      await sendMessage(env, chatId, `✅ *Пара создана!*\n\nКод: \`${code}\`\n\nОтправь другу: /join ${code}`, webAppButton);
       return new Response('OK');
     }
 
     // /join CODE
     if (text.startsWith('/join')) {
       const code = text.split(' ')[1]?.trim()?.toUpperCase();
-      if (!code) {
-        await sendMessage(env, chatId, '⚠️ Укажи код: `/join ABCDEF`');
-        return new Response('OK');
-      }
+      if (!code) { await sendMessage(env, chatId, '⚠️ Укажи код: `/join ABCDEF`'); return new Response('OK'); }
 
       const maxPairs = await getMaxPairs(supabase, userId);
       const isAdmin = ADMIN_IDS.includes(userId);
-      const { data: existing } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
+      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
+      if (!isAdmin && existing && existing.length >= maxPairs) { await sendMessage(env, chatId, `⚠️ Лимит пар: ${maxPairs}.`, webAppButton); return new Response('OK'); }
 
-      if (!isAdmin && existing && existing.length >= maxPairs) {
-        await sendMessage(env, chatId, `⚠️ Лимит пар: ${maxPairs}.`, webAppButton);
-        return new Response('OK');
-      }
+      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).single();
+      if (!pair) { await sendMessage(env, chatId, '❌ Пара не найдена.'); return new Response('OK'); }
 
-      const { data: pair } = await supabase
-        .from('pairs').select('*').eq('code', code).single();
-      if (!pair) {
-        await sendMessage(env, chatId, '❌ Пара не найдена.');
-        return new Response('OK');
-      }
+      const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', code);
+      if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, '✅ Ты уже в паре!', webAppButton); return new Response('OK'); }
+      if (members && members.length >= 2) { await sendMessage(env, chatId, '⚠️ Пара заполнена.'); return new Response('OK'); }
 
-      const { data: members } = await supabase
-        .from('pair_users').select('user_id').eq('pair_code', code);
-
-      if (members?.some(m => m.user_id === userId)) {
-        await sendMessage(env, chatId, '✅ Ты уже в паре!', webAppButton);
-        return new Response('OK');
-      }
-      if (members && members.length >= 2) {
-        await sendMessage(env, chatId, '⚠️ Пара заполнена.');
-        return new Response('OK');
-      }
-
-      await supabase.from('pair_users').insert({
-        pair_code: code,
-        user_id: userId,
-        display_name: firstName,
-        username: username,
-      });
-
+      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
       await sendMessage(env, chatId, `✅ *Ты в паре!* Код: \`${code}\``, webAppButton);
 
       for (const m of members || []) {
         if (m.user_id !== userId) {
-          await sendMessage(env, m.user_id,
-            `🎉 *${firstName}* присоединился к \`${code}\`!`, webAppButton
-          );
+          await sendMessage(env, m.user_id, `🎉 *${firstName}* присоединился к \`${code}\`!`, webAppButton);
         }
       }
       return new Response('OK');
@@ -304,121 +273,35 @@ export async function onRequestPost(context) {
 
     // /mypairs
     if (text === '/mypairs') {
-      const { data: userPairs } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
-
-      if (!userPairs || userPairs.length === 0) {
-        await sendMessage(env, chatId, '😔 Нет пар. Создай: /create');
-        return new Response('OK');
-      }
+      const { data: userPairs } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
+      if (!userPairs || userPairs.length === 0) { await sendMessage(env, chatId, '😔 Нет пар. Создай: /create'); return new Response('OK'); }
 
       let msg = '🔥 *Мои огоньки:*\n\n';
       for (const up of userPairs) {
-        const { data: pair } = await supabase
-          .from('pairs').select('*').eq('code', up.pair_code).single();
+        const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
         if (!pair) continue;
         const lv = getLevel(pair.growth_points || 0);
         const name = pair.pet_name || lv.name;
-        msg += `${lv.emoji} *${name}* — ${lv.name}\n`;
-        msg += `   Код: \`${pair.code}\` | ${pair.growth_points || 0} XP | 🔥 ${pair.streak_days || 0} дн.\n\n`;
+        msg += `${lv.emoji} *${name}* — ${lv.name}\n   Код: \`${pair.code}\` | ${pair.growth_points || 0} XP | 🔥 ${pair.streak_days || 0} дн.\n\n`;
       }
       await sendMessage(env, chatId, msg, webAppButton);
       return new Response('OK');
     }
 
-    // ═══════════════════════════════════════
-// Inline Query — милые сообщения для заданий
-// ═══════════════════════════════════════
-if (update.inline_query) {
-  const queryId = update.inline_query.id;
-
-  const CUTE_MESSAGES = [
-    "Ты моё солнышко ☀️",
-    "Думаю о тебе 💭💕",
-    "Ты делаешь мой день лучше 🌈",
-    "Обнимаю тебя мысленно 🤗",
-    "Ты самый лучший человек на свете 💖",
-    "Скучаю по тебе 🥺",
-    "Ты мой любимый человечек 💗",
-    "Спасибо что ты есть 🙏💕",
-    "Хочу обнять тебя прямо сейчас 🫂",
-    "Ты заслуживаешь всего самого лучшего ✨",
-    "Улыбнись, ты прекрасен(на) 😊",
-    "Ты согреваешь моё сердце 💓",
-    "Мне так повезло что ты у меня есть 🍀",
-    "Посылаю тебе много любви 💌",
-    "Ты мой самый близкий человек 🫶",
-    "Каждый день с тобой — подарок 🎁",
-    "Ты делаешь мир ярче 🌟",
-    "Люблю твою улыбку 😄💕",
-    "Ты — причина моего счастья 😍",
-    "Давай проведём вечер вместе? 🌙",
-    "Горжусь тобой! 🏆💕",
-    "Ты невероятный человек 💎",
-    "Хочу увидеть тебя поскорее 👀💗",
-    "Наш огонёк растёт благодаря тебе 🔥",
-    "Отправляю тебе виртуальный поцелуй 😘",
-    "Ты мой лучший друг и любимый человек 💞",
-    "Без тебя день не тот 🥹",
-    "Ты заряжаешь меня энергией ⚡💕",
-    "Давай никогда не теряем наш стрик! 🔥",
-    "Ты — моя самая тёплая мысль 💭❤️",
-  ];
-
-  // Перемешиваем и берём 10 случайных
-  const shuffled = CUTE_MESSAGES.sort(() => Math.random() - 0.5).slice(0, 10);
-
-  const results = shuffled.map((text, i) => ({
-    type: 'article',
-    id: String(i),
-    title: text,
-    description: 'Нажми чтобы отправить 💕',
-    input_message_content: {
-      message_text: text,
-    },
-  }));
-
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerInlineQuery`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      inline_query_id: queryId,
-      results,
-      cache_time: 0,
-      is_personal: true,
-    }),
-  });
-
-  return new Response('ok');
-}
-
     // /status
     if (text === '/status') {
-      const { data: userPairs } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
-
-      if (!userPairs || userPairs.length === 0) {
-        await sendMessage(env, chatId, '😔 Нет пар.');
-        return new Response('OK');
-      }
+      const { data: userPairs } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
+      if (!userPairs || userPairs.length === 0) { await sendMessage(env, chatId, '😔 Нет пар.'); return new Response('OK'); }
 
       let msg = '📊 *Статус:*\n\n';
       for (const up of userPairs) {
-        const { data: pair } = await supabase
-          .from('pairs').select('*').eq('code', up.pair_code).single();
+        const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
         if (!pair) continue;
-
-        const { data: members } = await supabase
-          .from('pair_users').select('user_id, display_name').eq('pair_code', up.pair_code);
-
+        const { data: members } = await supabase.from('pair_users').select('user_id, display_name').eq('pair_code', up.pair_code);
         const lv = getLevel(pair.growth_points || 0);
         const name = pair.pet_name || lv.name;
         const partner = members?.find(m => m.user_id !== userId);
-
-        msg += `${lv.emoji} *${name}* (${lv.name})\n`;
-        msg += `   Код: \`${pair.code}\`\n`;
-        msg += `   🔥 Серия: ${pair.streak_days || 0} дн. | ⭐ ${pair.growth_points || 0} XP\n`;
-        msg += `   👥 ${members?.length || 1}/2`;
+        msg += `${lv.emoji} *${name}* (${lv.name})\n   Код: \`${pair.code}\`\n   🔥 Серия: ${pair.streak_days || 0} дн. | ⭐ ${pair.growth_points || 0} XP\n   👥 ${members?.length || 1}/2`;
         if (partner) msg += ` — с ${partner.display_name || 'партнёром'}`;
         msg += '\n';
         if (pair.is_dead) msg += '   💀 *Мёртв*\n';

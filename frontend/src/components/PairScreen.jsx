@@ -5,18 +5,18 @@ import { useLang } from '../context/LangContext';
 const API = '/api';
 
 const LEVELS = [
-  { level: 0, name: 'Spark',   nameRu: 'Искра',    maxPoints: 30,  bg: ['#FFF3D0','#FFE082'], accent: '#FF9800', checkColor: '#FF9800' },
-  { level: 1, name: 'Flame',   nameRu: 'Огонёк',   maxPoints: 70,  bg: ['#E8D5F5','#B39DDB'], accent: '#7C4DFF', checkColor: '#7C4DFF' },
-  { level: 2, name: 'Blaze',   nameRu: 'Пламя',    maxPoints: 50,  bg: ['#FCE4EC','#F48FB1'], accent: '#E91E63', checkColor: '#E91E63' },
-  { level: 3, name: 'Fire',    nameRu: 'Костёр',    maxPoints: 150, bg: ['#FFCCBC','#FF8A65'], accent: '#FF5722', checkColor: '#FF5722' },
-  { level: 4, name: 'Inferno', nameRu: 'Инферно',  maxPoints: 200, bg: ['#B2EBF2','#4DD0E1'], accent: '#00BCD4', checkColor: '#00BCD4' },
+  { level: 0, name: 'Spark',  nameRu: 'Искра',   maxPoints: 30,  bg: ['#FFF8E1','#FFE082'], accent: '#F5A623', check: '#F5A623' },
+  { level: 1, name: 'Flame',  nameRu: 'Огонёк',  maxPoints: 70,  bg: ['#FFE0B2','#FFB74D'], accent: '#FB8C00', check: '#FB8C00' },
+  { level: 2, name: 'Blaze',  nameRu: 'Пламя',   maxPoints: 50,  bg: ['#E8D5F5','#B39DDB'], accent: '#7C4DFF', check: '#7C4DFF' },
+  { level: 3, name: 'Fire',   nameRu: 'Костёр',   maxPoints: 150, bg: ['#BBDEFB','#64B5F6'], accent: '#1E88E5', check: '#1E88E5' },
+  { level: 4, name: 'Inferno',nameRu: 'Инферно', maxPoints: 200, bg: ['#B2DFDB','#4DB6AC'], accent: '#00897B', check: '#00897B' },
 ];
 
 const TASKS = [
   { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
-  { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'inline' },
-  { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'inline' },
-  { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'inline' },
+  { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'chat' },
+  { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'chat' },
+  { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'chat' },
   { key: 'pet_touch',    points: 1, ru: 'Погладить питомца',                 en: 'Pet your flame',                icon: '🔥', action: 'pet' },
 ];
 
@@ -24,12 +24,12 @@ function getLevel(totalPoints) {
   let acc = 0;
   for (let i = 0; i < LEVELS.length; i++) {
     if (totalPoints < acc + LEVELS[i].maxPoints) {
-      return { ...LEVELS[i], current: totalPoints - acc, needed: LEVELS[i].maxPoints, remaining: acc + LEVELS[i].maxPoints - totalPoints, index: i };
+      return { ...LEVELS[i], current: totalPoints - acc, needed: LEVELS[i].maxPoints, remaining: acc + LEVELS[i].maxPoints - totalPoints, idx: i };
     }
     acc += LEVELS[i].maxPoints;
   }
   const last = LEVELS[LEVELS.length - 1];
-  return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0, index: LEVELS.length - 1 };
+  return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0, idx: LEVELS.length - 1 };
 }
 
 export default function PairScreen() {
@@ -47,6 +47,7 @@ export default function PairScreen() {
   const [showLevels, setShowLevels] = useState(false);
   const [petAnim, setPetAnim] = useState(false);
   const [avatars, setAvatars] = useState({});
+  const [showSoon, setShowSoon] = useState(false);
 
   const pendingTaskRef = useRef(null);
 
@@ -58,14 +59,16 @@ export default function PairScreen() {
         body: JSON.stringify({ code: pairId, userId, taskKey }),
       });
       const data = await res.json();
+      console.log('complete-task response:', taskKey, data);
       return !data.error;
-    } catch (e) { return false; }
+    } catch (e) { console.error('complete-task err:', e); return false; }
   }, [pairId, userId]);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch(`${API}/pair/${pairId}/${userId}`);
       const data = await res.json();
+      console.log('pair data:', data);
       if (data.error) { navigate('/'); return; }
       setPair(data);
       setNewName(data.pet_name || '');
@@ -82,12 +85,13 @@ export default function PairScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Return from inline → complete pending task
+  // Return from chat → complete pending task
   useEffect(() => {
     const finishPending = async () => {
       if (pendingTaskRef.current) {
         const taskKey = pendingTaskRef.current;
         pendingTaskRef.current = null;
+        console.log('Finishing pending task:', taskKey);
         await completeTask(taskKey);
         load();
       }
@@ -101,7 +105,7 @@ export default function PairScreen() {
     };
   }, [completeTask, load, tg]);
 
-  // Avatars via proxy
+  // Avatars
   useEffect(() => {
     if (!pair?.members) return;
     pair.members.forEach(async (m) => {
@@ -130,17 +134,31 @@ export default function PairScreen() {
     try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {}
   };
 
+  // Открыть чат партнёра и пометить задание при возврате
+  const openPartnerChat = (taskKey) => {
+    const uname = partner?.username;
+    pendingTaskRef.current = taskKey;
+
+    if (tg?.switchInlineQuery) {
+      // Открывает список чатов с inline-сообщениями
+      tg.switchInlineQuery('', ['users']);
+    } else if (uname && tg?.openTelegramLink) {
+      tg.openTelegramLink(`https://t.me/${uname}`);
+    } else if (uname) {
+      window.open(`https://t.me/${uname}`, '_blank');
+    } else {
+      // Нет партнёра или нет способа открыть чат — просто засчитываем
+      pendingTaskRef.current = null;
+      completeTask(taskKey).then(() => load());
+    }
+  };
+
   const handleTask = async (task) => {
     if (task.completed) return;
     haptic('light');
 
-    if (task.action === 'inline') {
-      if (!tg?.switchInlineQuery) {
-        tg?.showAlert?.(lang === 'ru' ? 'Обновите Telegram' : 'Update Telegram');
-        return;
-      }
-      pendingTaskRef.current = task.key;
-      tg.switchInlineQuery('', ['users']);
+    if (task.action === 'chat') {
+      openPartnerChat(task.key);
       return;
     }
 
@@ -175,19 +193,13 @@ export default function PairScreen() {
     setRenaming(false);
   };
 
-  const handleClose = () => {
-    if (tg?.close) tg.close();
-    else navigate('/');
-  };
-
-  const petImage = `/pets/${pair.pet_type || 'spark'}_${Math.min(lv.index, 4)}.png`;
+  const petImage = `/pets/${pair.pet_type || 'spark'}_${Math.min(lv.idx, 4)}.png`;
 
   return (
     <div className="sk" style={{ background: `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 60%, #f5f5f5 100%)` }}>
 
-      {/* ── Top bar ── */}
+      {/* ── Top bar: Name + Menu ── */}
       <div className="sk-topbar">
-        <button className="sk-topbar-btn" onClick={handleClose}>✕</button>
         <div className="sk-topbar-title">
           {renaming ? (
             <div className="sk-rename-inline">
@@ -204,24 +216,18 @@ export default function PairScreen() {
         <button className="sk-topbar-btn" onClick={() => setShowMenu(!showMenu)}>•••</button>
       </div>
 
-      {/* ── Menu dropdown ── */}
+      {/* ── Menu ── */}
       {showMenu && (
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)}>
           <div className="sk-menu" onClick={e => e.stopPropagation()}>
-            <button onClick={() => { setRenaming(true); setShowMenu(false); }}>
-              ✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}
-            </button>
-            <button onClick={() => { navigator.clipboard?.writeText(pairId); setShowMenu(false); }}>
-              📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}
-            </button>
-            <button onClick={() => navigate('/')}>
-              📋 {lang === 'ru' ? 'Мои пары' : 'My pairs'}
-            </button>
+            <button onClick={() => { setRenaming(true); setShowMenu(false); }}>✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}</button>
+            <button onClick={() => { navigator.clipboard?.writeText(pairId); setShowMenu(false); haptic('light'); }}>📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}</button>
+            <button onClick={() => navigate('/')}>🔥 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
           </div>
         </div>
       )}
 
-      {/* ── Streak + Avatars ── */}
+      {/* ── Streak + Avatars (same line) ── */}
       <div className="sk-header">
         <div className="sk-streak">
           <div className="sk-streak-label">{lang === 'ru' ? 'Дней Серии' : 'Streak Days'}</div>
@@ -229,70 +235,56 @@ export default function PairScreen() {
         </div>
         <div className="sk-avatars">
           <div className="sk-ava">
-            {avatars[userId]
-              ? <img src={avatars[userId]} alt="" onError={e => { e.target.style.display='none'; }} />
-              : <span>👤</span>}
+            {avatars[userId] ? <img src={avatars[userId]} alt="" onError={e => e.target.style.display='none'} /> : <span>👤</span>}
           </div>
           <div className="sk-ava sk-ava-partner">
-            {partner && avatars[partner.user_id]
-              ? <img src={avatars[partner.user_id]} alt="" onError={e => { e.target.style.display='none'; }} />
-              : <span>👤</span>}
+            {partner && avatars[partner.user_id] ? <img src={avatars[partner.user_id]} alt="" onError={e => e.target.style.display='none'} /> : <span>👤</span>}
           </div>
         </div>
       </div>
 
-      {/* ── Pet area with arrows ── */}
+      {/* ── Pet ── */}
       <div className="sk-pet-area">
-        <div className="sk-arrow sk-arrow-left" style={{ visibility: 'hidden' }}>‹</div>
         <div className={`sk-pet ${petAnim ? 'sk-pet-bounce' : ''}`} onClick={handlePetClick}>
           <img src={petImage} alt="pet" onError={e => { e.target.outerHTML = '<div style="font-size:120px">🔥</div>'; }} />
         </div>
-        <div className="sk-arrow sk-arrow-right" style={{ visibility: 'hidden' }}>›</div>
       </div>
 
-      {/* ── Outfits button ── */}
-      <div className="sk-outfits-btn">
+      {/* ── Outfits button (заглушка) ── */}
+      <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
         <span>🔥</span><span>👕</span>
-        <span className="sk-outfits-text">{lang === 'ru' ? 'Наряды' : 'Outfits'}</span>
+        <span className="sk-outfits-text">{showSoon ? (lang === 'ru' ? 'Скоро!' : 'Soon!') : (lang === 'ru' ? 'Наряды' : 'Outfits')}</span>
       </div>
 
-      {/* ── Progress bar ── */}
+      {/* ── Progress ── */}
       <div className="sk-progress-wrap" onClick={() => setShowLevels(true)}>
         <div className="sk-progress">
           <div className="sk-progress-fill" style={{ width: `${pct}%`, background: lv.accent }} />
           <span className="sk-progress-text">{lv.current}/{lv.needed}</span>
         </div>
         <div className="sk-progress-hint">
-          {lv.remaining > 0
-            ? (lang === 'ru' ? `Скоро появится больше образов >` : `More outfits coming soon >`)
-            : (lang === 'ru' ? 'Максимальный уровень!' : 'Max level!')}
+          {lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›
         </div>
       </div>
 
-      {/* ── Tasks card ── */}
+      {/* ── Tasks ── */}
       <div className="sk-tasks">
         <div className="sk-tasks-top">
           <h3>{lang === 'ru' ? 'Растите своего Серийчика' : 'Grow your Streak Pet'}</h3>
-          <span className="sk-tasks-count" style={{ color: lv.accent }}>{doneCount}/{mergedTasks.length}</span>
+          <span className="sk-tasks-count" style={{ color: lv.accent, background: lv.accent + '18' }}>{doneCount}/{mergedTasks.length}</span>
         </div>
         {mergedTasks.map(task => (
-          <div
-            key={task.key}
-            className={`sk-task ${task.completed ? 'sk-task-done' : ''}`}
-            onClick={() => handleTask(task)}
-          >
-            <div className="sk-task-check" style={task.completed ? { background: lv.checkColor, borderColor: lv.checkColor } : {}}>
+          <div key={task.key} className={`sk-task ${task.completed ? 'sk-task-done' : ''}`} onClick={() => handleTask(task)}>
+            <div className="sk-task-check" style={task.completed ? { background: lv.check, borderColor: lv.check } : { borderColor: lv.check + '40' }}>
               {task.completed && <span>✓</span>}
             </div>
             <div className="sk-task-body">
               <div className="sk-task-title">{lang === 'ru' ? task.ru : task.en}</div>
-              <div className="sk-task-pts" style={{ color: task.completed ? '#999' : lv.accent }}>
-                {task.completed
-                  ? (lang === 'ru' ? 'Выполнено' : 'Completed')
-                  : `+${task.points} ${lang === 'ru' ? 'очка роста' : 'growth pts'}`}
+              <div className="sk-task-pts" style={{ color: task.completed ? '#aaa' : lv.accent }}>
+                {task.completed ? (lang === 'ru' ? 'Выполнено' : 'Done') : `+${task.points} ${lang === 'ru' ? 'очка роста' : 'growth pts'}`}
               </div>
             </div>
-            {!task.completed && task.action === 'inline' && <div className="sk-task-go">›</div>}
+            {!task.completed && task.action === 'chat' && <div className="sk-task-go">›</div>}
           </div>
         ))}
       </div>
@@ -303,7 +295,7 @@ export default function PairScreen() {
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <h3>{lang === 'ru' ? 'Уровни' : 'Levels'}</h3>
             {LEVELS.map((l, i) => (
-              <div key={l.level} className={`sk-lvl-row ${i === lv.index ? 'sk-lvl-active' : ''}`}>
+              <div key={l.level} className={`sk-lvl-row ${i === lv.idx ? 'sk-lvl-active' : ''}`}>
                 <div className="sk-lvl-badge" style={{ background: l.accent + '22', color: l.accent }}>{l.level}</div>
                 <span className="sk-lvl-name">{lang === 'ru' ? l.nameRu : l.name}</span>
                 <span className="sk-lvl-pts">{l.maxPoints} pts</span>
