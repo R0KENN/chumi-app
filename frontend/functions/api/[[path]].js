@@ -1,26 +1,28 @@
 import { createClient } from '@supabase/supabase-js';
 
-const PET_TYPES = ['muru', 'neco', 'pico', 'boba'];
-const PET_STAGES = [
-  { name: 'Egg', minPoints: 0 },
-  { name: 'Baby', minPoints: 0 },
-  { name: 'Teen', minPoints: 200 },
-  { name: 'Adult', minPoints: 500 },
-  { name: 'Legend', minPoints: 1000 }
-];
+// ────────── CONFIG ──────────
 const ADMIN_IDS = ['713156118'];
 const MAX_PAIRS_BASE = 2;
 
+const LEVELS = [
+  { level: 0, name: 'Spark',   nameRu: 'Искра',   maxPoints: 30  },
+  { level: 1, name: 'Flame',   nameRu: 'Огонёк',  maxPoints: 70  },
+  { level: 2, name: 'Blaze',   nameRu: 'Пламя',   maxPoints: 50  },
+  { level: 3, name: 'Fire',    nameRu: 'Костёр',   maxPoints: 150 },
+  { level: 4, name: 'Inferno', nameRu: 'Инферно', maxPoints: 200 },
+];
+
+const TASK_POINTS = {
+  daily_open: 1,
+  send_msg: 1,
+  send_sticker: 2,
+  send_media: 4,
+  pet_touch: 1,
+};
+
+// ────────── HELPERS ──────────
 function getSupabase(env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
-}
-
-function getStage(points, hatched) {
-  if (!hatched) return PET_STAGES[0];
-  for (let i = PET_STAGES.length - 1; i >= 1; i--) {
-    if (points >= PET_STAGES[i].minPoints) return PET_STAGES[i];
-  }
-  return PET_STAGES[1];
 }
 
 function generateCode() {
@@ -39,10 +41,6 @@ function getCurrentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function randomPetType() {
-  return PET_TYPES[Math.floor(Math.random() * PET_TYPES.length)];
-}
-
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -50,9 +48,26 @@ function json(data, status = 200) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    }
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
   });
+}
+
+function getLevel(totalPoints) {
+  let accumulated = 0;
+  for (let i = 0; i < LEVELS.length; i++) {
+    if (totalPoints < accumulated + LEVELS[i].maxPoints) {
+      return {
+        ...LEVELS[i],
+        current: totalPoints - accumulated,
+        needed: LEVELS[i].maxPoints,
+        remaining: accumulated + LEVELS[i].maxPoints - totalPoints,
+      };
+    }
+    accumulated += LEVELS[i].maxPoints;
+  }
+  const last = LEVELS[LEVELS.length - 1];
+  return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0 };
 }
 
 async function getMaxPairs(supabase, userId) {
@@ -64,48 +79,51 @@ async function getMaxPairs(supabase, userId) {
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
 
-function formatPair(pair, members, feedingsToday, userId) {
-  const today = getTodayDate();
-  const userFed = feedingsToday?.some(f => f.telegram_user_id === userId && f.feed_date === today) || false;
-  const allFed = members?.length > 0 && members.every(m =>
-    feedingsToday?.some(f => f.telegram_user_id === m.telegram_user_id && f.feed_date === today)
-  );
-  const userPetted = feedingsToday?.some(f => f.telegram_user_id === userId && f.feed_date === today && f.petted) || false;
-  const stage = getStage(pair.growth_points, pair.hatched);
-  const partner = members?.find(m => m.telegram_user_id !== userId);
+async function sendTelegramMessage(env, chatId, text) {
+  try {
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    });
+  } catch (e) {
+    console.error('Telegram send error:', e);
+  }
+}
+
+function formatPair(pair, members, tasksToday, userId) {
+  const lv = getLevel(pair.growth_points || 0);
+  const partner = members?.find(m => m.user_id !== userId);
+  const me = members?.find(m => m.user_id === userId);
 
   return {
     code: pair.code,
-    petType: pair.pet_type,
-    petName: pair.pet_name,
-    hatched: pair.hatched,
-    streakDays: pair.streak_days,
-    growthPoints: pair.growth_points,
-    stage: stage.name,
-    bgId: pair.bg_id || 'room',
-    isDead: pair.is_dead || false,
-    streakRecoveriesUsed: pair.streak_recoveries_used || 0,
-    lastRecoveryMonth: pair.last_recovery_month,
-    userFedToday: userFed,
-    allFedToday: allFed,
-    userPettedToday: userPetted,
+    pet_type: pair.pet_type,
+    pet_name: pair.pet_name,
+    streak_days: pair.streak_days || 0,
+    growth_points: pair.growth_points || 0,
+    level: lv.level,
+    levelName: lv.name,
+    bg_id: pair.bg_id || 'room',
+    is_dead: pair.is_dead || false,
+    streak_recoveries_used: pair.streak_recoveries_used || 0,
+    last_recovery_month: pair.last_recovery_month,
+    last_streak_date: pair.last_streak_date,
     members: members?.map(m => ({
-      odID: m.telegram_user_id,
-      displayName: m.display_name || null
+      user_id: m.user_id,
+      display_name: m.display_name || null,
+      username: m.username || null,
+      avatar_url: m.avatar_url || null,
     })) || [],
-    partnerName: partner?.display_name || null,
-    memberCount: members?.length || 0
+    partner_name: partner?.display_name || null,
+    partner_username: partner?.username || null,
+    my_name: me?.display_name || null,
+    member_count: members?.length || 0,
+    daily_tasks: tasksToday || [],
   };
 }
 
-async function sendTelegramMessage(env, chatId, text) {
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' })
-  });
-}
-
+// ────────── MAIN HANDLER ──────────
 export async function onRequest(context) {
   const { request, env } = context;
 
@@ -114,8 +132,8 @@ export async function onRequest(context) {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      }
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
     });
   }
 
@@ -124,423 +142,380 @@ export async function onRequest(context) {
     const path = url.pathname;
     const supabase = getSupabase(env);
 
-    // ═══ GET /api/pairs/:userId ═══
-if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
-    const userId = path.split('/')[3];
-    const { data: userPairs } = await supabase
-      .from('pair_users')
-      .select('pair_code')
-      .eq('user_id', userId);
+    // ═══════════════════════════════════════
+    // GET /api/pairs/:userId
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
+      const userId = path.split('/')[3];
 
-    if (!userPairs || userPairs.length === 0) return json({ pairs: [] });
+      const { data: userPairs } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId);
 
-    const pairs = [];
-    for (const up of userPairs) {
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
-      if (!pair) continue;
-      const { data: members } = await supabase.from('pair_users').select('*').eq('pair_code', up.pair_code);
-      const { data: feeds } = await supabase.from('feedings').select('*').eq('pair_code', up.pair_code).eq('feed_date', getTodayDate());
-      pairs.push(formatPair(pair, members, feeds, userId));
+      if (!userPairs || userPairs.length === 0) return json({ pairs: [] });
+
+      const today = getTodayDate();
+      const pairs = [];
+
+      for (const up of userPairs) {
+        const { data: pair } = await supabase
+          .from('pairs').select('*').eq('code', up.pair_code).single();
+        if (!pair) continue;
+
+        const { data: members } = await supabase
+          .from('pair_users').select('*').eq('pair_code', up.pair_code);
+
+        const { data: tasks } = await supabase
+          .from('daily_tasks').select('*')
+          .eq('pair_code', up.pair_code)
+          .eq('user_id', userId)
+          .eq('task_date', today);
+
+        pairs.push(formatPair(pair, members, tasks, userId));
+      }
+
+      return json({ pairs });
     }
-    return json({ pairs });
-}
 
-
-    // ═══ GET /api/pair/:pairCode/:userId ═══
+    // ═══════════════════════════════════════
+    // GET /api/pair/:pairCode/:userId
+    // ═══════════════════════════════════════
     if (request.method === 'GET' && path.match(/^\/api\/pair\/[^/]+\/[^/]+$/)) {
       const parts = path.split('/');
       const pairCode = parts[3];
       const userId = parts[4];
+      const today = getTodayDate();
 
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', pairCode).single();
+      const { data: pair } = await supabase
+        .from('pairs').select('*').eq('code', pairCode).single();
       if (!pair) return json({ error: 'Pair not found' }, 404);
 
-      const { data: members } = await supabase.from('pair_users').select('*').eq('pair_code', pairCode);
-      const { data: feeds } = await supabase.from('feedings').select('*').eq('pair_code', pairCode).eq('feed_date', getTodayDate());
+      const { data: members } = await supabase
+        .from('pair_users').select('*').eq('pair_code', pairCode);
 
-      // Daily tasks
-      const { data: tasks } = await supabase.from('daily_tasks')
-        .select('*')
+      const { data: tasks } = await supabase
+        .from('daily_tasks').select('*')
         .eq('pair_code', pairCode)
-        .eq('telegram_user_id', userId)
-        .eq('task_date', getTodayDate());
+        .eq('user_id', userId)
+        .eq('task_date', today);
 
-      const pairData = formatPair(pair, members, feeds, userId);
-      pairData.dailyTasks = tasks || [];
-
-      return json({ pair: pairData });
+      return json(formatPair(pair, members, tasks, userId));
     }
 
-    // ═══ POST /api/create ═══
+    // ═══════════════════════════════════════
+    // GET /api/avatar/:userId
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
+      const tgUserId = path.split('/')[3];
+      const BOT_TOKEN = env.BOT_TOKEN;
+
+      try {
+        const photosRes = await fetch(
+          `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
+        );
+        const photosData = await photosRes.json();
+
+        if (!photosData.ok || !photosData.result.photos.length) {
+          return json({ avatar_url: null });
+        }
+
+        const photo = photosData.result.photos[0];
+        const fileId = photo[photo.length - 1].file_id;
+
+        const fileRes = await fetch(
+          `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
+        );
+        const fileData = await fileRes.json();
+
+        if (!fileData.ok) return json({ avatar_url: null });
+
+        const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
+
+        // Cache avatar in pair_users
+        await supabase
+          .from('pair_users')
+          .update({ avatar_url: avatarUrl })
+          .eq('user_id', tgUserId);
+
+        return json({ avatar_url: avatarUrl });
+      } catch (e) {
+        return json({ avatar_url: null });
+      }
+    }
+
+    // ═══════════════════════════════════════
+    // GET /api/daily-tasks/:pairCode/:userId
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/daily-tasks\/[^/]+\/[^/]+$/)) {
+      const parts = path.split('/');
+      const pairCode = parts[3];
+      const userId = parts[4];
+      const today = getTodayDate();
+
+      const { data: tasks } = await supabase
+        .from('daily_tasks').select('*')
+        .eq('pair_code', pairCode)
+        .eq('user_id', userId)
+        .eq('task_date', today);
+
+      return json({ tasks: tasks || [] });
+    }
+
+    // ═══════════════════════════════════════
+    // GET /api/user-slots/:userId
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/user-slots\/[^/]+$/)) {
+      const userId = path.split('/')[3];
+      const maxPairs = await getMaxPairs(supabase, userId);
+      const { data: existing } = await supabase
+        .from('pair_users').select('pair_code').eq('user_id', userId);
+      return json({
+        maxPairs,
+        currentPairs: existing?.length || 0,
+        extraSlots: maxPairs - MAX_PAIRS_BASE,
+      });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/create
+    // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/create') {
       const body = await request.json();
       const userId = String(body.userId);
       const displayName = body.displayName || null;
+      const username = body.username || null;
 
       const maxPairs = await getMaxPairs(supabase, userId);
       const isAdmin = ADMIN_IDS.includes(userId);
 
-      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('telegram_user_id', userId);
+      const { data: existing } = await supabase
+        .from('pair_users').select('pair_code').eq('user_id', userId);
+
       if (!isAdmin && existing && existing.length >= maxPairs) {
-        return json({ error: `Max ${maxPairs} pairs`, maxReached: true, currentCount: existing.length, maxPairs }, 400);
+        return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
       }
 
       const code = generateCode();
+
       await supabase.from('pairs').insert({
         code,
-        pet_type: 'egg',
-        hatched: false,
+        pet_type: 'spark',
         streak_days: 0,
         growth_points: 0,
+        hatched: false,
         bg_id: 'room',
         pet_name: null,
         streak_recoveries_used: 0,
         last_recovery_month: null,
-        is_dead: false
+        is_dead: false,
       });
 
       await supabase.from('pair_users').insert({
         pair_code: code,
-        telegram_user_id: userId,
-        display_name: displayName
+        user_id: userId,
+        display_name: displayName,
+        username: username,
       });
 
       return json({ code });
     }
 
-    // ═══ POST /api/join ═══
+    // ═══════════════════════════════════════
+    // POST /api/join
+    // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/join') {
       const body = await request.json();
       const userId = String(body.userId);
       const code = (body.code || '').trim().toUpperCase();
       const displayName = body.displayName || null;
+      const username = body.username || null;
 
       const maxPairs = await getMaxPairs(supabase, userId);
       const isAdmin = ADMIN_IDS.includes(userId);
 
-      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('telegram_user_id', userId);
+      const { data: existing } = await supabase
+        .from('pair_users').select('pair_code').eq('user_id', userId);
+
       if (!isAdmin && existing && existing.length >= maxPairs) {
         return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
       }
 
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).single();
+      const { data: pair } = await supabase
+        .from('pairs').select('*').eq('code', code).single();
       if (!pair) return json({ error: 'Pair not found' }, 404);
 
-      const { data: members } = await supabase.from('pair_users').select('telegram_user_id').eq('pair_code', code);
-      if (members?.some(m => m.telegram_user_id === userId)) return json({ error: 'Already in pair' }, 400);
-      if (members && members.length >= 2) return json({ error: 'Pair full' }, 400);
+      const { data: members } = await supabase
+        .from('pair_users').select('user_id').eq('pair_code', code);
+
+      if (members?.some(m => m.user_id === userId)) {
+        return json({ error: 'Already in pair' }, 400);
+      }
+      if (members && members.length >= 2) {
+        return json({ error: 'Pair full' }, 400);
+      }
 
       await supabase.from('pair_users').insert({
         pair_code: code,
-        telegram_user_id: userId,
-        display_name: displayName
+        user_id: userId,
+        display_name: displayName,
+        username: username,
       });
 
-      // Notify partner via Telegram
+      // Notify partner
       for (const m of members || []) {
-        if (m.telegram_user_id !== userId) {
-          try {
-            await sendTelegramMessage(env, m.telegram_user_id,
-              `🎉 Кто-то присоединился к паре \`${code}\`!`
-            );
-          } catch (e) {}
+        if (m.user_id !== userId) {
+          await sendTelegramMessage(env, m.user_id,
+            `🎉 Кто-то присоединился к паре \`${code}\`!`
+          );
         }
       }
 
       return json({ code });
     }
 
-    // ═══ POST /api/feed ═══
-    if (request.method === 'POST' && path === '/api/feed') {
+    // ═══════════════════════════════════════
+    // POST /api/complete-task
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/complete-task') {
       const body = await request.json();
+      const code = body.code;
       const userId = String(body.userId);
-      const pairCode = body.pairCode;
+      const taskKey = body.taskKey;
       const today = getTodayDate();
 
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', pairCode).single();
-      if (!pair) return json({ error: 'Pair not found' }, 404);
-      if (pair.is_dead) return json({ error: 'Pet is dead', isDead: true }, 400);
+      // Validate task key
+      const points = TASK_POINTS[taskKey];
+      if (points === undefined) return json({ error: 'Invalid task' }, 400);
 
-      const { data: members } = await supabase.from('pair_users').select('*').eq('pair_code', pairCode);
-      if (!members?.some(m => m.telegram_user_id === userId)) return json({ error: 'Not a member' }, 403);
+      // Check if already done
+      const { data: existing } = await supabase
+        .from('daily_tasks').select('id')
+        .eq('pair_code', code)
+        .eq('user_id', userId)
+        .eq('task_key', taskKey)
+        .eq('task_date', today)
+        .maybeSingle();
 
-      const { data: existingFeed } = await supabase.from('feedings')
-        .select('*')
-        .eq('pair_code', pairCode)
-        .eq('telegram_user_id', userId)
-        .eq('feed_date', today);
+      if (existing) return json({ error: 'Already completed' }, 400);
 
-      if (existingFeed && existingFeed.length > 0) return json({ error: 'Already fed today' }, 400);
-
-      await supabase.from('feedings').insert({
-        pair_code: pairCode,
-        telegram_user_id: userId,
-        feed_date: today
+      // Insert task
+      await supabase.from('daily_tasks').insert({
+        pair_code: code,
+        user_id: userId,
+        task_key: taskKey,
+        task_date: today,
+        completed: true,
+        completed_at: new Date().toISOString(),
       });
 
-      // Mark daily task "feed" as completed
-      await supabase.from('daily_tasks').upsert({
-        pair_code: pairCode,
-        telegram_user_id: userId,
-        task_date: today,
-        task_type: 'feed',
-        completed: true
-      }, { onConflict: 'pair_code,telegram_user_id,task_date,task_type' });
+      // Add growth points
+      const { data: pair } = await supabase
+        .from('pairs').select('growth_points').eq('code', code).single();
 
-      // Check if all members fed
-      const { data: todayFeeds } = await supabase.from('feedings')
-        .select('telegram_user_id')
-        .eq('pair_code', pairCode)
-        .eq('feed_date', today);
-
-      const allFed = members.every(m =>
-        todayFeeds?.some(f => f.telegram_user_id === m.telegram_user_id)
-      );
-
-      let hatched = pair.hatched;
-      let streakDays = pair.streak_days;
-      let growthPoints = pair.growth_points;
-      let petType = pair.pet_type;
-      let evolved = false;
-      let justHatched = false;
-
-      if (allFed) {
-        streakDays += 1;
-        const bonus = 10 + 2 * streakDays;
-        growthPoints += bonus;
-
-        if (!hatched && streakDays >= 3) {
-          hatched = true;
-          justHatched = true;
-          petType = body.chosenPetType || randomPetType();
-          if (!PET_TYPES.includes(petType)) petType = randomPetType();
-        }
-
-        const oldStage = getStage(pair.growth_points, pair.hatched);
-        const newStage = getStage(growthPoints, hatched);
-        if (oldStage.name !== newStage.name && !justHatched) evolved = true;
-
-        await supabase.from('pairs').update({
-          streak_days: streakDays,
-          growth_points: growthPoints,
-          hatched,
-          pet_type: petType
-        }).eq('code', pairCode);
-
-        // Notify partner
-        for (const m of members) {
-          if (m.telegram_user_id !== userId) {
-            try {
-              let notif = `🍖 Твой партнёр покормил питомца! Серия: ${streakDays} дн.`;
-              if (justHatched) notif = `🐣 Яйцо вылупилось! Это *${petType}*!`;
-              if (evolved) notif = `✨ Питомец эволюционировал в *${newStage.name}*!`;
-              await sendTelegramMessage(env, m.telegram_user_id, notif);
-            } catch (e) {}
-          }
-        }
-      } else {
-        // Notify partner that one member fed
-        for (const m of members) {
-          if (m.telegram_user_id !== userId) {
-            try {
-              await sendTelegramMessage(env, m.telegram_user_id,
-                `🍖 Партнёр покормил питомца (\`${pairCode}\`). Твоя очередь!`
-              );
-            } catch (e) {}
-          }
-        }
+      if (pair) {
+        const newPoints = (pair.growth_points || 0) + points;
+        await supabase.from('pairs')
+          .update({ growth_points: newPoints })
+          .eq('code', code);
       }
 
-      const stage = getStage(growthPoints, hatched);
-      return json({
-        allFed,
-        hatched,
-        justHatched,
-        evolved,
-        streakDays,
-        growthPoints,
-        stage: stage.name,
-        petType
-      });
+      return json({ success: true, points_added: points });
     }
 
-    // ═══ POST /api/pet (гладить) ═══
-    if (request.method === 'POST' && path === '/api/pet') {
+    // ═══════════════════════════════════════
+    // POST /api/rename
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/rename') {
       const body = await request.json();
-      const userId = String(body.userId);
-      const pairCode = body.pairCode;
-      const today = getTodayDate();
+      const code = body.code || body.pairCode;
+      const name = (body.pet_name || body.name || '').trim().slice(0, 20);
+      if (!name) return json({ error: 'Name required' }, 400);
 
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', pairCode).single();
-      if (!pair || pair.is_dead) return json({ error: 'Not available' }, 400);
+      await supabase.from('pairs').update({ pet_name: name }).eq('code', code);
+      return json({ success: true, pet_name: name });
+    }
 
-      const { data: existing } = await supabase.from('feedings')
-        .select('*')
-        .eq('pair_code', pairCode)
-        .eq('telegram_user_id', userId)
-        .eq('feed_date', today)
-        .eq('petted', true);
+    // ═══════════════════════════════════════
+    // POST /api/delete
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/delete') {
+      const body = await request.json();
+      const code = body.pairCode || body.code;
 
-      if (existing && existing.length > 0) return json({ error: 'Already petted today' }, 400);
+      await supabase.from('daily_tasks').delete().eq('pair_code', code);
+      await supabase.from('feedings').delete().eq('pair_code', code);
+      await supabase.from('pair_users').delete().eq('pair_code', code);
+      await supabase.from('pairs').delete().eq('code', code);
 
-      // Insert or update
-      const { data: feedRow } = await supabase.from('feedings')
-        .select('*')
-        .eq('pair_code', pairCode)
-        .eq('telegram_user_id', userId)
-        .eq('feed_date', today);
+      return json({ success: true });
+    }
 
-      if (feedRow && feedRow.length > 0) {
-        await supabase.from('feedings')
-          .update({ petted: true })
-          .eq('pair_code', pairCode)
-          .eq('telegram_user_id', userId)
-          .eq('feed_date', today);
-      } else {
-        await supabase.from('feedings').insert({
-          pair_code: pairCode,
-          telegram_user_id: userId,
-          feed_date: today,
-          petted: true
-        });
-      }
-
-      // Mark daily task
-      await supabase.from('daily_tasks').upsert({
-        pair_code: pairCode,
-        telegram_user_id: userId,
-        task_date: today,
-        task_type: 'pet',
-        completed: true
-      }, { onConflict: 'pair_code,telegram_user_id,task_date,task_type' });
-
-      // Bonus: +2 points for petting
+    // ═══════════════════════════════════════
+    // POST /api/setbg
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/setbg') {
+      const body = await request.json();
       await supabase.from('pairs')
-        .update({ growth_points: pair.growth_points + 2 })
-        .eq('code', pairCode);
-
-      return json({ success: true, bonusPoints: 2 });
+        .update({ bg_id: body.bgId })
+        .eq('code', body.pairCode || body.code);
+      return json({ success: true });
     }
 
-    // ═══ POST /api/recover-streak ═══
+    // ═══════════════════════════════════════
+    // POST /api/notify
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/notify') {
+      const body = await request.json();
+      await sendTelegramMessage(env, body.targetUserId, body.message || '🔔 Напоминание от Chumi');
+      return json({ success: true });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/recover-streak
+    // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/recover-streak') {
       const body = await request.json();
+      const code = body.pairCode || body.code;
       const userId = String(body.userId);
-      const pairCode = body.pairCode;
       const currentMonth = getCurrentMonth();
 
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', pairCode).single();
+      const { data: pair } = await supabase
+        .from('pairs').select('*').eq('code', code).single();
       if (!pair) return json({ error: 'Pair not found' }, 404);
 
-      const { data: members } = await supabase.from('pair_users').select('*').eq('pair_code', pairCode);
-      if (!members?.some(m => m.telegram_user_id === userId)) return json({ error: 'Not a member' }, 403);
-
-      // Reset month counter if new month
       let used = pair.streak_recoveries_used || 0;
-      if (pair.last_recovery_month !== currentMonth) {
-        used = 0;
-      }
-
-      if (used >= 5) {
-        return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
-      }
+      if (pair.last_recovery_month !== currentMonth) used = 0;
+      if (used >= 5) return json({ error: 'Max 5 recoveries per month' }, 400);
 
       await supabase.from('pairs').update({
         is_dead: false,
         streak_recoveries_used: used + 1,
-        last_recovery_month: currentMonth
-      }).eq('code', pairCode);
+        last_recovery_month: currentMonth,
+      }).eq('code', code);
 
-      return json({
-        success: true,
-        recoveriesUsed: used + 1,
-        remaining: 5 - (used + 1)
-      });
+      return json({ success: true, remaining: 5 - (used + 1) });
     }
 
-    // ═══ POST /api/rename ═══
-    if (request.method === 'POST' && path === '/api/rename') {
-      const body = await request.json();
-      const pairCode = body.pairCode;
-      const name = (body.name || '').trim().slice(0, 20);
-      if (!name) return json({ error: 'Name required' }, 400);
-
-      await supabase.from('pairs').update({ pet_name: name }).eq('code', pairCode);
-
-      // Mark daily task
-      if (body.userId) {
-        await supabase.from('daily_tasks').upsert({
-          pair_code: pairCode,
-          telegram_user_id: String(body.userId),
-          task_date: getTodayDate(),
-          task_type: 'rename',
-          completed: true
-        }, { onConflict: 'pair_code,telegram_user_id,task_date,task_type' });
-      }
-
-      return json({ success: true, petName: name });
-    }
-
-    // ═══ POST /api/delete ═══
-    if (request.method === 'POST' && path === '/api/delete') {
-      const body = await request.json();
-      const pairCode = body.pairCode;
-
-      await supabase.from('feedings').delete().eq('pair_code', pairCode);
-      await supabase.from('daily_tasks').delete().eq('pair_code', pairCode);
-      await supabase.from('pair_users').delete().eq('pair_code', pairCode);
-      await supabase.from('pairs').delete().eq('code', pairCode);
-
-      return json({ success: true });
-    }
-
-    // ═══ POST /api/setbg ═══
-    if (request.method === 'POST' && path === '/api/setbg') {
-      const body = await request.json();
-      await supabase.from('pairs').update({ bg_id: body.bgId }).eq('code', body.pairCode);
-
-      // Mark daily task
-      if (body.userId) {
-        await supabase.from('daily_tasks').upsert({
-          pair_code: body.pairCode,
-          telegram_user_id: String(body.userId),
-          task_date: getTodayDate(),
-          task_type: 'changebg',
-          completed: true
-        }, { onConflict: 'pair_code,telegram_user_id,task_date,task_type' });
-      }
-
-      return json({ success: true });
-    }
-
-    // ═══ POST /api/notify ═══
-    if (request.method === 'POST' && path === '/api/notify') {
-      const body = await request.json();
-      const targetUserId = body.targetUserId;
-      const message = body.message || '🔔 Уведомление от Chumi';
-
-      await sendTelegramMessage(env, targetUserId, message);
-      return json({ success: true });
-    }
-
-    // ═══ POST /api/create-invoice ═══
+    // ═══════════════════════════════════════
+    // POST /api/create-invoice
+    // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/create-invoice') {
       const body = await request.json();
       const userId = String(body.userId);
-      const productId = body.productId;
 
       const products = {
         extra_slot: {
           title: 'Дополнительный слот для пары',
           description: 'Получите возможность создать ещё одну пару',
-          stars: 50
-        }
+          stars: 50,
+        },
       };
 
-      const product = products[productId];
+      const product = products[body.productId];
       if (!product) return json({ error: 'Invalid product' }, 400);
 
-      const payload = JSON.stringify({ userId, productId, timestamp: Date.now() });
+      const payload = JSON.stringify({ userId, productId: body.productId, timestamp: Date.now() });
 
       const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
         method: 'POST',
@@ -548,240 +523,58 @@ if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
         body: JSON.stringify({
           title: product.title,
           description: product.description,
-          payload: payload,
+          payload,
           provider_token: '',
           currency: 'XTR',
-          prices: [{ label: product.title, amount: product.stars }]
-        })
+          prices: [{ label: product.title, amount: product.stars }],
+        }),
       });
 
       const data = await res.json();
       if (!data.ok) return json({ error: 'Invoice creation failed' }, 500);
-
       return json({ invoiceUrl: data.result });
     }
 
-    // ═══ POST /api/send-invite ═══
+    // ═══════════════════════════════════════
+    // POST /api/send-invite
+    // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/send-invite') {
       const body = await request.json();
-      const senderName = body.senderName || 'Друг';
-      const pairCode = body.pairCode;
-
-      // Generate a deeplink the recipient can tap
       const botUsername = env.BOT_USERNAME || 'chumi_pet_bot';
-      const inviteLink = `https://t.me/${botUsername}?start=join_${pairCode}`;
-
-      return json({ inviteLink, pairCode });
+      const inviteLink = `https://t.me/${botUsername}?start=join_${body.pairCode}`;
+      return json({ inviteLink, pairCode: body.pairCode });
     }
 
-    // ═══ GET /api/daily-tasks/:pairCode/:userId ═══
-    if (request.method === 'GET' && path.match(/^\/api\/daily-tasks\/[^/]+\/[^/]+$/)) {
-      const parts = path.split('/');
-      const pairCode = parts[3];
-      const userId = parts[4];
-      const today = getTodayDate();
-
-      const { data: tasks } = await supabase.from('daily_tasks')
-        .select('*')
-        .eq('pair_code', pairCode)
-        .eq('telegram_user_id', userId)
-        .eq('task_date', today);
-
-      const allTasks = [
-        { type: 'feed', label_en: 'Feed your pet', label_ru: 'Покорми питомца', xp: 0 },
-        { type: 'pet', label_en: 'Pet your pet', label_ru: 'Погладь питомца', xp: 2 },
-        { type: 'changebg', label_en: 'Change background', label_ru: 'Смени фон', xp: 0 }
-      ];
-
-      const result = allTasks.map(t => ({
-        ...t,
-        completed: tasks?.some(dt => dt.task_type === t.type && dt.completed) || false
-      }));
-
-      return json({ tasks: result });
-    }
-
-    // ═══ POST /api/create-egg ═══ (restart after death)
+    // ═══════════════════════════════════════
+    // POST /api/create-egg (restart after death)
+    // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/create-egg') {
       const body = await request.json();
-      const pairCode = body.pairCode;
+      const code = body.pairCode || body.code;
 
       await supabase.from('pairs').update({
-        pet_type: 'egg',
+        pet_type: 'spark',
         hatched: false,
         streak_days: 0,
         growth_points: 0,
         is_dead: false,
         pet_name: null,
-        streak_recoveries_used: 0
-      }).eq('code', pairCode);
+        streak_recoveries_used: 0,
+      }).eq('code', code);
 
-      await supabase.from('feedings').delete().eq('pair_code', pairCode);
-      await supabase.from('daily_tasks').delete().eq('pair_code', pairCode);
+      await supabase.from('feedings').delete().eq('pair_code', code);
+      await supabase.from('daily_tasks').delete().eq('pair_code', code);
 
       return json({ success: true });
     }
 
-    // ═══ GET /api/user-slots/:userId ═══
-    if (request.method === 'GET' && path.match(/^\/api\/user-slots\/[^/]+$/)) {
-      const userId = path.split('/')[3];
-      const maxPairs = await getMaxPairs(supabase, userId);
-      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('telegram_user_id', userId);
-      return json({
-        maxPairs,
-        currentPairs: existing?.length || 0,
-        extraSlots: maxPairs - MAX_PAIRS_BASE
-      });
-    }
-
-    // POST /api/complete-task
-if (request.method === 'POST' && path === '/api/complete-task') {
-  const { code, userId, taskKey } = await request.json();
-  const today = getTodayDate();
-
-  // Check if already completed
-  const { data: existing } = await supabase
-    .from('daily_tasks')
-    .select('*')
-    .eq('pair_code', code)
-    .eq('user_id', userId)
-    .eq('task_key', taskKey)
-    .eq('task_date', today)
-    .single();
-
-  if (existing?.completed) {
-    return json({ error: 'Already completed' });
-  }
-
-  // === GET /api/avatar/:userId ===
-if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
-  const tgUserId = path.split('/')[3];
-  const BOT_TOKEN = env.BOT_TOKEN;
-
-  try {
-    // Get user profile photos
-    const photosRes = await fetch(
-      `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
-    );
-    const photosData = await photosRes.json();
-
-    if (!photosData.ok || !photosData.result.photos.length) {
-      return json({ avatar_url: null });
-    }
-
-    // Get smallest photo (last in array = smallest)
-    const photo = photosData.result.photos[0];
-    const fileId = photo[photo.length - 1].file_id;
-
-    // Get file path
-    const fileRes = await fetch(
-      `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`
-    );
-    const fileData = await fileRes.json();
-
-    if (!fileData.ok) {
-      return json({ avatar_url: null });
-    }
-
-    const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
-    return json({ avatar_url: avatarUrl });
-
-  } catch (e) {
-    return json({ avatar_url: null });
-  }
-}
-
-// === POST /api/complete-task ===
-if (request.method === 'POST' && path === '/api/complete-task') {
-  const { code, userId, taskKey } = await request.json();
-  const today = getTodayDate();
-
-  // Check if already completed today
-  const { data: existing } = await supabase
-    .from('daily_tasks')
-    .select('*')
-    .eq('pair_code', code)
-    .eq('user_id', userId)
-    .eq('task_key', taskKey)
-    .eq('task_date', today)
-    .single();
-
-  if (existing?.completed) {
-    return json({ error: 'Already completed' });
-  }
-
-  // Task points
-  const taskPoints = { send_msg: 1, send_sticker: 2, send_media: 4, pet_touch: 1, daily_open: 1 };
-  const points = taskPoints[taskKey] || 0;
-
-  // Upsert task
-  await supabase.from('daily_tasks').upsert({
-    pair_code: code,
-    user_id: userId,
-    task_key: taskKey,
-    task_date: today,
-    completed: true,
-    completed_at: new Date().toISOString()
-  }, { onConflict: 'pair_code,user_id,task_key,task_date' });
-
-  // Add growth points to pair
-  const { data: currentPair } = await supabase
-    .from('pairs')
-    .select('growth_points')
-    .eq('code', code)
-    .single();
-
-  await supabase.from('pairs').update({
-    growth_points: (currentPair.growth_points || 0) + points
-  }).eq('code', code);
-
-  return json({ success: true, points_added: points });
-}
-
-// === GET /api/daily-tasks/:pairCode/:userId ===
-if (request.method === 'GET' && path.match(/^\/api\/daily-tasks\/[^/]+\/[^/]+$/)) {
-  const parts = path.split('/');
-  const pairCode = parts[3];
-  const userId = parts[4];
-  const today = getTodayDate();
-
-  const { data: tasks } = await supabase
-    .from('daily_tasks')
-    .select('*')
-    .eq('pair_code', pairCode)
-    .eq('user_id', userId)
-    .eq('task_date', today);
-
-  return json({ tasks: tasks || [] });
-}
-
-  // Find task points
-  const taskPoints = { msg_1: 1, post_2: 2, photo_video: 4, msg_10: 2 };
-  const points = taskPoints[taskKey] || 0;
-
-  // Upsert task
-  await supabase.from('daily_tasks').upsert({
-    pair_code: code,
-    user_id: userId,
-    task_key: taskKey,
-    task_date: today,
-    completed: true,
-    completed_at: new Date().toISOString()
-  }, { onConflict: 'pair_code,user_id,task_key,task_date' });
-
-  // Add growth points
-  await supabase.rpc('increment_growth_points', { p_code: code, p_points: points });
-
-  // Fallback if RPC doesn't exist: direct update
-  // const { data: pair } = await supabase.from('pairs').select('growth_points').eq('code', code).single();
-  // await supabase.from('pairs').update({ growth_points: (pair.growth_points || 0) + points }).eq('code', code);
-
-  return json({ success: true, points_added: points });
-}
-
+    // ═══════════════════════════════════════
+    // 404
+    // ═══════════════════════════════════════
     return json({ error: 'Not found' }, 404);
+
   } catch (e) {
     console.error('API Error:', e);
-    return json({ error: 'Internal error' }, 500);
+    return json({ error: 'Internal error', details: e.message }, 500);
   }
 }

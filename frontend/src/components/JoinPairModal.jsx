@@ -9,88 +9,40 @@ export default function JoinPairModal({ userId, onClose, onJoined }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const tg = window.Telegram?.WebApp;
+  const username = tg?.initDataUnsafe?.user?.username || null;
+  const displayName = tg?.initDataUnsafe?.user?.first_name || null;
+
   const handleJoin = async () => {
     const trimmed = code.trim().toUpperCase();
-    if (!trimmed) return;
-    console.log('[JoinPairModal] Joining pair:', trimmed, 'userId:', userId);
+    if (trimmed.length < 6) return;
     setLoading(true);
     setError('');
     try {
       const res = await fetch('/api/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: String(userId), code: trimmed })
+        body: JSON.stringify({ userId: String(userId), code: trimmed, displayName, username }),
       });
-      console.log('[JoinPairModal] Response status:', res.status);
       const data = await res.json();
-      console.log('[JoinPairModal] Response data:', data);
-
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
-      if (data.code || data.pair) {
-        await refreshPairs();
-        if (onJoined) onJoined(data.code || trimmed);
-        return;
-      }
-      // If no error and no code — assume success
+      if (data.error) { setError(data.error); return; }
       await refreshPairs();
-      if (onJoined) onJoined(trimmed);
-    } catch (err) {
-      console.error('[JoinPairModal] Fetch error:', err);
-      setError(err.message || 'Network error');
-    } finally {
-      setLoading(false);
-    }
+      if (onJoined) onJoined(data.code || trimmed);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'rgba(30,30,50,0.85)', backdropFilter: 'blur(24px)',
-        borderRadius: '24px', padding: '28px', width: '85%', maxWidth: '320px',
-        textAlign: 'center', color: '#fff'
-      }}>
-        <h3 style={{ marginBottom: '12px' }}>{t('join') || 'Join pair'}</h3>
-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', marginBottom: '16px' }}>
-          {t('enterCode') || 'Enter the pair code from your partner:'}
-        </p>
-
-        <input
-          type="text"
-          maxLength={6}
-          autoFocus
-          value={code}
-          onChange={e => setCode(e.target.value.toUpperCase())}
-          placeholder="XXXXXX"
-          style={{
-            width: '100%', textAlign: 'center', fontSize: '22px', fontWeight: 700,
-            letterSpacing: '6px', padding: '12px', borderRadius: '14px', border: 'none',
-            background: 'rgba(255,255,255,0.06)', color: '#fff', outline: 'none',
-            marginBottom: '16px', boxSizing: 'border-box'
-          }}
-        />
-
-        {error && <p style={{ color: '#ff6b6b', fontSize: '13px', marginBottom: '12px' }}>{error}</p>}
-
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={onClose} disabled={loading} style={{
-            flex: 1, padding: '12px', borderRadius: '14px', border: 'none',
-            background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: '14px', cursor: 'pointer'
-          }}>
-            {t('cancel') || 'Cancel'}
-          </button>
-          <button onClick={handleJoin} disabled={loading || code.trim().length < 6} style={{
-            flex: 1, padding: '12px', borderRadius: '14px', border: 'none',
-            background: (loading || code.trim().length < 6) ? 'rgba(138,43,226,0.2)' : 'rgba(138,43,226,0.5)',
-            color: '#fff', fontSize: '14px', cursor: 'pointer'
-          }}>
-            {loading ? '...' : (t('join') || 'Join')}
-          </button>
+    <div onClick={onClose} style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff',borderRadius:24,padding:28,width:'85%',maxWidth:320,textAlign:'center' }}>
+        <h3 style={{ marginBottom:12,color:'#1a1a1a' }}>{t('join')}</h3>
+        <p style={{ color:'#888',fontSize:14,marginBottom:16 }}>{t('enterCode')}</p>
+        <input type="text" maxLength={6} autoFocus value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="XXXXXX"
+          style={{ width:'100%',textAlign:'center',fontSize:22,fontWeight:700,letterSpacing:6,padding:12,borderRadius:14,border:'2px solid rgba(0,0,0,0.08)',background:'rgba(0,0,0,0.02)',color:'#1a1a1a',outline:'none',marginBottom:16,boxSizing:'border-box' }} />
+        {error && <p style={{ color:'#e53e3e',fontSize:13,marginBottom:12 }}>{error}</p>}
+        <div style={{ display:'flex',gap:10 }}>
+          <button onClick={onClose} disabled={loading} style={{ flex:1,padding:12,borderRadius:14,border:'none',background:'rgba(0,0,0,0.05)',fontSize:14,cursor:'pointer',color:'#333' }}>{t('cancel')}</button>
+          <button onClick={handleJoin} disabled={loading||code.trim().length<6} style={{ flex:1,padding:12,borderRadius:14,border:'none',background:(loading||code.length<6)?'rgba(255,140,50,0.1)':'rgba(255,140,50,0.2)',fontSize:14,cursor:'pointer',color:'#e67e00',fontWeight:600 }}>{loading?'...':t('join')}</button>
         </div>
       </div>
     </div>
