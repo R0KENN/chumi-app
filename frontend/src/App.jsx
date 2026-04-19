@@ -1,66 +1,64 @@
-import { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { PairsProvider, usePairs } from './context/PairsContext';
+import { LangProvider } from './context/LangContext';
 import PairSelector from './components/PairSelector';
 import PairScreen from './components/PairScreen';
-import CreatePairModal from './components/CreatePairModal';
-import JoinPairModal from './components/JoinPairModal';
-import { LangProvider } from './context/LangContext';
 import './App.css';
 
-function AppContent({ telegramUserId }) {
+function AppContent() {
   const { pairs, loading } = usePairs();
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showJoinModal, setShowJoinModal] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && pairs.length > 0 && window.location.pathname === '/') {
-      navigate(`/pair/${pairs[0].id}`, { replace: true });
+    if (!loading && pairs && pairs.length > 0) {
+      const current = window.location.pathname;
+      if (current === '/' || current === '') {
+        navigate(`/pair/${pairs[0].code}`);
+      }
     }
-  }, [loading, pairs, navigate]);
+  }, [pairs, loading, navigate]);
 
   return (
-    <div className="app">
-      <Routes>
-        <Route path="/" element={
-          <>
-            <PairSelector
-              onCreate={() => setShowCreateModal(true)}
-              onJoin={() => setShowJoinModal(true)}
-            />
-            {showCreateModal && <CreatePairModal telegramUserId={telegramUserId} onClose={() => setShowCreateModal(false)} onCreated={(p) => { setShowCreateModal(false); navigate(`/pair/${p.id}`); }} />}
-            {showJoinModal && <JoinPairModal telegramUserId={telegramUserId} onClose={() => setShowJoinModal(false)} onJoined={(p) => { setShowJoinModal(false); navigate(`/pair/${p.id}`); }} />}
-          </>
-        } />
-        <Route path="/pair/:pairId" element={<PairScreen telegramUserId={telegramUserId} />} />
-      </Routes>
-    </div>
+    <Routes>
+      <Route path="/" element={<PairSelector />} />
+      <Route path="/pair/:pairId" element={<PairScreen />} />
+    </Routes>
   );
 }
 
 function App() {
   const [telegramUserId, setTelegramUserId] = useState(null);
+
   useEffect(() => {
     try {
       const tg = window.Telegram?.WebApp;
-      if (tg && tg.initDataUnsafe?.user?.id) {
-        tg.ready(); tg.expand();
-        setTelegramUserId(tg.initDataUnsafe.user.id.toString());
-        return;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        const uid = tg.initDataUnsafe?.user?.id?.toString();
+        if (uid) {
+          setTelegramUserId(uid);
+          return;
+        }
       }
-    } catch (e) { console.warn('Telegram WebApp not available:', e); }
-    setTelegramUserId('test_user_123');
+    } catch (e) {}
+    // Fallback for testing
+    const testId = localStorage.getItem('chumi_test_uid') || '713156118';
+    localStorage.setItem('chumi_test_uid', testId);
+    setTelegramUserId(testId);
   }, []);
 
-  if (!telegramUserId) return <div className="app"><div className="center-screen"><div className="loader"></div></div></div>;
+  if (!telegramUserId) return <div className="loading">Loading…</div>;
 
   return (
-    <LangProvider>
-      <PairsProvider telegramUserId={telegramUserId}>
-        <AppContent telegramUserId={telegramUserId} />
-      </PairsProvider>
-    </LangProvider>
+    <BrowserRouter>
+      <LangProvider>
+        <PairsProvider telegramUserId={telegramUserId}>
+          <AppContent />
+        </PairsProvider>
+      </LangProvider>
+    </BrowserRouter>
   );
 }
 

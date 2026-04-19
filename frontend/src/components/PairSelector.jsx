@@ -1,32 +1,47 @@
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePairs } from '../context/PairsContext';
 import { useLang } from '../context/LangContext';
 import NoPairs from './NoPairs';
+import CreatePairModal from './CreatePairModal';
+import JoinPairModal from './JoinPairModal';
 
 const PET_NAMES = { muru: 'Muru', neco: 'Neco', pico: 'Pico', boba: 'Boba' };
 
-function getPetImage(petType, hatched) {
-  if (!hatched) return '/pets/egg.png';
-  return `/pets/${petType}_0.png`;
-}
-
-export default function PairSelector({ onCreate, onJoin }) {
+export default function PairSelector() {
   const { pairs, loading } = usePairs();
-  const { t } = useLang();
   const navigate = useNavigate();
+  const { t, lang } = useLang();
+  const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
 
-  if (loading) return <div className="app"><div className="center-screen"><div className="loader"></div></div></div>;
+  const telegramUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString()
+    || localStorage.getItem('chumi_test_uid') || '0';
 
-  if (pairs.length === 0) {
-    return <NoPairs onCreate={onCreate} onJoin={onJoin} />;
+  if (loading) return <div className="loading">{t('loading')}</div>;
+
+  if (!pairs || pairs.length === 0) {
+    return (
+      <>
+        <NoPairs onCreate={() => setShowCreate(true)} onJoin={() => setShowJoin(true)} />
+        {showCreate && (
+          <CreatePairModal
+            telegramUserId={telegramUserId}
+            onClose={() => setShowCreate(false)}
+            onCreated={(code) => { setShowCreate(false); navigate(`/pair/${code}`); }}
+          />
+        )}
+        {showJoin && (
+          <JoinPairModal
+            telegramUserId={telegramUserId}
+            onClose={() => setShowJoin(false)}
+            onJoined={(code) => { setShowJoin(false); navigate(`/pair/${code}`); }}
+          />
+        )}
+      </>
+    );
   }
 
-  // Если есть пара — useEffect в App.jsx автоматически перенаправит
-  return (
-    <div className="app">
-      <div className="center-screen">
-        <div className="loader"></div>
-      </div>
-    </div>
-  );
+  // Auto-navigate to first pair
+  return <div className="loading">{t('loading')}</div>;
 }
