@@ -37,31 +37,22 @@ function App() {
         tg.ready();
         tg.expand();
 
-        // ─── Полноэкранный режим (Bot API 8.0+) ───
-        if (tg.isVersionAtLeast?.('8.0')) {
-          try {
-            tg.requestFullscreen();
-          } catch (e) {
-            console.log('Fullscreen not supported:', e);
-          }
-
-          // Слушаем выход из fullscreen
-          tg.onEvent?.('fullscreenFailed', () => {
-            console.log('Fullscreen request failed');
-          });
+        // ─── Fullscreen ТОЛЬКО на мобильных ───
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile && tg.isVersionAtLeast?.('8.0')) {
+          try { tg.requestFullscreen(); } catch (e) {}
+          tg.onEvent?.('fullscreenFailed', () => {});
         }
 
-        // ─── Disable vertical swipes (не закрывать при свайпе вниз) ───
+        // ─── Disable vertical swipes ───
         if (tg.disableVerticalSwipes) {
           tg.disableVerticalSwipes();
         }
 
         // ─── Цвета UI ───
-        tg.setHeaderColor?.('#FFF8E1');
-        tg.setBackgroundColor?.('#FFF8E1');
-        if (tg.setBottomBarColor) {
-          tg.setBottomBarColor('#FFF8E1');
-        }
+        try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) {}
+        try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) {}
+        try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) {}
 
         const uid = tg.initDataUnsafe?.user?.id?.toString();
         if (uid) { setTelegramUserId(uid); return; }

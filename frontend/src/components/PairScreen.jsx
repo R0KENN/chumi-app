@@ -27,6 +27,55 @@ function getLevel(totalPoints) {
   return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0, idx: LEVELS.length - 1 };
 }
 
+// ── Случайные сообщения для share-заданий ──
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function getShareMessages(petName, streak, pairCode, lang) {
+  const link = `https://t.me/${BOT_USERNAME}?start=join_${pairCode}`;
+
+  const msg = lang === 'ru' ? {
+    send_msg: [
+      `🔥 Привет! Давай не сломаем серию в Chumi — уже ${streak} дней подряд! Зайди → ${link}`,
+      `💌 Это сообщение от твоего партнёра по Chumi! Наш огонёк растёт уже ${streak} дней 🔥 ${link}`,
+      `Эй! 👋 Наш Серийчик ждёт тебя! Серия: ${streak} дней 🔥 Не забудь зайти → ${link}`,
+      `🔥 ${petName} скучает! Мы на серии ${streak} дней — не сломай! ${link}`,
+      `💬 Напоминание от ${petName}! Серия ${streak} дней — заходи скорее 🔥 ${link}`,
+      `🔥 Мы с тобой уже ${streak} дней вместе растим ${petName}! Не останавливайся → ${link}`,
+    ],
+    send_sticker: [
+      `🎨 Лови стикер от ${petName}! Мы растим огонёк уже ${streak} дней 🔥 ${link}`,
+      `✨ Наш Серийчик передаёт привет стикером! ${streak} дней серия 🔥 ${link}`,
+      `🔥 Стикер-напоминание! Серия ${streak} дней, не забывай про ${petName}! ${link}`,
+      `🎭 ${petName} отправляет тебе стикер! Серия: ${streak} 🔥 ${link}`,
+    ],
+    send_media: [
+      `📸 Фото-привет от партнёра по Chumi! Наша серия: ${streak} дней 🔥 Присоединяйся → ${link}`,
+      `🔥 Смотри! Мы растим ${petName} уже ${streak} дней подряд! Присоединяйся → ${link}`,
+      `📷 Ловии! Это от ${petName} — наш огонёк горит ${streak} дней 🔥 ${link}`,
+      `🎬 ${petName} шлёт фото/видео привет! ${streak} дней серия — не сломай 🔥 ${link}`,
+    ],
+  } : {
+    send_msg: [
+      `🔥 Hey! Let's keep our Chumi streak going — ${streak} days! Join → ${link}`,
+      `💌 Message from your Chumi partner! Our pet is growing for ${streak} days 🔥 ${link}`,
+      `Hey! 👋 ${petName} is waiting! Streak: ${streak} days 🔥 ${link}`,
+      `🔥 ${petName} misses you! ${streak} day streak — don't break it! ${link}`,
+    ],
+    send_sticker: [
+      `🎨 Sticker from ${petName}! Growing our flame for ${streak} days 🔥 ${link}`,
+      `✨ ${petName} says hi with a sticker! ${streak} days streak 🔥 ${link}`,
+      `🔥 Sticker reminder! ${streak} day streak with ${petName}! ${link}`,
+    ],
+    send_media: [
+      `📸 Photo from your Chumi partner! Streak: ${streak} days 🔥 Join → ${link}`,
+      `🔥 Look! Growing ${petName} for ${streak} days! Join → ${link}`,
+      `📷 ${petName} sends a photo! ${streak} day streak 🔥 ${link}`,
+    ],
+  };
+
+  return msg;
+}
+
 export default function PairScreen() {
   const { pairId } = useParams();
   const navigate = useNavigate();
@@ -49,7 +98,7 @@ export default function PairScreen() {
   const [completing, setCompleting] = useState(false);
   const [showMyPairs, setShowMyPairs] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
-  const [rankingTab, setRankingTab] = useState('top'); // 'top' | 'random'
+  const [rankingTab, setRankingTab] = useState('top');
   const [ranking, setRanking] = useState([]);
   const [randomRanking, setRandomRanking] = useState([]);
   const [rankingLoading, setRankingLoading] = useState(false);
@@ -59,16 +108,14 @@ export default function PairScreen() {
   const [deleting, setDeleting] = useState(false);
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
-  const hasParter = pair?.member_count >= 2;
-
-  // One-time task check
+  const hasPartner = pair?.member_count >= 2;
   const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
   const TASKS = [
     { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
-    { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'chat' },
-    { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'chat' },
-    { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'chat' },
+    { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'share' },
+    { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'share' },
+    { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'share' },
     { key: 'pet_touch',    points: 1, ru: `Тапнуть ${petName}`,                en: `Tap ${petName}`,                icon: '👆', action: 'pet' },
   ];
 
@@ -91,7 +138,6 @@ export default function PairScreen() {
       if (data.error) { navigate('/'); return; }
       setPair(data);
       setNewName(data.pet_name || '');
-      // Auto-complete daily_open only if pair has 2 members
       if (data.member_count >= 2) {
         const alreadyOpened = data.daily_tasks?.some(t => t.task_key === 'daily_open');
         if (!alreadyOpened) {
@@ -118,12 +164,9 @@ export default function PairScreen() {
     });
   }, [pair?.members]);
 
-  // ── Load avatars for ranking entries ──
   const loadRankingAvatars = (entries) => {
     const allMemberIds = new Set();
-    entries.forEach(r => {
-      if (r.members) r.members.forEach(m => allMemberIds.add(m.user_id));
-    });
+    entries.forEach(r => { if (r.members) r.members.forEach(m => allMemberIds.add(m.user_id)); });
     allMemberIds.forEach(async (uid) => {
       if (rankingAvatars[uid]) return;
       try {
@@ -149,7 +192,6 @@ export default function PairScreen() {
     finally { setRankingLoading(false); }
   };
 
-  // ── Delete pair ──
   const handleDeletePair = async () => {
     setDeleting(true);
     try {
@@ -177,18 +219,12 @@ export default function PairScreen() {
     completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false,
   }));
 
-  // Add one-time task if not done yet
   const allTasks = [...mergedTasks];
   if (!addToHomeDone) {
     allTasks.push({
-      key: 'add_to_home',
-      points: 3,
-      ru: 'Добавить на главный экран',
-      en: 'Add to Home Screen',
-      icon: '📌',
-      action: 'add_home',
-      completed: false,
-      oneTime: true,
+      key: 'add_to_home', points: 3,
+      ru: 'Добавить на главный экран', en: 'Add to Home Screen',
+      icon: '📌', action: 'add_home', completed: false, oneTime: true,
     });
   }
 
@@ -199,21 +235,48 @@ export default function PairScreen() {
     try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {}
   };
 
+  // ── Share task: засчитать + открыть выбор контакта ──
+  const handleShareTask = async (task) => {
+    if (task.completed || completing) return;
+    setCompleting(true);
+    haptic('light');
+
+    // Засчитываем задание
+    await completeTask(task.key);
+    await load();
+    setCompleting(false);
+
+    // Генерируем случайное сообщение
+    const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
+    const text = pickRandom(msgs[task.key] || msgs.send_msg);
+
+    // Открываем окно выбора контакта
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${BOT_USERNAME}?start=join_${pairId}`)}&text=${encodeURIComponent(text)}`;
+    try {
+      if (tg?.openTelegramLink) {
+        tg.openTelegramLink(shareUrl);
+      } else {
+        window.open(shareUrl, '_blank');
+      }
+    } catch (e) { console.error('Share error:', e); }
+  };
+
   const handleTask = (task) => {
     if (task.completed || completing) return;
     haptic('light');
 
+    if (task.action === 'share') {
+      setConfirmTask(task);
+      return;
+    }
+
     if (task.action === 'add_home') {
-      // One-time: add to home screen
-      if (tg?.addToHomeScreen) {
-        tg.addToHomeScreen();
-      }
+      if (tg?.addToHomeScreen) tg.addToHomeScreen();
       setCompleting(true);
       completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
       return;
     }
 
-    if (task.action === 'chat') { setConfirmTask(task); return; }
     if (task.action === 'pet') {
       haptic('medium');
       setPetAnim(true);
@@ -223,35 +286,8 @@ export default function PairScreen() {
     }
   };
 
-  const confirmAndOpenChat = async () => {
-    if (!confirmTask || completing) return;
-    const taskKey = confirmTask.key;
-    const uname = partner?.username;
-    setCompleting(true);
-    await completeTask(taskKey);
-    await load();
-    setConfirmTask(null);
-    setCompleting(false);
-    if (uname) {
-      const link = `https://t.me/${uname}`;
-      try {
-        if (tg?.openTelegramLink) tg.openTelegramLink(link);
-        else window.open(link, '_blank');
-      } catch (e) { console.error('openTelegramLink error:', e); }
-    }
-  };
-
-  const completeWithoutPartner = async () => {
-    if (!confirmTask || completing) return;
-    setCompleting(true);
-    await completeTask(confirmTask.key);
-    await load();
-    setConfirmTask(null);
-    setCompleting(false);
-  };
-
   const handlePetClick = () => {
-    if (!hasParter) return;
+    if (!hasPartner) return;
     haptic('medium');
     const petTask = mergedTasks.find(t => t.key === 'pet_touch');
     if (petTask && !petTask.completed) {
@@ -273,13 +309,14 @@ export default function PairScreen() {
     setRenaming(false);
   };
 
+  // ── Подсказки в попапе подтверждения ──
   const TASK_HINTS = {
-    send_msg:     { ru: 'Напиши сообщение партнёру в Telegram.\nЗадание будет засчитано, а чат откроется автоматически.',
-                    en: 'Write a message to your partner in Telegram.\nThe task will be completed and chat will open.' },
-    send_sticker: { ru: 'Отправь стикер партнёру в Telegram.\nЗадание будет засчитано, а чат откроется автоматически.',
-                    en: 'Send a sticker to your partner in Telegram.\nThe task will be completed and chat will open.' },
-    send_media:   { ru: 'Отправь фото или видео партнёру.\nЗадание будет засчитано, а чат откроется автоматически.',
-                    en: 'Send a photo or video to your partner.\nThe task will be completed and chat will open.' },
+    send_msg:     { ru: 'Выбери кому отправить сообщение с приглашением.\nЗадание будет засчитано автоматически.',
+                    en: 'Choose who to send an invite message to.\nThe task will be completed automatically.' },
+    send_sticker: { ru: 'Выбери кому отправить приглашение со стикером.\nЗадание будет засчитано автоматически.',
+                    en: 'Choose who to send a sticker invite to.\nThe task will be completed automatically.' },
+    send_media:   { ru: 'Выбери кому отправить фото-приглашение.\nЗадание будет засчитано автоматически.',
+                    en: 'Choose who to send a photo invite to.\nThe task will be completed automatically.' },
   };
 
   const myPairsData = pairs || [];
@@ -318,7 +355,6 @@ export default function PairScreen() {
     else window.open(shareUrl, '_blank');
   };
 
-  // Active ranking data
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
 
   return (
@@ -340,7 +376,7 @@ export default function PairScreen() {
         )}
       </div>
 
-      {/* ── Info row: streak | avatars | ••• ── */}
+      {/* ── Info row ── */}
       <div className="sk-info-row">
         <div className="sk-info-row-left">
           <div className="sk-streak-badge">
@@ -390,12 +426,9 @@ export default function PairScreen() {
                 if (data.prepared_message_id && tg?.shareMessage) {
                   tg.shareMessage(data.prepared_message_id, (sent) => { if (sent) haptic('heavy'); });
                 } else {
-                  const link = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-                  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Присоединяйся к Chumi! 🔥')}`;
-                  if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-                  else window.open(shareUrl, '_blank');
+                  handleShareInvite();
                 }
-              } catch (e) { console.error('Share error:', e); }
+              } catch (e) { console.error('Share error:', e); handleShareInvite(); }
               setShowMenu(false);
             }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
             <button className="sk-menu-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
@@ -405,8 +438,8 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Waiting for partner (нет партнёра → нельзя расти) ── */}
-      {!hasParter ? (
+      {/* ── Waiting for partner ── */}
+      {!hasPartner ? (
         <div className="sk-waiting-partner">
           <div className="sk-waiting-emoji">🔥</div>
           <div className="sk-waiting-title">{lang === 'ru' ? 'Ожидаем партнёра' : 'Waiting for partner'}</div>
@@ -427,19 +460,14 @@ export default function PairScreen() {
         <>
           {/* ── Pet ── */}
           <div className="sk-pet-area" onClick={handlePetClick}>
-            <img
-              src="/pets/flame_idle.webp"
-              alt="pet"
+            <img src="/pets/flame_idle.webp" alt="pet"
               className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-              style={{ width: 200, height: 260, objectFit: 'contain' }}
-            />
+              style={{ width: 200, height: 260, objectFit: 'contain' }} />
           </div>
 
-          {/* ── Outfits button ── */}
+          {/* ── Outfits ── */}
           <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
-            <div className="sk-outfits-icon">
-              <span>🔥</span><span>👕</span>
-            </div>
+            <div className="sk-outfits-icon"><span>🔥</span><span>👕</span></div>
             <span className="sk-outfits-text">{showSoon ? (lang === 'ru' ? 'Скоро!' : 'Soon!') : (lang === 'ru' ? 'Наряды' : 'Outfits')}</span>
           </div>
 
@@ -450,9 +478,7 @@ export default function PairScreen() {
               <span className="sk-progress-text">{lv.current}/{lv.needed}</span>
             </div>
             {isMaxLevel && (
-              <div className="sk-progress-hint">
-                {lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›
-              </div>
+              <div className="sk-progress-hint">{lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›</div>
             )}
           </div>
 
@@ -476,14 +502,14 @@ export default function PairScreen() {
                     {task.completed ? (lang === 'ru' ? 'Выполнено ✓' : 'Done ✓') : `+${task.points} ${lang === 'ru' ? 'очка роста' : 'growth pts'}`}
                   </div>
                 </div>
-                {!task.completed && task.action === 'chat' && <div className="sk-task-go">›</div>}
+                {!task.completed && task.action === 'share' && <div className="sk-task-go">›</div>}
               </div>
             ))}
           </div>
         </>
       )}
 
-      {/* ── Confirm Chat Task Popup ── */}
+      {/* ── Confirm Share Task Popup ── */}
       {confirmTask && (
         <div className="sk-overlay" onClick={() => setConfirmTask(null)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
@@ -492,24 +518,21 @@ export default function PairScreen() {
             <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, whiteSpace: 'pre-line', lineHeight: 1.5 }}>
               {TASK_HINTS[confirmTask.key]?.[lang] || TASK_HINTS[confirmTask.key]?.ru}
             </p>
-            {partner ? (
-              <button onClick={confirmAndOpenChat} disabled={completing} className="sk-btn-primary"
-                style={{ background: completing ? '#ccc' : lv.accent }}>
-                {completing ? (lang === 'ru' ? 'Засчитываем...' : 'Completing...')
-                  : (lang === 'ru' ? `💬 Открыть чат${partner.display_name ? ` с ${partner.display_name}` : ''}` : `💬 Open chat${partner.display_name ? ` with ${partner.display_name}` : ''}`)}
-              </button>
-            ) : (
-              <button onClick={completeWithoutPartner} disabled={completing} className="sk-btn-primary"
-                style={{ background: completing ? '#ccc' : lv.accent }}>
-                {completing ? (lang === 'ru' ? 'Засчитываем...' : 'Completing...') : (lang === 'ru' ? '✓ Выполнить задание' : '✓ Complete task')}
-              </button>
-            )}
+            <button
+              onClick={() => { handleShareTask(confirmTask); setConfirmTask(null); }}
+              disabled={completing}
+              className="sk-btn-primary"
+              style={{ background: completing ? '#ccc' : lv.accent }}>
+              {completing
+                ? (lang === 'ru' ? 'Засчитываем...' : 'Completing...')
+                : (lang === 'ru' ? '📤 Выбрать контакт и отправить' : '📤 Choose contact & send')}
+            </button>
             <button className="sk-popup-close" onClick={() => setConfirmTask(null)}>{lang === 'ru' ? 'Отмена' : 'Cancel'}</button>
           </div>
         </div>
       )}
 
-      {/* ── Delete confirm popup ── */}
+      {/* ── Delete confirm ── */}
       {showDeleteConfirm && (
         <div className="sk-overlay" onClick={() => setShowDeleteConfirm(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
@@ -528,7 +551,7 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Мои пары popup ── */}
+      {/* ── Мои пары ── */}
       {showMyPairs && (
         <div className="sk-overlay" onClick={() => setShowMyPairs(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
@@ -565,24 +588,17 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Ranking popup (tabs: Топ 100 / Случайно) ── */}
+      {/* ── Ranking ── */}
       {showRanking && (
         <div className="sk-overlay" onClick={() => setShowRanking(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
             <h3>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</h3>
-
-            {/* Tabs */}
             <div className="sk-ranking-tabs">
               <button className={`sk-ranking-tab ${rankingTab === 'top' ? 'sk-ranking-tab-active' : ''}`}
-                onClick={() => setRankingTab('top')}>
-                {lang === 'ru' ? 'Топ 100' : 'Top 100'}
-              </button>
+                onClick={() => setRankingTab('top')}>{lang === 'ru' ? 'Топ 100' : 'Top 100'}</button>
               <button className={`sk-ranking-tab ${rankingTab === 'random' ? 'sk-ranking-tab-active' : ''}`}
-                onClick={() => setRankingTab('random')}>
-                {lang === 'ru' ? 'Случайно' : 'Random'}
-              </button>
+                onClick={() => setRankingTab('random')}>{lang === 'ru' ? 'Случайно' : 'Random'}</button>
             </div>
-
             {rankingLoading ? (
               <div style={{ textAlign: 'center', padding: 20 }}><div className="sk-spinner" /></div>
             ) : activeRanking.length === 0 ? (
@@ -593,9 +609,7 @@ export default function PairScreen() {
                   <div key={r.code} className={`sk-ranking-row ${r.code === pairId ? 'sk-ranking-me' : ''}`}
                     onClick={() => setExpandedRankingName(expandedRankingName === r.code ? null : r.code)}>
                     <span className="sk-ranking-pos">
-                      {rankingTab === 'top'
-                        ? (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`)
-                        : `#${i + 1}`}
+                      {rankingTab === 'top' ? (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`) : `#${i + 1}`}
                     </span>
                     <div className="sk-ranking-avatars">
                       {(r.members || []).map((m) => (
@@ -612,9 +626,7 @@ export default function PairScreen() {
                     <span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>
                       {r.pet_name || 'Unnamed'}
                     </span>
-                    <span className="sk-ranking-stats">
-                      ⭐{r.growth_points || 0} 🔥{r.streak_days || 0}
-                    </span>
+                    <span className="sk-ranking-stats">⭐{r.growth_points || 0} 🔥{r.streak_days || 0}</span>
                   </div>
                 ))}
               </div>
@@ -624,7 +636,7 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Levels popup ── */}
+      {/* ── Levels ── */}
       {showLevels && (
         <div className="sk-overlay" onClick={() => setShowLevels(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
