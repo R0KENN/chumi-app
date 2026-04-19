@@ -15,20 +15,21 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
     setLoading(true);
     setError('');
     try {
+      const displayName = window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name || null;
       const res = await fetch(`${API_URL}/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: telegramUserId }),
+        body: JSON.stringify({ userId: telegramUserId, displayName }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.error) {
+        setError(data.error);
+      } else if (data.code) {
         setCode(data.code);
         await refreshPairs();
-      } else {
-        setError(data.message);
       }
     } catch (err) {
-      setError(t.connectionError);
+      setError('Connection error');
     } finally {
       setLoading(false);
     }
@@ -40,17 +41,17 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
 
   if (code) {
     return (
-      <div className="modal-overlay">
-        <div className="modal-glass">
-          <h2>✅ {t.pairCreated}</h2>
-          <p>{t.shareCode}</p>
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-glass" onClick={e => e.stopPropagation()}>
+          <h3>✅ {t('copied') ? 'Пара создана!' : 'Pair created!'}</h3>
           <div className="code-display" onClick={handleCopy}>
-            <span className="code-text">{code}</span>
-            <span>📋</span>
+            {code}
           </div>
-          <p className="hint">{t.tapToCopy}</p>
-          <div className="modal-buttons">
-            <button className="glass-btn primary" onClick={() => onCreated({ id: code })}>{t.done}</button>
+          <p style={{fontSize:'13px',opacity:0.6,marginBottom:'12px'}}>
+            {t('copyCode')}
+          </p>
+          <div className="modal-btns">
+            <button className="btn-primary" onClick={() => onCreated(code)}>OK</button>
           </div>
         </div>
       </div>
@@ -58,15 +59,19 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-glass">
-        <h2>🥚 {t.createNewPair}</h2>
-        <p>{t.createDesc}</p>
-        {error && <p className="error">{error}</p>}
-        <div className="modal-buttons">
-          <button className="glass-btn" onClick={onClose} disabled={loading}>{t.cancel}</button>
-          <button className="glass-btn primary" onClick={handleCreate} disabled={loading}>
-            {loading ? t.creating : t.create}
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-glass" onClick={e => e.stopPropagation()}>
+        <h3>🥚 {t('createPair')}</h3>
+        <p style={{fontSize:'14px',opacity:0.7,marginBottom:'14px'}}>
+          {t('noPetsDesc')}
+        </p>
+        {error && <p className="error-text">{error}</p>}
+        <div className="modal-btns">
+          <button className="btn-cancel" onClick={onClose} disabled={loading}>
+            {t('cancel')}
+          </button>
+          <button className="btn-primary" onClick={handleCreate} disabled={loading}>
+            {loading ? '...' : t('create')}
           </button>
         </div>
       </div>

@@ -6,12 +6,10 @@ import NoPairs from './NoPairs';
 import CreatePairModal from './CreatePairModal';
 import JoinPairModal from './JoinPairModal';
 
-const PET_NAMES = { muru: 'Muru', neco: 'Neco', pico: 'Pico', boba: 'Boba' };
-
 export default function PairSelector() {
   const { pairs, loading } = usePairs();
   const navigate = useNavigate();
-  const { t, lang } = useLang();
+  const { t } = useLang();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 
@@ -42,6 +40,6 @@ export default function PairSelector() {
     );
   }
 
-  // Auto-navigate to first pair
+  // Has pairs — redirect handled by App.jsx useEffect
   return <div className="loading">{t('loading')}</div>;
 }
