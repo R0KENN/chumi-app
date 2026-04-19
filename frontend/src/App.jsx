@@ -6,19 +6,27 @@ import PairSelector from './components/PairSelector';
 import PairScreen from './components/PairScreen';
 import CreatePairModal from './components/CreatePairModal';
 import './App.css';
+import JoinPairModal from './components/JoinPairModal';
 
 // Этот внутренний компонент будет использовать хуки
 function AppContent({ telegramUserId }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false); // <-- новое
   const navigate = useNavigate();
-  const { pairs } = usePairs(); // Теперь usePairs используется корректно внутри провайдера
 
   const handleOpenCreateModal = () => setShowCreateModal(true);
   const handleCloseCreateModal = () => setShowCreateModal(false);
+  const handleOpenJoinModal = () => setShowJoinModal(true); // <--
+  const handleCloseJoinModal = () => setShowJoinModal(false); // <--
 
   const handlePairCreated = (newPair) => {
     setShowCreateModal(false);
     navigate(`/pair/${newPair.id}`);
+  };
+
+  const handlePairJoined = (joinedPair) => {
+    setShowJoinModal(false);
+    navigate(`/pair/${joinedPair.id}`);
   };
 
   return (
@@ -28,12 +36,22 @@ function AppContent({ telegramUserId }) {
           path="/"
           element={
             <>
-              <PairSelector onCreate={handleOpenCreateModal} />
+              <PairSelector 
+                onCreate={handleOpenCreateModal} 
+                onJoin={handleOpenJoinModal} 
+              />
               {showCreateModal && (
                 <CreatePairModal
                   telegramUserId={telegramUserId}
                   onClose={handleCloseCreateModal}
                   onCreated={handlePairCreated}
+                />
+              )}
+              {showJoinModal && (
+                <JoinPairModal
+                  telegramUserId={telegramUserId}
+                  onClose={handleCloseJoinModal}
+                  onJoined={handlePairJoined}
                 />
               )}
             </>

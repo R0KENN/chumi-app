@@ -377,6 +377,60 @@ app.post('/api/pair/create', async (req, res) => {
   }
 });
 
+// Присоединиться к паре по коду
+app.post('/api/pair/join', async (req, res) => {
+  try {
+    const { userId, code } = req.body;
+
+    // 1. Находим пользователя
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_id', userId)
+      .single();
+    if (userError || !user) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    // 2. Находим пару по коду
+    const { data: pair, error: pairError } = await supabase
+      .from('pairs')
+      .select('*')
+      .eq('code', code)
+      .single();
+    if (pairError || !pair) {
+      return res.status(404).json({ error: 'Пара с таким кодом не найдена' });
+    }
+
+    // 3. Проверяем, не состоит ли уже пользователь в этой паре
+    const { data: existingLink } = await supabase
+      .from('user_pairs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('pair_id', pair.id)
+      .maybeSingle();
+    if (existingLink) {
+      return res.status(400).json({ error: 'Вы уже состоите в этой паре' });
+    }
+
+    // 4. Добавляем связь
+    const { error: linkError } = await supabase
+      .from('user_pairs')
+      .insert({
+        user_id: user.id,
+        pair_id: pair.id,
+        role: 'member',
+      });
+    if (linkError) throw linkError;
+
+    // 5. Возвращаем данные пары
+    res.json({ pair });
+  } catch (error) {
+    console.error('/api/pair/join error:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
+
 // Запускаем сервер
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущен на порту ${PORT}`);
