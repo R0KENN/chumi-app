@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
 
@@ -47,6 +47,10 @@ export default function PairScreen() {
   const [showLevels, setShowLevels] = useState(false);
   const [petAnim, setPetAnim] = useState(false);
   const [avatars, setAvatars] = useState({});
+  const [confirmTask, setConfirmTask] = useState(null); // задание, ожидающее подтверждения
+
+  // Ref для задания, которое надо завершить при возврате из чата
+  const pendingChatTask = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,7 +78,58 @@ export default function PairScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Load avatars — use cached avatar_url first, then fetch from API
+  // ──────────────────────────────────────────
+  // Когда пользователь возвращается в приложение из чата —
+  // помечаем задание выполненным
+  // ──────────────────────────────────────────
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (document.visibilityState === 'visible' && pendingChatTask.current) {
+        const taskKey = pendingChatTask.current;
+        pendingChatTask.current = null;
+
+        try {
+          await fetch(`${API}/complete-task`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: pairId, userId, taskKey }),
+          });
+          load();
+        } catch (e) {
+          console.error('Failed to complete task on return:', e);
+        }
+      }
+    };
+
+    // Telegram Mini App 'activated' event (when app comes back to foreground)
+    const handleActivated = async () => {
+      if (pendingChatTask.current) {
+        const taskKey = pendingChatTask.current;
+        pendingChatTask.current = null;
+
+        try {
+          await fetch(`${API}/complete-task`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: pairId, userId, taskKey }),
+          });
+          load();
+        } catch (e) {
+          console.error('Failed to complete task on activated:', e);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    tg?.onEvent?.('activated', handleActivated);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      tg?.offEvent?.('activated', handleActivated);
+    };
+  }, [pairId, userId, load, tg]);
+
+  // Load avatars
   useEffect(() => {
     if (!pair?.members) return;
     pair.members.forEach(m => {
@@ -97,7 +152,6 @@ export default function PairScreen() {
   const pct = Math.min(100, (lv.current / lv.needed) * 100);
   const bg = `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 100%)`;
   const partner = pair.members?.find(m => m.user_id !== userId);
-  const me = pair.members?.find(m => m.user_id === userId);
 
   const mergedTasks = TASKS.map(t => ({
     ...t,
@@ -106,35 +160,49 @@ export default function PairScreen() {
   const donePoints = mergedTasks.filter(t => t.completed).reduce((s, t) => s + t.points, 0);
   const totalPoints = TASKS.reduce((s, t) => s + t.points, 0);
 
+  const haptic = (type = 'medium') => {
+    try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {}
+  };
+
+  // ──────────────────────────────────────────
+  // Открыть чат партнёра
+  // ──────────────────────────────────────────
   const openPartnerChat = () => {
     const uname = partner?.username;
     if (uname && tg) {
       tg.openTelegramLink(`https://t.me/${uname}`);
     } else if (partner?.user_id && tg) {
-      // Fallback: open by user_id (won't work for most users, but try)
-      tg.openTelegramLink(`tg://user?id=${partner.user_id}`);
+      tg.openTelegramLink(`https://t.me/@id${partner.user_id}`);
+    } else if (partner?.user_id) {
+      window.open(`https://t.me/@id${partner.user_id}`, '_blank');
     }
   };
 
-  const haptic = (type = 'medium') => {
-    try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {}
-  };
-
+  // ──────────────────────────────────────────
+  // Обработка нажатия на задание
+  // ──────────────────────────────────────────
   const handleTask = async (task) => {
     if (task.completed) return;
     haptic('light');
 
+    // === Задания с открытием чата ===
     if (task.action === 'open_chat') {
-      await fetch(`${API}/complete-task`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pairId, userId, taskKey: task.key }),
-      });
-      load();
-      openPartnerChat();
+      if (!partner) {
+        // Нет партнёра — показать предупреждение
+        tg?.showAlert?.(
+          lang === 'ru'
+            ? 'Пригласите партнёра, чтобы выполнить это задание!'
+            : 'Invite a partner to complete this task!'
+        );
+        return;
+      }
+
+      // Показываем подтверждение: "Отправь сообщение/стикер/фото, потом вернись"
+      setConfirmTask(task);
       return;
     }
 
+    // === Погладить питомца ===
     if (task.action === 'pet') {
       haptic('medium');
       setPetAnim(true);
@@ -146,6 +214,21 @@ export default function PairScreen() {
       });
       load();
     }
+  };
+
+  // ──────────────────────────────────────────
+  // Подтвердить и открыть чат
+  // ──────────────────────────────────────────
+  const confirmAndOpenChat = () => {
+    if (!confirmTask) return;
+    haptic('medium');
+
+    // Запоминаем задание — завершим когда пользователь вернётся
+    pendingChatTask.current = confirmTask.key;
+    setConfirmTask(null);
+
+    // Открываем чат партнёра
+    openPartnerChat();
   };
 
   const handlePetClick = () => {
@@ -171,6 +254,26 @@ export default function PairScreen() {
   };
 
   const petImage = `/pets/${pair.pet_type || 'spark'}_${Math.min(lv.level, 4)}.png`;
+
+  // Текст подтверждения в зависимости от задания
+  const getConfirmText = (task) => {
+    if (!task) return '';
+    const texts = {
+      send_msg: {
+        ru: 'Отправь сообщение партнёру в Telegram, затем вернись в приложение — задание засчитается автоматически!',
+        en: 'Send a message to your partner in Telegram, then come back — the task will be completed automatically!',
+      },
+      send_sticker: {
+        ru: 'Отправь стикер партнёру в Telegram, затем вернись в приложение — задание засчитается автоматически!',
+        en: 'Send a sticker to your partner in Telegram, then come back — the task will be completed automatically!',
+      },
+      send_media: {
+        ru: 'Отправь фото или видео партнёру в Telegram, затем вернись в приложение — задание засчитается автоматически!',
+        en: 'Send a photo or video to your partner in Telegram, then come back — the task will be completed automatically!',
+      },
+    };
+    return texts[task.key]?.[lang] || texts[task.key]?.en || '';
+  };
 
   return (
     <div className="streak-screen" style={{ background: bg }}>
@@ -241,6 +344,7 @@ export default function PairScreen() {
         </div>
       </div>
 
+      {/* Tasks */}
       <div className="streak-tasks-card">
         <div className="streak-tasks-header">
           <h3>{lang === 'ru' ? 'Растите своего Серийчика' : 'Grow your Streak Pet'}</h3>
@@ -248,13 +352,22 @@ export default function PairScreen() {
         </div>
         <div className="streak-tasks-list">
           {mergedTasks.map(task => (
-            <div key={task.key} className={`streak-task ${task.completed ? 'done' : ''}`} onClick={() => handleTask(task)}>
+            <div
+              key={task.key}
+              className={`streak-task ${task.completed ? 'done' : ''}`}
+              onClick={() => handleTask(task)}
+            >
               <div className={`streak-task-icon ${task.completed ? 'completed' : ''}`}>
                 {task.completed ? '✅' : task.icon}
               </div>
               <div className="streak-task-info">
                 <div className="streak-task-text">{lang === 'ru' ? task.ru : task.en}</div>
-                <div className="streak-task-points">+{task.points} {lang === 'ru' ? 'очков роста' : 'growth pts'}</div>
+                <div className="streak-task-points">
+                  {task.completed
+                    ? (lang === 'ru' ? 'Выполнено' : 'Completed')
+                    : `+${task.points} ${lang === 'ru' ? 'очков роста' : 'growth pts'}`
+                  }
+                </div>
               </div>
               {!task.completed && task.action === 'open_chat' && <div className="streak-task-arrow">›</div>}
             </div>
@@ -262,6 +375,56 @@ export default function PairScreen() {
         </div>
       </div>
 
+      {/* ── Confirm Chat Task Popup ── */}
+      {confirmTask && (
+        <div className="streak-popup-overlay" onClick={() => setConfirmTask(null)}>
+          <div className="streak-popup confirm-popup" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>
+              {confirmTask.icon}
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '18px' }}>
+              {lang === 'ru' ? confirmTask.ru : confirmTask.en}
+            </h3>
+            <p style={{ color: '#666', fontSize: '14px', lineHeight: '1.4', margin: '0 0 20px' }}>
+              {getConfirmText(confirmTask)}
+            </p>
+            <button
+              onClick={confirmAndOpenChat}
+              style={{
+                width: '100%',
+                padding: '14px',
+                borderRadius: '12px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #FF9800, #FF5722)',
+                color: '#fff',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                marginBottom: '8px',
+              }}
+            >
+              {lang === 'ru' ? 'Открыть чат' : 'Open chat'} 💬
+            </button>
+            <button
+              onClick={() => setConfirmTask(null)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '12px',
+                border: 'none',
+                background: '#f0f0f0',
+                color: '#666',
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}
+            >
+              {lang === 'ru' ? 'Отмена' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Levels popup */}
       {showLevels && (
         <div className="streak-popup-overlay" onClick={() => setShowLevels(false)}>
           <div className="streak-popup" onClick={e => e.stopPropagation()}>

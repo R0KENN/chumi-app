@@ -212,3 +212,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; o
 .streak-task-icon.completed {
   filter: grayscale(0);
 }
+/* ── Confirm Chat Task Popup ── */
+.confirm-popup {
+  text-align: center;
+  padding: 28px 24px 20px;
+}
+
+.streak-task.done .streak-task-points {
+  color: #4CAF50;
+  font-weight: 600;
+}
