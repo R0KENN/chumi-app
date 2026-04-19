@@ -4,10 +4,10 @@ import './App.css';
 const PET_TYPES = ['muru', 'neco', 'pico', 'boba'];
 
 const PET_NAMES = {
-  muru: 'Муру',
-  neco: 'Неко',
-  pico: 'Пико',
-  boba: 'Боба',
+  muru: 'Muru',
+  neco: 'Neco',
+  pico: 'Pico',
+  boba: 'Boba',
 };
 
 const PET_STAGES = [

@@ -414,11 +414,13 @@
   height: auto;
   object-fit: contain;
   mix-blend-mode: screen;
-  border-radius: 0;
+  filter: brightness(1.05) contrast(1.1);
 }
 
 .pet-wrap--alive {
   animation: none;
+  mask-image: radial-gradient(ellipse 85% 90% at 50% 50%, black 60%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 85% 90% at 50% 50%, black 60%, transparent 100%);
 }
 
 
