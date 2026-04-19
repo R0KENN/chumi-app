@@ -17,14 +17,15 @@ const BACKGROUNDS = [
 ];
 
 const PET_STAGES = [
-  { name: { en: 'Egg', ru: 'Яйцо' }, minPoints: 0, imageIndex: -1 },
-  { name: { en: 'Baby', ru: 'Малыш' }, minPoints: 0, imageIndex: 0 },
-  { name: { en: 'Teen', ru: 'Подросток' }, minPoints: 200, imageIndex: 1 },
-  { name: { en: 'Adult', ru: 'Взрослый' }, minPoints: 500, imageIndex: 2 },
-  { name: { en: 'Legend', ru: 'Легенда' }, minPoints: 1000, imageIndex: 3 },
+  { name: { en: 'Egg', ru: 'Яйцо' }, minPoints: 0, imageIndex: -1, emoji: '🥚' },
+  { name: { en: 'Baby', ru: 'Малыш' }, minPoints: 0, imageIndex: 0, emoji: '🐣' },
+  { name: { en: 'Teen', ru: 'Подросток' }, minPoints: 200, imageIndex: 1, emoji: '🐲' },
+  { name: { en: 'Adult', ru: 'Взрослый' }, minPoints: 500, imageIndex: 2, emoji: '🔥' },
+  { name: { en: 'Legend', ru: 'Легенда' }, minPoints: 1000, imageIndex: 3, emoji: '👑' },
 ];
 
 function getStageByPoints(p, h) { if (!h) return PET_STAGES[0]; let s = PET_STAGES[1]; for (let i = 2; i < PET_STAGES.length; i++) { if (p >= PET_STAGES[i].minPoints) s = PET_STAGES[i]; } return s; }
+function getStageIndex(stage) { return PET_STAGES.indexOf(stage); }
 function getPetImage(t, s, h) { if (!h) return '/pets/egg.png'; return s.imageIndex < 0 ? '/pets/egg.png' : `/pets/${t}_${s.imageIndex}.png`; }
 function hasVideo(t, s, h) { return h && t === 'muru' && s.imageIndex === 0; }
 function getProgress(p, h) { if (!h) return 0; const t = [0, 200, 500, 1000]; for (let i = 0; i < t.length - 1; i++) { if (p < t[i + 1]) return ((p - t[i]) / (t[i + 1] - t[i])) * 100; } return 100; }
@@ -52,10 +53,16 @@ export default function PairScreen({ telegramUserId }) {
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
+  const [showStages, setShowStages] = useState(false);
 
-  // Фон из данных пары (синхронизируется между участниками)
   const bgId = pair?.bgId || 'room';
   const currentBg = BACKGROUNDS.find(b => b.id === bgId) || BACKGROUNDS[0];
+
+  // Затемнять фон на всех вкладках кроме home и при открытом bg picker
+  const dimBg = activeTab !== 'home' || (activeTab === 'home' && bgPickerOpen);
+  // На home без bg picker — не затемнять, на home с bg picker — тоже не затемнять
+  // Затемнять только на вкладках: pairs, shop, settings, wardrobe
+  const showDim = activeTab !== 'home';
 
   const fetchPair = useCallback(async () => {
     try {
@@ -110,16 +117,11 @@ export default function PairScreen({ telegramUserId }) {
     setRenaming(false);
   };
 
-  // Фон сохраняется на сервер → синхронизируется у обоих
   const changeBg = async (id) => {
     setPair(prev => ({ ...prev, bgId: id }));
     setBgPickerOpen(false);
     try {
-      await fetch(`${API_URL}/setbg`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: telegramUserId, pairCode: pair.code, bgId: id }),
-      });
+      await fetch(`${API_URL}/setbg`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: telegramUserId, pairCode: pair.code, bgId: id }) });
     } catch (e) { console.error('Failed to save bg:', e); }
   };
 
@@ -131,6 +133,7 @@ export default function PairScreen({ telegramUserId }) {
 
   const hatched = pair.hatched || false;
   const stage = getStageByPoints(pair.growthPoints, hatched);
+  const currentStageIdx = getStageIndex(stage);
   const petImage = getPetImage(pair.petType, stage, hatched);
   const useVid = hasVideo(pair.petType, stage, hatched);
   const todayFed = pair.lastFed && pair.lastFed[telegramUserId?.toString()] === getTodayDate();
@@ -143,29 +146,26 @@ export default function PairScreen({ telegramUserId }) {
     <div className="app">
       <div className="app-bg" style={{ backgroundImage: `url(${currentBg.file})` }}></div>
       <div className="app-bg-overlay"></div>
+      {showDim && <div className="dim-overlay"></div>}
 
       {/* ===== HOME ===== */}
       {activeTab === 'home' && (
         <div className="main main--tabbed">
-          {/* Topbar: stage + points */}
-          <div className="topbar-glass">
+          <div className="topbar-glass" onClick={() => { if (hatched) setShowStages(true); }} style={{ cursor: hatched ? 'pointer' : 'default' }}>
             <div className="topbar-center">
-              <span className="topbar-name">{hatched ? stageName : t.egg}</span>
+              <span className="topbar-name">{hatched ? `${stage.emoji} ${stageName}` : t.egg} {hatched && <span className="topbar-arrow">▾</span>}</span>
               <span className="topbar-pts">{hatched ? `${pair.growthPoints} / ${getNextThreshold(pair.growthPoints)}` : `${pair.streakDays} / 3 ${t.days}`}</span>
             </div>
           </div>
 
-          {/* Progress bar */}
           <div className="topbar-track"><div className="topbar-fill" style={{ width: hatched ? `${progress}%` : `${(pair.streakDays / 3) * 100}%` }}></div></div>
 
-          {/* Stats — сразу под прогрессом */}
           <div className="glass-stats">
             <div className="st"><span className="st-i">🔥</span><span className="st-v">{pair.streakDays}</span></div>
             <div className="st"><span className="st-i">⭐</span><span className="st-v">{pair.growthPoints}</span></div>
             <div className="st"><span className="st-i">👥</span><span className="st-v">{pair.users?.length || 0}/2</span></div>
           </div>
 
-          {/* Pet zone */}
           <div className="pet-zone">
             {useVid ? (
               <div className="pet-wrap pet-wrap--video">
@@ -179,12 +179,15 @@ export default function PairScreen({ telegramUserId }) {
             <div className="pet-shadow"></div>
           </div>
 
-          {/* Pet name */}
-          <div className="pet-label" onClick={() => { if (hatched) { setNewName(pair.petName || ''); setShowRename(true); } }}>
-            {hatched ? (displayName || <span className="tap-name">{t.tapToName}</span>) : `${t.hatchesIn}: ${daysUntilHatch} ${t.days}`}
+          <div className="pet-name-row">
+            <span className="pet-label">
+              {hatched ? (displayName || <span className="tap-name">{t.tapToName}</span>) : `${t.hatchesIn}: ${daysUntilHatch} ${t.days}`}
+            </span>
+            {hatched && (
+              <button className="edit-name-btn" onClick={() => { setNewName(pair.petName || ''); setShowRename(true); }}>✏️</button>
+            )}
           </div>
 
-          {/* Action buttons */}
           <div className="home-actions">
             <button className="bg-picker-toggle" onClick={() => setBgPickerOpen(!bgPickerOpen)}>🖼</button>
             <button className={`feed-btn-sm ${todayFed ? 'feed-btn--done' : ''} ${feeding ? 'feed-btn--load' : ''}`} onClick={handleFeed} disabled={todayFed || feeding}>
@@ -193,7 +196,6 @@ export default function PairScreen({ telegramUserId }) {
             <button className="glass-btn-sm" onClick={() => setActiveTab('wardrobe')}>👗</button>
           </div>
 
-          {/* BG picker strip */}
           {bgPickerOpen && (
             <div className="bg-strip">
               {BACKGROUNDS.map(bg => (
@@ -243,7 +245,6 @@ export default function PairScreen({ telegramUserId }) {
             <button className="glass-btn" onClick={() => setShowJoinModal(true)}>🔗 {t.join}</button>
           </div>
           <button className="glass-btn danger" style={{ marginTop: 16 }} onClick={() => setShowDeleteConfirm(true)}>🗑 {t.deletePair}</button>
-
           {showCreateModal && <CreatePairModal telegramUserId={telegramUserId} onClose={() => setShowCreateModal(false)} onCreated={(p) => { setShowCreateModal(false); navigate(`/pair/${p.id}`); setActiveTab('home'); }} />}
           {showJoinModal && <JoinPairModal telegramUserId={telegramUserId} onClose={() => setShowJoinModal(false)} onJoined={(p) => { setShowJoinModal(false); navigate(`/pair/${p.id}`); setActiveTab('home'); }} />}
         </div>
@@ -261,7 +262,6 @@ export default function PairScreen({ telegramUserId }) {
       {/* ===== SETTINGS ===== */}
       {activeTab === 'settings' && (
         <div className="main main--tabbed settings-page">
-          <div className="settings-overlay"></div>
           <div className="settings-content">
             <h2 className="page-title">⚙️ {t.settings}</h2>
             <div className="glass-row">
@@ -285,6 +285,34 @@ export default function PairScreen({ telegramUserId }) {
                 <span style={{ fontSize: 18 }}>📋</span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== STAGES POPUP ===== */}
+      {showStages && (
+        <div className="modal-overlay" onClick={() => setShowStages(false)}>
+          <div className="stages-popup" onClick={(e) => e.stopPropagation()}>
+            <h3 className="stages-title">{lang === 'ru' ? 'Уровни роста' : 'Growth Stages'}</h3>
+            <div className="stages-list">
+              {PET_STAGES.filter((_, i) => i > 0).map((s, i) => {
+                const realIdx = i + 1;
+                const isCurrent = currentStageIdx === realIdx;
+                const isReached = currentStageIdx >= realIdx;
+                return (
+                  <div key={realIdx} className={`stage-item ${isCurrent ? 'stage-item--current' : ''} ${isReached ? 'stage-item--reached' : 'stage-item--locked'}`}>
+                    <span className="stage-emoji">{s.emoji}</span>
+                    <div className="stage-info">
+                      <span className="stage-name">{s.name[lang]}</span>
+                      <span className="stage-pts">{s.minPoints} pts</span>
+                    </div>
+                    {isCurrent && <span className="stage-badge">◀</span>}
+                    {isReached && !isCurrent && <span className="stage-check">✓</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <button className="glass-btn" onClick={() => setShowStages(false)} style={{ marginTop: 14, width: '100%' }}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>
       )}
