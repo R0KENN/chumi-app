@@ -48,6 +48,7 @@ export default function PairScreen() {
   const [petAnim, setPetAnim] = useState(false);
   const [avatars, setAvatars] = useState({});
   const [showSoon, setShowSoon] = useState(false);
+  const [confirmTask, setConfirmTask] = useState(null); // {key, ru, en}
 
   const pendingTaskRef = useRef(null);
 
@@ -68,7 +69,6 @@ export default function PairScreen() {
     try {
       const res = await fetch(`${API}/pair/${pairId}/${userId}`);
       const data = await res.json();
-      console.log('pair data:', data);
       if (data.error) { navigate('/'); return; }
       setPair(data);
       setNewName(data.pet_name || '');
@@ -85,20 +85,24 @@ export default function PairScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Return from chat → complete pending task
+  // Return from Telegram chat → complete pending task
   useEffect(() => {
     const finishPending = async () => {
-      if (pendingTaskRef.current) {
-        const taskKey = pendingTaskRef.current;
-        pendingTaskRef.current = null;
-        console.log('Finishing pending task:', taskKey);
-        await completeTask(taskKey);
-        load();
+      const taskKey = pendingTaskRef.current;
+      if (!taskKey) return;
+      pendingTaskRef.current = null;
+      console.log('Finishing pending task on return:', taskKey);
+      await completeTask(taskKey);
+      await load();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        // Небольшая задержка чтобы Telegram WebApp успел активироваться
+        setTimeout(finishPending, 300);
       }
     };
-    const onVisible = () => { if (document.visibilityState === 'visible') finishPending(); };
     document.addEventListener('visibilitychange', onVisible);
-    tg?.onEvent?.('activated', finishPending);
+    tg?.onEvent?.('activated', () => setTimeout(finishPending, 300));
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       tg?.offEvent?.('activated', finishPending);
@@ -134,31 +138,39 @@ export default function PairScreen() {
     try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {}
   };
 
-  // Открыть чат партнёра и пометить задание при возврате
+  // ── Открыть чат партнёра ──
   const openPartnerChat = (taskKey) => {
     const uname = partner?.username;
     pendingTaskRef.current = taskKey;
 
-    if (tg?.switchInlineQuery) {
-      // Открывает список чатов с inline-сообщениями
-      tg.switchInlineQuery('', ['users']);
-    } else if (uname && tg?.openTelegramLink) {
-      tg.openTelegramLink(`https://t.me/${uname}`);
-    } else if (uname) {
-      window.open(`https://t.me/${uname}`, '_blank');
+    if (uname) {
+      const link = `https://t.me/${uname}`;
+      if (tg?.openTelegramLink) {
+        tg.openTelegramLink(link);
+      } else {
+        window.open(link, '_blank');
+      }
     } else {
-      // Нет партнёра или нет способа открыть чат — просто засчитываем
+      // Нет юзернейма партнёра — сразу засчитываем
       pendingTaskRef.current = null;
       completeTask(taskKey).then(() => load());
     }
   };
 
+  // ── Обработка клика по заданию ──
   const handleTask = async (task) => {
     if (task.completed) return;
     haptic('light');
 
     if (task.action === 'chat') {
-      openPartnerChat(task.key);
+      if (!partner) {
+        // Нет партнёра — просто засчитать
+        await completeTask(task.key);
+        await load();
+        return;
+      }
+      // Показать popup подтверждения
+      setConfirmTask(task);
       return;
     }
 
@@ -167,8 +179,16 @@ export default function PairScreen() {
       setPetAnim(true);
       setTimeout(() => setPetAnim(false), 800);
       await completeTask(task.key);
-      load();
+      await load();
     }
+  };
+
+  // ── Подтвердить и открыть чат ──
+  const confirmAndOpenChat = () => {
+    if (!confirmTask) return;
+    const taskKey = confirmTask.key;
+    setConfirmTask(null);
+    openPartnerChat(taskKey);
   };
 
   const handlePetClick = () => {
@@ -193,12 +213,19 @@ export default function PairScreen() {
     setRenaming(false);
   };
 
-  const petImage = `/pets/${pair.pet_type || 'spark'}_${Math.min(lv.idx, 4)}.png`;
+  const TASK_HINTS = {
+    send_msg:     { ru: 'Отправь сообщение партнёру в чате Telegram.\nПосле отправки вернись — задание засчитается.',
+                    en: 'Send a message to your partner in Telegram chat.\nCome back after sending — the task will be completed.' },
+    send_sticker: { ru: 'Отправь стикер партнёру в чате Telegram.\nПосле отправки вернись — задание засчитается.',
+                    en: 'Send a sticker to your partner in Telegram chat.\nCome back after sending — the task will be completed.' },
+    send_media:   { ru: 'Отправь фото или видео партнёру.\nПосле отправки вернись — задание засчитается.',
+                    en: 'Send a photo or video to your partner.\nCome back after sending — the task will be completed.' },
+  };
 
   return (
     <div className="sk" style={{ background: `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 60%, #f5f5f5 100%)` }}>
 
-      {/* ── Top bar: Name + Menu ── */}
+      {/* ── Top bar ── */}
       <div className="sk-topbar">
         <div className="sk-topbar-title">
           {renaming ? (
@@ -227,7 +254,7 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Streak + Avatars (same line) ── */}
+      {/* ── Streak + Avatars ── */}
       <div className="sk-header">
         <div className="sk-streak">
           <div className="sk-streak-label">{lang === 'ru' ? 'Дней Серии' : 'Streak Days'}</div>
@@ -244,21 +271,16 @@ export default function PairScreen() {
       </div>
 
       {/* ── Pet ── */}
-<div className="sk-pet-area" onClick={handlePetClick}>
-  <img 
-    src="/pets/flame_idle.webp"
-    alt="pet"
-    className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-    style={{
-      width: 200,
-      height: 260,
-      objectFit: 'contain',
-    }}
-  />
-</div>
+      <div className="sk-pet-area" onClick={handlePetClick}>
+        <img
+          src="/pets/flame_idle.webp"
+          alt="pet"
+          className={`pet-animated ${petAnim ? 'tapped' : ''}`}
+          style={{ width: 200, height: 260, objectFit: 'contain' }}
+        />
+      </div>
 
-
-      {/* ── Outfits button (заглушка) ── */}
+      {/* ── Outfits button ── */}
       <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
         <span>🔥</span><span>👕</span>
         <span className="sk-outfits-text">{showSoon ? (lang === 'ru' ? 'Скоро!' : 'Soon!') : (lang === 'ru' ? 'Наряды' : 'Outfits')}</span>
@@ -288,14 +310,46 @@ export default function PairScreen() {
             </div>
             <div className="sk-task-body">
               <div className="sk-task-title">{lang === 'ru' ? task.ru : task.en}</div>
-              <div className="sk-task-pts" style={{ color: task.completed ? '#aaa' : lv.accent }}>
-                {task.completed ? (lang === 'ru' ? 'Выполнено' : 'Done') : `+${task.points} ${lang === 'ru' ? 'очка роста' : 'growth pts'}`}
+              <div className="sk-task-pts" style={{ color: task.completed ? '#4CAF50' : lv.accent }}>
+                {task.completed ? (lang === 'ru' ? 'Выполнено ✓' : 'Done ✓') : `+${task.points} ${lang === 'ru' ? 'очка роста' : 'growth pts'}`}
               </div>
             </div>
             {!task.completed && task.action === 'chat' && <div className="sk-task-go">›</div>}
           </div>
         ))}
       </div>
+
+      {/* ── Confirm Chat Task Popup ── */}
+      {confirmTask && (
+        <div className="sk-overlay" onClick={() => setConfirmTask(null)}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>
+              {confirmTask.icon || '💬'}
+            </div>
+            <h3 style={{ marginBottom: 8 }}>
+              {lang === 'ru' ? confirmTask.ru : confirmTask.en}
+            </h3>
+            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, whiteSpace: 'pre-line', lineHeight: 1.5 }}>
+              {TASK_HINTS[confirmTask.key]?.[lang] || TASK_HINTS[confirmTask.key]?.ru}
+            </p>
+            <button
+              onClick={confirmAndOpenChat}
+              style={{
+                width: '100%', padding: 14, borderRadius: 14,
+                border: 'none', background: lv.accent, color: '#fff',
+                fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 8,
+              }}
+            >
+              {lang === 'ru'
+                ? `💬 Открыть чат${partner?.display_name ? ` с ${partner.display_name}` : ''}`
+                : `💬 Open chat${partner?.display_name ? ` with ${partner.display_name}` : ''}`}
+            </button>
+            <button className="sk-popup-close" onClick={() => setConfirmTask(null)}>
+              {lang === 'ru' ? 'Отмена' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Levels popup ── */}
       {showLevels && (
