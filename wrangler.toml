@@ -1,5 +1,0 @@
-name = "chumi-app"
-pages_build_output_dir = "frontend/dist"
-
-[env.production]
-build.command = "cd frontend && npm install && npm run build"
