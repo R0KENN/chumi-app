@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════
-   STREAK PET — Liquid Glass Style v3
+   STREAK PET — Liquid Glass Style v4
    ══════════════════════════════════════ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -16,7 +16,7 @@ body {
   overscroll-behavior: none; -webkit-font-smoothing: antialiased;
 }
 
-/* ── Liquid Glass helpers ── */
+/* ── Liquid Glass ── */
 .glass-card {
   background: rgba(255,255,255,0.82) !important;
   backdrop-filter: blur(24px) saturate(1.6);
@@ -54,12 +54,25 @@ body {
   padding: 0 16px 32px; transition: background 0.4s ease;
 }
 
-/* ── Имя питомца — сверху, но ниже кнопок бота ── */
+/* ── Info row (streak + avatars + •••) — СВЕРХУ ── */
+.sk-info-row {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
+  padding-top: max(56px, calc(env(safe-area-inset-top) + 48px));
+  padding-bottom: 4px;
+}
+.sk-info-row-left {
+  display: flex; align-items: center;
+}
+.sk-info-row-right {
+  display: flex; align-items: center; gap: 10px;
+}
+
+/* ── Имя питомца — ПОД info row ── */
 .sk-pet-name-row {
   width: 100%;
   text-align: center;
-  padding-top: max(56px, calc(env(safe-area-inset-top) + 48px));
-  padding-bottom: 4px;
+  padding: 4px 0 2px;
 }
 .sk-pet-name-label {
   font-size: 18px; font-weight: 700; color: #1a1a1a; cursor: pointer;
@@ -77,18 +90,6 @@ body {
 .sk-rename-inline button {
   width: 28px; height: 28px; border-radius: 50%;
   background: rgba(0,0,0,0.08); border: none; cursor: pointer; font-size: 14px;
-}
-
-/* ── Строка: серия + аватарки + ••• ── */
-.sk-info-row {
-  display: flex; align-items: center; justify-content: space-between;
-  width: 100%; padding: 8px 0 4px;
-}
-.sk-info-row-left {
-  display: flex; align-items: center;
-}
-.sk-info-row-right {
-  display: flex; align-items: center; gap: 10px;
 }
 
 /* ── Streak badge ── */
@@ -148,7 +149,7 @@ body {
 .sk-menu button:active { background: rgba(0,0,0,0.04); }
 .sk-menu-danger { color: #e53935 !important; }
 
-/* ── Waiting for partner overlay ── */
+/* ── Waiting for partner ── */
 .sk-waiting-partner {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; padding: 40px 20px; flex: 1; gap: 16px;
@@ -252,7 +253,7 @@ body {
   margin-left: 6px; vertical-align: middle;
 }
 
-/* ── Primary button ── */
+/* ── Buttons ── */
 .sk-btn-primary {
   width: 100%; padding: 14px; border-radius: 14px;
   border: none; color: #fff;
@@ -314,8 +315,7 @@ body {
 .sk-ranking-list { max-height: 420px; overflow-y: auto; }
 .sk-ranking-row {
   display: flex; align-items: center; gap: 10px; padding: 10px 8px;
-  border-bottom: 1px solid rgba(0,0,0,0.04); border-radius: 10px;
-  cursor: pointer;
+  border-bottom: 1px solid rgba(0,0,0,0.04); border-radius: 10px; cursor: pointer;
 }
 .sk-ranking-row:last-child { border-bottom: none; }
 .sk-ranking-me { background: rgba(245,166,35,0.1); }

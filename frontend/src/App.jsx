@@ -13,11 +13,15 @@ function AppContent() {
 
   useEffect(() => {
     if (!loading && pairs && pairs.length > 0) {
+      // Не редиректить если пришли с ?newpair=1
+      const params = new URLSearchParams(location.search);
+      if (params.get('newpair')) return;
+
       if (location.pathname === '/' || location.pathname === '') {
         navigate(`/pair/${pairs[0].code}`);
       }
     }
-  }, [pairs, loading, navigate, location.pathname]);
+  }, [pairs, loading, navigate, location.pathname, location.search]);
 
   return (
     <Routes>
@@ -37,19 +41,14 @@ function App() {
         tg.ready();
         tg.expand();
 
-        // ─── Fullscreen ТОЛЬКО на мобильных ───
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         if (isMobile && tg.isVersionAtLeast?.('8.0')) {
           try { tg.requestFullscreen(); } catch (e) {}
           tg.onEvent?.('fullscreenFailed', () => {});
         }
 
-        // ─── Disable vertical swipes ───
-        if (tg.disableVerticalSwipes) {
-          tg.disableVerticalSwipes();
-        }
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
 
-        // ─── Цвета UI ───
         try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) {}
         try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) {}
         try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) {}

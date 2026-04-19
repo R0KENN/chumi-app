@@ -701,20 +701,22 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // GET /api/ranking-random  (Случайные 50, обновляется раз в сутки)
+    // GET /api/ranking-random  (Случайные 50, только с именем)
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path === '/api/ranking-random') {
-      // Загружаем все пары
       const { data: allPairs } = await supabase
         .from('pairs')
-        .select('code, pet_name, growth_points, streak_days');
+        .select('code, pet_name, growth_points, streak_days')
+        .not('pet_name', 'is', null);
 
-      if (!allPairs || allPairs.length === 0) return json({ ranking: [] });
+      // Фильтруем пустые имена
+      const named = (allPairs || []).filter(p => p.pet_name && p.pet_name.trim() !== '');
 
-      // Seed = день (YYYYMMDD число) — одинаковый для всех в течение дня
+      if (named.length === 0) return json({ ranking: [] });
+
       const today = getTodayDate().replace(/-/g, '');
       const seed = parseInt(today);
-      const shuffled = shuffleWithSeed(allPairs, seed).slice(0, 50);
+      const shuffled = shuffleWithSeed(named, seed).slice(0, 50);
 
       const ranking = [];
       for (const p of shuffled) {
@@ -738,6 +740,7 @@ export async function onRequest(context) {
 
       return json({ ranking });
     }
+
 
     // ═══════════════════════════════════════
     // POST /api/prepare-share
