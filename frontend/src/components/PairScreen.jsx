@@ -1,121 +1,187 @@
-// src/components/PairScreen.jsx
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { useEffect, useState, useCallback } from 'react';
 import { usePairs } from '../context/PairsContext';
-import { useState, useEffect } from 'react';
-import EditPairModal from './EditPairModal';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
+
+const PET_NAMES = { muru: 'Muru', neco: 'Neco', pico: 'Pico', boba: 'Boba' };
+
+const PET_STAGES = [
+  { name: 'Egg', minPoints: 0, imageIndex: -1 },
+  { name: 'Baby', minPoints: 0, imageIndex: 0 },
+  { name: 'Teen', minPoints: 200, imageIndex: 1 },
+  { name: 'Adult', minPoints: 500, imageIndex: 2 },
+  { name: 'Legend', minPoints: 1000, imageIndex: 3 },
+];
+
+function getStageByPoints(points, hatched) {
+  if (!hatched) return PET_STAGES[0];
+  let stage = PET_STAGES[1];
+  for (let i = 2; i < PET_STAGES.length; i++) {
+    if (points >= PET_STAGES[i].minPoints) stage = PET_STAGES[i];
+  }
+  return stage;
+}
+
+function getPetImage(petType, stage, hatched) {
+  if (!hatched) return '/pets/egg.png';
+  const idx = stage.imageIndex;
+  if (idx < 0) return '/pets/egg.png';
+  return `/pets/${petType}_${idx}.png`;
+}
+
+function hasVideo(petType, stage, hatched) {
+  if (!hatched) return false;
+  return petType === 'muru' && stage.imageIndex === 0;
+}
+
+function getProgress(points, hatched) {
+  if (!hatched) return 0;
+  const t = [0, 200, 500, 1000];
+  for (let i = 0; i < t.length - 1; i++) {
+    if (points < t[i + 1]) return ((points - t[i]) / (t[i + 1] - t[i])) * 100;
+  }
+  return 100;
+}
+
+function getNextThreshold(points) {
+  const t = [200, 500, 1000];
+  for (const v of t) { if (points < v) return v; }
+  return 1000;
+}
+
+function getTodayDate() {
+  return new Date().toISOString().split('T')[0];
+}
 
 export default function PairScreen({ telegramUserId }) {
   const { pairId } = useParams();
   const navigate = useNavigate();
-  const { pairs, updatePair } = usePairs();
+  const { updatePair } = usePairs();
   const [pair, setPair] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [feedMessage, setFeedMessage] = useState('');
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [feeding, setFeeding] = useState(false);
+  const [message, setMessage] = useState('');
+  const [bgId] = useState(() => localStorage.getItem('chumi_bg') || 'room');
 
-  // Сначала ищем пару в контексте (если она уже загружена)
-  useEffect(() => {
-    const found = pairs.find((p) => p.id === pairId);
-    if (found) {
-      setPair(found);
-      setLoading(false);
-    } else {
-      // Если нет — можно запросить с сервера (на будущее)
+  const BACKGROUNDS = [
+    { id: 'room', file: '/pets/bg_room.jpg' },
+    { id: 'forest', file: '/pets/bg_forest.jpg' },
+    { id: 'ocean', file: '/pets/bg_ocean.jpg' },
+    { id: 'sakura', file: '/pets/bg_sakura.jpg' },
+    { id: 'candy', file: '/pets/bg_candy.jpg' },
+  ];
+  const currentBg = BACKGROUNDS.find(b => b.id === bgId) || BACKGROUNDS[0];
+
+  const fetchPair = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/pair/${pairId}/${telegramUserId}`);
+      const data = await res.json();
+      if (data.success) setPair(data.pair);
+    } catch (err) {
+      console.error(err);
+    } finally {
       setLoading(false);
     }
-  }, [pairId, pairs]);
+  }, [pairId, telegramUserId]);
+
+  useEffect(() => { fetchPair(); }, [fetchPair]);
 
   const handleFeed = async () => {
-    if (!pair) return;
+    if (feeding || !pair) return;
+    setFeeding(true);
+    setMessage('');
     try {
-      const response = await axios.post(`${API_URL}/feed`, {
-        userId: telegramUserId,
-        pairId: pair.id,
+      const res = await fetch(`${API_URL}/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: telegramUserId, pairCode: pair.code }),
       });
-      const data = response.data;
+      const data = await res.json();
       if (data.success) {
-        setFeedMessage(`✅ ${data.message}`);
-        // Обновляем данные в контексте
-        updatePair(pair.id, {
-          pet_level: data.newLevel,
-          growth_points: data.newPoints,
-        });
-        // Обновляем локальное состояние
-        setPair((prev) => ({
-          ...prev,
-          pet_level: data.newLevel,
-          growth_points: data.newPoints,
-        }));
+        if (data.hatched) setMessage(`🎉 ${PET_NAMES[data.pair.petType] || data.pair.petType} hatched!`);
+        else if (data.evolved) setMessage(`✨ Evolved: ${data.pair.stage.name}!`);
+        else if (data.allFedToday) setMessage('✅ Both fed today!');
+        else setMessage('🍖 Fed! Waiting for partner...');
+        setPair(data.pair);
       } else {
-        setFeedMessage(`⚠️ ${data.message}`);
+        setMessage(data.message);
       }
-    } catch (error) {
-      console.error('Ошибка кормления:', error);
-      setFeedMessage('❌ Не удалось покормить');
+    } catch (e) {
+      setMessage('❌ Connection error');
     }
+    setFeeding(false);
   };
 
   const handleInvite = () => {
-    // Копируем код приглашения в буфер обмена
-    navigator.clipboard.writeText(pair.code);
-    alert(`Код ${pair.code} скопирован! Отправьте его другу.`);
+    if (pair?.code) {
+      navigator.clipboard?.writeText(pair.code);
+      setMessage('📋 Code copied!');
+    }
   };
 
-  if (loading) return <div>Загрузка...</div>;
-  if (!pair) return <div>Пара не найдена</div>;
+  if (loading) return <div className="app"><div className="center-screen"><p>Loading...</p></div></div>;
+  if (!pair) return <div className="app"><div className="center-screen"><p>Pair not found</p></div></div>;
+
+  const hatched = pair.hatched || false;
+  const stage = getStageByPoints(pair.growthPoints, hatched);
+  const petImage = getPetImage(pair.petType, stage, hatched);
+  const useVid = hasVideo(pair.petType, stage, hatched);
+  const todayFed = pair.lastFed && pair.lastFed[telegramUserId?.toString()] === getTodayDate();
+  const daysUntilHatch = hatched ? 0 : Math.max(0, 3 - pair.streakDays);
+  const progress = getProgress(pair.growthPoints, hatched);
 
   return (
-    <div className="pair-screen">
-      <button className="back-button" onClick={() => navigate('/')}>
-        ← Назад
-      </button>
-      <h1>{pair.pet_type}</h1>
-      <img src={pair.image || '/default-pet.png'} alt={pair.pet_type} />
-      <div className="stats">
-        <p>Уровень: {pair.pet_level}</p>
-        <p>Очки роста: {pair.growth_points}/100</p>
-        <p>Дней подряд: {pair.streak_days} 🔥</p>
-      </div>
-      <div className="actions">
-        <button onClick={handleFeed}>🍖 Покормить</button>
-        <button onClick={handleInvite}>📨 Пригласить друга</button>
-      </div>
-      {feedMessage && <p className="feed-message">{feedMessage}</p>}
-    </div>
-  );
-    const handleEdit = () => setShowEditModal(true);
-  const handleEditClose = () => setShowEditModal(false);
-  const handleEditUpdated = (updatedPair) => {
-    setPair(updatedPair);
-    setShowEditModal(false);
-  };
+    <div className="app">
+      <div className="app-bg" style={{ backgroundImage: `url(${currentBg.file})` }}></div>
+      <div className="app-bg-overlay"></div>
 
-  if (loading) return <div>Загрузка...</div>;
-  if (!pair) return <div>Пара не найдена</div>;
+      <div className="main">
+        <div className="pair-topbar">
+          <button className="back-btn" onClick={() => navigate('/')}>← Back</button>
+          <div className="topbar-info">
+            <span className="topbar-name">{hatched ? stage.name : 'Egg'}</span>
+            <span className="topbar-pts">{hatched ? `${pair.growthPoints} / ${getNextThreshold(pair.growthPoints)}` : `${pair.streakDays} / 3 days`}</span>
+          </div>
+        </div>
 
-  return (
-    <div className="pair-screen">
-      <button className="back-button" onClick={() => navigate('/')}>
-        ← Назад
-      </button>
-      <div className="pair-header">
-        <h1>{pair.name || pair.pet_type}</h1>
-        <button className="edit-button" onClick={handleEdit}>✏️</button>
+        <div className="topbar-track">
+          <div className="topbar-fill" style={{ width: hatched ? `${progress}%` : `${(pair.streakDays / 3) * 100}%` }}></div>
+        </div>
+
+        <div className="pet-zone">
+          {useVid ? (
+            <div className="pet-wrap pet-wrap--video">
+              <video src={`/pets/${pair.petType}_${stage.imageIndex}.webm`} className="pet-video" autoPlay loop muted playsInline />
+            </div>
+          ) : (
+            <div className={`pet-wrap ${!hatched ? 'pet-wrap--egg' : 'pet-wrap--img'}`}>
+              <img src={petImage} alt="pet" className="pet-pic" />
+            </div>
+          )}
+          <div className="pet-shadow"></div>
+        </div>
+
+        <div className="pet-label">
+          {hatched ? (PET_NAMES[pair.petType] || pair.petType) : `Hatches in: ${daysUntilHatch} days`}
+        </div>
+
+        <div className="stats">
+          <div className="st"><span className="st-i">🔥</span><span className="st-v">{pair.streakDays}</span></div>
+          <div className="st"><span className="st-i">⭐</span><span className="st-v">{pair.growthPoints}</span></div>
+          <div className="st"><span className="st-i">👥</span><span className="st-v">{pair.users?.length || 0}/2</span></div>
+        </div>
+
+        <button className={`fbtn ${todayFed ? 'fbtn--done' : ''} ${feeding ? 'fbtn--load' : ''}`} onClick={handleFeed} disabled={todayFed || feeding}>
+          {feeding ? '⏳ Feeding...' : todayFed ? '✅ Fed' : '🍖 Feed'}
+        </button>
+
+        {pair.users?.length < 2 && (
+          <button className="inv-btn" onClick={handleInvite}>💌 Invite friend</button>
+        )}
+
+        {message && <div className="toast">{message}</div>}
       </div>
-      <img src={pair.image_url || '/default-pet.png'} alt={pair.name} />
-      {/* остальное без изменений */}
-      {showEditModal && (
-        <EditPairModal
-          pair={pair}
-          telegramUserId={telegramUserId}
-          onClose={handleEditClose}
-          onUpdated={handleEditUpdated}
-        />
-      )}
     </div>
   );
 }

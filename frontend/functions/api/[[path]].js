@@ -7,12 +7,16 @@ function getSupabase(env) {
 const PET_TYPES = ['muru', 'neco', 'pico', 'boba'];
 
 const PET_STAGES = [
-  { name: 'Яйцо', minPoints: 0 },
-  { name: 'Малыш', minPoints: 0 },
-  { name: 'Подросток', minPoints: 200 },
-  { name: 'Взрослый', minPoints: 500 },
-  { name: 'Легенда', minPoints: 1000 },
+  { name: 'Egg', minPoints: 0 },
+  { name: 'Baby', minPoints: 0 },
+  { name: 'Teen', minPoints: 200 },
+  { name: 'Adult', minPoints: 500 },
+  { name: 'Legend', minPoints: 1000 },
 ];
+
+// Твой Telegram ID — неограниченные пары
+const ADMIN_IDS = [713156118];
+const MAX_PAIRS = 2;
 
 function getStage(points, hatched) {
   if (!hatched) return PET_STAGES[0];
@@ -42,62 +46,113 @@ function json(data, status = 200) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
     },
   });
+}
+
+function formatPair(pair, users, lastFed, hatched, stage) {
+  return {
+    id: pair.code,
+    code: pair.code,
+    petType: pair.pet_type,
+    name: pair.name || null,
+    streakDays: pair.streak_days || 0,
+    growthPoints: pair.growth_points || 0,
+    hatched,
+    stage,
+    users: users.map(u => u.user_id),
+    lastFed,
+  };
 }
 
 export async function onRequest(context) {
   const { request, env, params } = context;
 
-  // CORS preflight
   if (request.method === 'OPTIONS') {
     return json({});
   }
 
-  // params.path — массив сегментов после /api/
   const segments = params.path || [];
-  const path = '/' + segments.join('/');
 
   try {
     const supabase = getSupabase(env);
 
     // ==========================================
-    // GET /api/pair/:userId
+    // GET /api/pairs/:userId — получить ВСЕ пары пользователя
     // ==========================================
-    if (request.method === 'GET' && segments[0] === 'pair' && segments[1]) {
+    if (request.method === 'GET' && segments[0] === 'pairs' && segments[1]) {
       const userId = segments[1];
 
-      const { data: pairUser, error: pairUserError } = await supabase
+      const { data: pairLinks } = await supabase
         .from('pair_users')
         .select('pair_code')
-        .eq('user_id', userId)
-        .single();
+        .eq('user_id', userId);
 
-      if (!pairUser || pairUserError) {
-        return json({ success: false, message: 'Пара не найдена' });
+      if (!pairLinks || pairLinks.length === 0) {
+        return json({ success: true, pairs: [] });
       }
+
+      const codes = pairLinks.map(p => p.pair_code);
+      const { data: pairsData } = await supabase
+        .from('pairs')
+        .select('*')
+        .in('code', codes);
+
+      const today = getTodayDate();
+      const pairs = [];
+
+      for (const pair of pairsData) {
+        const { data: users } = await supabase
+          .from('pair_users')
+          .select('user_id')
+          .eq('pair_code', pair.code);
+
+        const { data: todayFeedings } = await supabase
+          .from('feedings')
+          .select('user_id')
+          .eq('pair_code', pair.code)
+          .eq('fed_date', today);
+
+        const lastFed = {};
+        if (todayFeedings) {
+          todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
+        }
+
+        const hatched = pair.hatched || false;
+        const stage = getStage(pair.growth_points || 0, hatched);
+
+        pairs.push(formatPair(pair, users, lastFed, hatched, stage));
+      }
+
+      return json({ success: true, pairs });
+    }
+
+    // ==========================================
+    // GET /api/pair/:pairCode/:userId — получить одну пару
+    // ==========================================
+    if (request.method === 'GET' && segments[0] === 'pair' && segments[1] && segments[2]) {
+      const pairCode = segments[1];
+      const userId = segments[2];
 
       const { data: pair } = await supabase
         .from('pairs')
         .select('*')
-        .eq('code', pairUser.pair_code)
+        .eq('code', pairCode)
         .single();
 
-      if (!pair) {
-        return json({ success: false, message: 'Данные пары не найдены' });
-      }
+      if (!pair) return json({ success: false, message: 'Pair not found' });
 
       const { data: users } = await supabase
         .from('pair_users')
         .select('user_id')
-        .eq('pair_code', pairUser.pair_code);
+        .eq('pair_code', pairCode);
 
       const today = getTodayDate();
       const { data: todayFeedings } = await supabase
         .from('feedings')
         .select('user_id')
-        .eq('pair_code', pairUser.pair_code)
+        .eq('pair_code', pairCode)
         .eq('fed_date', today);
 
       const lastFed = {};
@@ -106,43 +161,109 @@ export async function onRequest(context) {
       }
 
       const hatched = pair.hatched || false;
-      const stage = getStage(pair.growth_points, hatched);
+      const stage = getStage(pair.growth_points || 0, hatched);
 
-      return json({
-        success: true,
-        pair: {
-          code: pair.code,
-          petType: pair.pet_type,
-          streakDays: pair.streak_days,
-          growthPoints: pair.growth_points,
-          hatched,
-          stage,
-          users: users.map(u => u.user_id),
-          lastFed,
-        },
-      });
+      return json({ success: true, pair: formatPair(pair, users, lastFed, hatched, stage) });
     }
 
     // ==========================================
-    // POST /api/feed
+    // POST /api/create — создать пару
     // ==========================================
-    if (request.method === 'POST' && segments[0] === 'feed') {
+    if (request.method === 'POST' && segments[0] === 'create') {
       const { userId } = await request.json();
-      if (!userId) {
-        return json({ success: false, message: 'userId не указан' });
+      if (!userId) return json({ success: false, message: 'userId required' });
+
+      // Проверяем лимит пар
+      const { data: existing } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId);
+
+      const isAdmin = ADMIN_IDS.includes(userId.toString());
+      if (!isAdmin && existing && existing.length >= MAX_PAIRS) {
+        return json({ success: false, message: `Max ${MAX_PAIRS} pairs allowed` });
       }
 
-      const { data: pairUser } = await supabase
+      const code = generateCode();
+      await supabase.from('pairs').insert({
+        code,
+        pet_type: 'egg',
+        hatched: false,
+        streak_days: 0,
+        growth_points: 0,
+        last_streak_date: null,
+        name: null,
+      });
+      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
+
+      return json({ success: true, code });
+    }
+
+    // ==========================================
+    // POST /api/join — присоединиться к паре
+    // ==========================================
+    if (request.method === 'POST' && segments[0] === 'join') {
+      const { userId, code } = await request.json();
+      if (!userId || !code) return json({ success: false, message: 'userId and code required' });
+
+      const upperCode = code.toUpperCase();
+
+      // Проверяем лимит пар
+      const { data: existing } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId);
+
+      const isAdmin = ADMIN_IDS.includes(userId.toString());
+      if (!isAdmin && existing && existing.length >= MAX_PAIRS) {
+        return json({ success: false, message: `Max ${MAX_PAIRS} pairs allowed` });
+      }
+
+      // Проверяем что не уже в этой паре
+      const alreadyIn = existing?.find(e => e.pair_code === upperCode);
+      if (alreadyIn) {
+        return json({ success: false, message: 'Already in this pair' });
+      }
+
+      const { data: pair } = await supabase
+        .from('pairs')
+        .select('code')
+        .eq('code', upperCode)
+        .single();
+
+      if (!pair) return json({ success: false, message: 'Code not found' });
+
+      const { data: pairUsers } = await supabase
+        .from('pair_users')
+        .select('user_id')
+        .eq('pair_code', upperCode);
+
+      if (pairUsers.length >= 2) {
+        return json({ success: false, message: 'Pair is full (2/2)' });
+      }
+
+      await supabase.from('pair_users').insert({ pair_code: upperCode, user_id: userId });
+
+      return json({ success: true, code: upperCode });
+    }
+
+    // ==========================================
+    // POST /api/feed — покормить
+    // ==========================================
+    if (request.method === 'POST' && segments[0] === 'feed') {
+      const { userId, pairCode } = await request.json();
+      if (!userId || !pairCode) return json({ success: false, message: 'userId and pairCode required' });
+
+      // Проверяем что пользователь в этой паре
+      const { data: link } = await supabase
         .from('pair_users')
         .select('pair_code')
         .eq('user_id', userId)
+        .eq('pair_code', pairCode)
         .single();
 
-      if (!pairUser) {
-        return json({ success: false, message: 'Пара не найдена' });
-      }
+      if (!link) return json({ success: false, message: 'Not in this pair' });
 
-      const pairCode = pairUser.pair_code;
       const today = getTodayDate();
 
       const { data: existingFeed } = await supabase
@@ -154,16 +275,10 @@ export async function onRequest(context) {
         .single();
 
       if (existingFeed) {
-        return json({ success: false, message: 'Ты уже покормил сегодня! Приходи завтра 🌙' });
+        return json({ success: false, message: 'Already fed today! Come back tomorrow 🌙' });
       }
 
-      const { error: insertError } = await supabase
-        .from('feedings')
-        .insert({ pair_code: pairCode, user_id: userId, fed_date: today });
-
-      if (insertError) {
-        return json({ success: false, message: 'Ошибка записи кормления' });
-      }
+      await supabase.from('feedings').insert({ pair_code: pairCode, user_id: userId, fed_date: today });
 
       const { data: users } = await supabase
         .from('pair_users')
@@ -188,16 +303,10 @@ export async function onRequest(context) {
           const lastFed = {};
           todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
           const hatched = pair.hatched || false;
-          const stage = getStage(pair.growth_points, hatched);
-
+          const stage = getStage(pair.growth_points || 0, hatched);
           return json({
-            success: true, fed: true, allFedToday: true, evolved: false, hatched,
-            pair: {
-              code: pair.code, petType: pair.pet_type,
-              streakDays: pair.streak_days, growthPoints: pair.growth_points,
-              hatched, stage, lastFed,
-              users: users.map(u => u.user_id),
-            },
+            success: true, fed: true, allFedToday: true, evolved: false, hatched: false,
+            pair: formatPair(pair, users, lastFed, hatched, stage),
           });
         }
 
@@ -205,16 +314,16 @@ export async function onRequest(context) {
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-        let newStreak = pair.streak_days;
-        if (pair.last_streak_date === yesterdayStr || pair.streak_days === 0) {
+        let newStreak = pair.streak_days || 0;
+        if (pair.last_streak_date === yesterdayStr || newStreak === 0) {
           newStreak += 1;
         } else {
           newStreak = 1;
         }
 
         const oldHatched = pair.hatched || false;
-        const oldStage = getStage(pair.growth_points, oldHatched);
-        const newPoints = pair.growth_points + 10 + newStreak * 2;
+        const oldStage = getStage(pair.growth_points || 0, oldHatched);
+        const newPoints = (pair.growth_points || 0) + 10 + newStreak * 2;
 
         let newHatched = oldHatched;
         let newPetType = pair.pet_type;
@@ -250,80 +359,12 @@ export async function onRequest(context) {
       const lastFed = {};
       todayFeedings.forEach(f => { lastFed[f.user_id] = today; });
       const hatched = pair.hatched || false;
-      const stage = getStage(pair.growth_points, hatched);
+      const stage = getStage(pair.growth_points || 0, hatched);
 
       return json({
         success: true, fed: true, allFedToday, evolved, hatched: justHatched,
-        pair: {
-          code: pair.code, petType: pair.pet_type,
-          streakDays: pair.streak_days, growthPoints: pair.growth_points,
-          hatched, stage, lastFed,
-          users: users.map(u => u.user_id),
-        },
+        pair: formatPair(pair, users, lastFed, hatched, stage),
       });
-    }
-
-    // ==========================================
-    // POST /api/create
-    // ==========================================
-    if (request.method === 'POST' && segments[0] === 'create') {
-      const { userId } = await request.json();
-
-      const { data: existing } = await supabase
-        .from('pair_users')
-        .select('pair_code')
-        .eq('user_id', userId)
-        .single();
-
-      if (existing) {
-        return json({ success: false, message: 'Ты уже в паре!' });
-      }
-
-      const code = generateCode();
-      await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false });
-      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
-
-      return json({ success: true, code });
-    }
-
-    // ==========================================
-    // POST /api/join
-    // ==========================================
-    if (request.method === 'POST' && segments[0] === 'join') {
-      const { userId, code } = await request.json();
-
-      const { data: existing } = await supabase
-        .from('pair_users')
-        .select('pair_code')
-        .eq('user_id', userId)
-        .single();
-
-      if (existing) {
-        return json({ success: false, message: 'Ты уже в паре!' });
-      }
-
-      const { data: pair } = await supabase
-        .from('pairs')
-        .select('code')
-        .eq('code', code.toUpperCase())
-        .single();
-
-      if (!pair) {
-        return json({ success: false, message: 'Код не найден' });
-      }
-
-      const { data: pairUsers } = await supabase
-        .from('pair_users')
-        .select('user_id')
-        .eq('pair_code', code.toUpperCase());
-
-      if (pairUsers.length >= 2) {
-        return json({ success: false, message: 'В этой паре уже 2 человека' });
-      }
-
-      await supabase.from('pair_users').insert({ pair_code: code.toUpperCase(), user_id: userId });
-
-      return json({ success: true, message: 'Ты присоединился!' });
     }
 
   } catch (error) {

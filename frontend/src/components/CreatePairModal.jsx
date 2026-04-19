@@ -1,73 +1,73 @@
-// src/components/CreatePairModal.jsx
 import { useState } from 'react';
-import axios from 'axios';
 import { usePairs } from '../context/PairsContext';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
 
 export default function CreatePairModal({ telegramUserId, onClose, onCreated }) {
-  const [petType, setPetType] = useState('cat');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { addPair } = usePairs();
-  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const { refreshPairs } = usePairs();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleCreate = async () => {
     setLoading(true);
     setError('');
     try {
-      // Создаём пару через API
-const response = await axios.post(`${API_URL}/pair/create`, {
-  userId: telegramUserId,
-  petType,
-  name: name || petType, // если имя не введено, используем тип
-  imageUrl: '/default-pet.png', // потом можно добавить выбор
-});
-      const newPair = response.data.pair;
-      addPair(newPair);
-      onCreated(newPair);
+      const res = await fetch(`${API_URL}/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: telegramUserId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCode(data.code);
+        await refreshPairs();
+      } else {
+        setError(data.message);
+      }
     } catch (err) {
-      console.error('Ошибка создания пары:', err);
-      setError('Не удалось создать пару');
+      setError('Connection error');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(code);
+  };
+
+  if (code) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal">
+          <h2>✅ Pair Created!</h2>
+          <p>Share this code with your friend:</p>
+          <div className="code-display" onClick={handleCopy}>
+            <span className="code-text">{code}</span>
+            <span>📋</span>
+          </div>
+          <p style={{ fontSize: 12, opacity: 0.5 }}>Tap to copy</p>
+          <div className="modal-buttons">
+            <button onClick={() => onCreated({ id: code })}>Done</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="modal-overlay">
       <div className="modal">
-        <h2>Создать новую пару</h2>
-        <form onSubmit={handleSubmit}>
-          <label>
-            Тип питомца:
-            <select value={petType} onChange={(e) => setPetType(e.target.value)}>
-              <option value="cat">Кот</option>
-              <option value="dog">Собака</option>
-              <option value="dragon">Дракон</option>
-            </select>
-          </label>
-          {error && <p className="error">{error}</p>}
-          <div className="modal-buttons">
-            <button type="button" onClick={onClose} disabled={loading}>
-              Отмена
-            </button>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Создание...' : 'Создать'}
-            </button>
-          </div>
-        </form>
+        <h2>🥚 Create New Pair</h2>
+        <p>An egg will appear. Feed it together for 3 days to hatch!</p>
+        {error && <p className="error">{error}</p>}
+        <div className="modal-buttons">
+          <button type="button" onClick={onClose} disabled={loading}>Cancel</button>
+          <button onClick={handleCreate} disabled={loading}>
+            {loading ? 'Creating...' : 'Create'}
+          </button>
+        </div>
       </div>
     </div>
   );
-  <label>
-  Имя питомца:
-  <input
-    type="text"
-    value={name}
-    onChange={(e) => setName(e.target.value)}
-    placeholder="Например, Барсик"
-  />
-</label>
 }

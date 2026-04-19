@@ -1,8 +1,6 @@
-// frontend/src/context/PairsContext.jsx
-import { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
 const PairsContext = createContext();
 
 export function usePairs() {
@@ -14,46 +12,36 @@ export function PairsProvider({ children, telegramUserId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const fetchPairs = useCallback(async () => {
     if (!telegramUserId) return;
-
-    const fetchPairs = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.post(`${API_URL}/pair`, {
-          userId: telegramUserId,
-        });
-        
-        // Теперь сервер возвращает объект { pairs: [...] }
-        setPairs(response.data.pairs || []);
-      } catch (err) {
-        console.error('Ошибка загрузки пар:', err);
-        setError('Не удалось загрузить пары');
-      } finally {
-        setLoading(false);
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_URL}/pairs/${telegramUserId}`);
+      const data = await res.json();
+      if (data.success) {
+        setPairs(data.pairs || []);
       }
-    };
-
-    fetchPairs();
+    } catch (err) {
+      console.error('Error loading pairs:', err);
+      setError('Failed to load pairs');
+    } finally {
+      setLoading(false);
+    }
   }, [telegramUserId]);
 
+  useEffect(() => {
+    fetchPairs();
+  }, [fetchPairs]);
+
   const addPair = (newPair) => {
-    setPairs((prev) => [...prev, newPair]);
+    setPairs(prev => [...prev, newPair]);
   };
 
   const updatePair = (pairId, updates) => {
-    setPairs((prev) =>
-      prev.map((p) => (p.id === pairId ? { ...p, ...updates } : p))
-    );
+    setPairs(prev => prev.map(p => p.id === pairId ? { ...p, ...updates } : p));
   };
 
-  const value = {
-    pairs,
-    loading,
-    error,
-    addPair,
-    updatePair,
-  };
+  const value = { pairs, loading, error, addPair, updatePair, refreshPairs: fetchPairs };
 
   return (
     <PairsContext.Provider value={value}>

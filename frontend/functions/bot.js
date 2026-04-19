@@ -17,12 +17,15 @@ async function sendMessage(env, chatId, text, extra = {}) {
   });
 }
 
+const ADMIN_IDS = [713156118];
+const MAX_PAIRS = 2;
+
 const PET_STAGES = [
-  { name: 'Яйцо', emoji: '🥚', minPoints: 0 },
-  { name: 'Малыш', emoji: '🐣', minPoints: 0 },
-  { name: 'Подросток', emoji: '🐲', minPoints: 200 },
-  { name: 'Взрослый', emoji: '🔥', minPoints: 500 },
-  { name: 'Легенда', emoji: '👑', minPoints: 1000 },
+  { name: 'Egg', emoji: '🥚', minPoints: 0 },
+  { name: 'Baby', emoji: '🐣', minPoints: 0 },
+  { name: 'Teen', emoji: '🐲', minPoints: 200 },
+  { name: 'Adult', emoji: '🔥', minPoints: 500 },
+  { name: 'Legend', emoji: '👑', minPoints: 1000 },
 ];
 
 function getStage(points, hatched) {
@@ -34,7 +37,7 @@ function getStage(points, hatched) {
   return stage;
 }
 
-const PET_NAMES = { muru: 'Муру', neco: 'Неко', pico: 'Пико', boba: 'Боба', egg: 'Яйцо' };
+const PET_NAMES = { muru: 'Muru', neco: 'Neco', pico: 'Pico', boba: 'Boba', egg: 'Egg' };
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -45,25 +48,25 @@ export async function onRequestPost(context) {
     const body = await request.json();
     const message = body.message;
 
-    if (!message || !message.text) {
-      return new Response('OK');
-    }
+    if (!message || !message.text) return new Response('OK');
 
     const chatId = message.chat.id;
     const userId = message.from.id.toString();
     const text = message.text.trim();
+    const isAdmin = ADMIN_IDS.includes(userId);
 
     if (text === '/start') {
       await sendMessage(env, chatId,
-        '🐾 Привет! Я *Chumi* — бот для выращивания питомца вместе с другом!\n\n' +
-        '🥚 Создай пару, корми питомца 3 дня — и он вылупится!\n\n' +
-        'Команды:\n' +
-        '/create — создать пару и получить код\n' +
-        '/join КОДИК — присоединиться к паре\n' +
-        '/status — посмотреть питомца',
+        '🐾 *Chumi* — raise a pet together!\n\n' +
+        '🥚 Create a pair, feed your pet for 3 days — and it hatches!\n\n' +
+        'Commands:\n' +
+        '/create — create a new pair\n' +
+        '/join CODE — join a pair\n' +
+        '/status — check your pets\n' +
+        '/mypairs — list all your pairs',
         {
           reply_markup: JSON.stringify({
-            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
+            inline_keyboard: [[{ text: '🐾 Open Chumi', web_app: { url: WEBAPP_URL } }]],
           }),
         }
       );
@@ -71,36 +74,42 @@ export async function onRequestPost(context) {
 
     else if (text === '/create') {
       const { data: existing } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId).single();
+        .from('pair_users').select('pair_code').eq('user_id', userId);
 
-      if (existing) {
-        await sendMessage(env, chatId, '⚠️ Ты уже в паре! Используй /status чтобы проверить питомца.');
+      if (!isAdmin && existing && existing.length >= MAX_PAIRS) {
+        await sendMessage(env, chatId, `⚠️ Max ${MAX_PAIRS} pairs allowed! Use /mypairs to see them.`);
         return new Response('OK');
       }
 
       const code = generateCode();
-      await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false });
+      await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false, streak_days: 0, growth_points: 0 });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
       await sendMessage(env, chatId,
-        `✅ Пара создана!\n\n🔑 Твой код: *${code}*\n\nОтправь этот код другу, чтобы он присоединился командой:\n/join ${code}`
+        `✅ Pair created!\n\n🔑 Code: *${code}*\n\nSend this to a friend:\n/join ${code}`
       );
     }
 
     else if (text.startsWith('/join')) {
       const parts = text.split(' ');
       if (parts.length < 2) {
-        await sendMessage(env, chatId, '❌ Укажи код! Пример: /join ABC123');
+        await sendMessage(env, chatId, '❌ Provide a code! Example: /join ABC123');
         return new Response('OK');
       }
 
       const code = parts[1].trim().toUpperCase();
 
       const { data: existing } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId).single();
+        .from('pair_users').select('pair_code').eq('user_id', userId);
 
-      if (existing) {
-        await sendMessage(env, chatId, '⚠️ Ты уже в паре!');
+      if (!isAdmin && existing && existing.length >= MAX_PAIRS) {
+        await sendMessage(env, chatId, `⚠️ Max ${MAX_PAIRS} pairs allowed!`);
+        return new Response('OK');
+      }
+
+      // Проверяем что не уже в этой паре
+      if (existing?.find(e => e.pair_code === code)) {
+        await sendMessage(env, chatId, '⚠️ You are already in this pair!');
         return new Response('OK');
       }
 
@@ -108,7 +117,7 @@ export async function onRequestPost(context) {
         .from('pairs').select('code').eq('code', code).single();
 
       if (!pair) {
-        await sendMessage(env, chatId, '❌ Код не найден. Проверь и попробуй снова.');
+        await sendMessage(env, chatId, '❌ Code not found.');
         return new Response('OK');
       }
 
@@ -116,98 +125,87 @@ export async function onRequestPost(context) {
         .from('pair_users').select('user_id').eq('pair_code', code);
 
       if (pairUsers.length >= 2) {
-        await sendMessage(env, chatId, '❌ В этой паре уже 2 человека.');
+        await sendMessage(env, chatId, '❌ This pair is full (2/2).');
         return new Response('OK');
       }
 
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
 
       await sendMessage(env, chatId,
-        '✅ Ты присоединился к паре! 🐾\n\nТеперь кормите питомца 3 дня подряд — и он вылупится!',
+        '✅ Joined the pair! 🐾\n\nFeed your pet together for 3 days to hatch it!',
         {
           reply_markup: JSON.stringify({
-            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
+            inline_keyboard: [[{ text: '🐾 Open Chumi', web_app: { url: WEBAPP_URL } }]],
           }),
         }
       );
 
-      const firstUser = pairUsers[0].user_id;
-      await sendMessage(env, firstUser,
-        '🎉 Твой друг присоединился к паре! Теперь вы можете вместе растить питомца.',
-        {
-          reply_markup: JSON.stringify({
-            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
-          }),
-        }
-      );
+      const partner = pairUsers[0]?.user_id;
+      if (partner) {
+        await sendMessage(env, partner,
+          '🎉 Your friend joined the pair! Start feeding together.',
+          {
+            reply_markup: JSON.stringify({
+              inline_keyboard: [[{ text: '🐾 Open Chumi', web_app: { url: WEBAPP_URL } }]],
+            }),
+          }
+        );
+      }
+    }
+
+    else if (text === '/mypairs') {
+      const { data: pairLinks } = await supabase
+        .from('pair_users').select('pair_code').eq('user_id', userId);
+
+      if (!pairLinks || pairLinks.length === 0) {
+        await sendMessage(env, chatId, '❌ No pairs yet. Use /create or /join');
+        return new Response('OK');
+      }
+
+      const codes = pairLinks.map(p => p.pair_code);
+      const { data: pairs } = await supabase
+        .from('pairs').select('*').in('code', codes);
+
+      let msg = '🐾 *Your pairs:*\n\n';
+      pairs.forEach((p, i) => {
+        const stage = getStage(p.growth_points || 0, p.hatched);
+        const name = PET_NAMES[p.pet_type] || p.pet_type;
+        msg += `${i + 1}. ${stage.emoji} *${name}* — ${stage.name}\n   Code: \`${p.code}\` | ⭐ ${p.growth_points || 0}\n\n`;
+      });
+
+      await sendMessage(env, chatId, msg);
     }
 
     else if (text === '/status') {
-      const { data: pairUser } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId).single();
+      const { data: pairLinks } = await supabase
+        .from('pair_users').select('pair_code').eq('user_id', userId);
 
-      if (!pairUser) {
-        await sendMessage(env, chatId, '❌ Ты пока не в паре. Используй /create или /join');
+      if (!pairLinks || pairLinks.length === 0) {
+        await sendMessage(env, chatId, '❌ No pairs yet. Use /create or /join');
         return new Response('OK');
       }
 
-      const { data: pair } = await supabase
-        .from('pairs').select('*').eq('code', pairUser.pair_code).single();
+      const codes = pairLinks.map(p => p.pair_code);
+      const { data: pairs } = await supabase
+        .from('pairs').select('*').in('code', codes);
 
-      const { data: users } = await supabase
-        .from('pair_users').select('user_id').eq('pair_code', pairUser.pair_code);
+      for (const pair of pairs) {
+        const { data: users } = await supabase
+          .from('pair_users').select('user_id').eq('pair_code', pair.code);
 
-      const hatched = pair.hatched || false;
-      const stage = getStage(pair.growth_points, hatched);
-      const petName = PET_NAMES[pair.pet_type] || pair.pet_type;
+        const hatched = pair.hatched || false;
+        const stage = getStage(pair.growth_points || 0, hatched);
+        const petName = PET_NAMES[pair.pet_type] || pair.pet_type;
 
-      let statusText;
-      if (!hatched) {
-        const daysLeft = Math.max(0, 3 - pair.streak_days);
-        statusText =
-          `🥚 *Яйцо*\n\n` +
-          `🔥 Серия: ${pair.streak_days} дней\n` +
-          `⏳ До вылупления: ${daysLeft} дн.\n` +
-          `👥 Участников: ${users.length}/2`;
-      } else {
-        statusText =
-          `${stage.emoji} *${petName}* — ${stage.name}\n\n` +
-          `🔥 Серия: ${pair.streak_days} дней\n` +
-          `⭐ Очки роста: ${pair.growth_points}\n` +
-          `👥 Участников: ${users.length}/2`;
-      }
-
-      await sendMessage(env, chatId, statusText);
-    }
-
-    else if (text === '/remind') {
-      const { data: pairUser } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId).single();
-
-      if (!pairUser) {
-        await sendMessage(env, chatId, '❌ Ты пока не в паре.');
-        return new Response('OK');
-      }
-
-      const { data: users } = await supabase
-        .from('pair_users').select('user_id').eq('pair_code', pairUser.pair_code);
-
-      const partner = users.find(u => u.user_id !== userId);
-      if (!partner) {
-        await sendMessage(env, chatId, '❌ У тебя пока нет напарника.');
-        return new Response('OK');
-      }
-
-      await sendMessage(env, partner.user_id,
-        '🔔 Твой напарник напоминает: не забудь покормить питомца сегодня! 🍖',
-        {
-          reply_markup: JSON.stringify({
-            inline_keyboard: [[{ text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } }]],
-          }),
+        let statusText;
+        if (!hatched) {
+          const daysLeft = Math.max(0, 3 - (pair.streak_days || 0));
+          statusText = `🥚 *Egg* (${pair.code})\n🔥 Streak: ${pair.streak_days || 0} days\n⏳ Hatches in: ${daysLeft} days\n👥 ${users.length}/2`;
+        } else {
+          statusText = `${stage.emoji} *${petName}* — ${stage.name} (${pair.code})\n🔥 Streak: ${pair.streak_days || 0} days\n⭐ Points: ${pair.growth_points || 0}\n👥 ${users.length}/2`;
         }
-      );
-
-      await sendMessage(env, chatId, '✅ Напоминание отправлено!');
+        await sendMessage(env, chatId, statusText);
+      }
     }
 
   } catch (error) {

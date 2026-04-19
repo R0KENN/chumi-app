@@ -1,15 +1,12 @@
 export default function NoPairs({ onCreate, onJoin }) {
   return (
     <div className="no-pairs">
-      <h2>🐣 У вас пока нет питомцев</h2>
-      <p>Создайте первую пару или присоединитесь по коду!</p>
+      <div style={{ fontSize: 64 }}>🥚</div>
+      <h2>No pets yet</h2>
+      <p>Create a pair or join with a code!</p>
       <div className="no-pairs-buttons">
-        <button onClick={onCreate} className="primary">
-          ➕ Создать пару
-        </button>
-        <button onClick={onJoin} className="secondary">
-          🔗 Присоединиться
-        </button>
+        <button onClick={onCreate} className="primary">➕ Create pair</button>
+        <button onClick={onJoin} className="secondary">🔗 Join</button>
       </div>
     </div>
   );
