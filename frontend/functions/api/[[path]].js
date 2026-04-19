@@ -607,24 +607,40 @@ if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
     }
 
         // ═══════════════════════════════════════
-    // GET /api/ranking
+    // ═══════════════════════════════════════
+    // GET /api/ranking  (Топ 100 пар с участниками)
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path === '/api/ranking') {
       const { data: allPairs } = await supabase
         .from('pairs')
         .select('code, pet_name, growth_points, streak_days')
         .order('growth_points', { ascending: false })
-        .limit(50);
+        .limit(100);
 
-      const ranking = (allPairs || []).map(p => ({
-        code: p.code,
-        pet_name: p.pet_name,
-        growth_points: p.growth_points || 0,
-        streak_days: p.streak_days || 0,
-      }));
+      const ranking = [];
+      for (const p of (allPairs || [])) {
+        // Получаем участников каждой пары
+        const { data: members } = await supabase
+          .from('pair_users')
+          .select('user_id, display_name, username, avatar_url')
+          .eq('pair_code', p.code);
+
+        ranking.push({
+          code: p.code,
+          pet_name: p.pet_name,
+          growth_points: p.growth_points || 0,
+          streak_days: p.streak_days || 0,
+          members: (members || []).map(m => ({
+            user_id: m.user_id,
+            display_name: m.display_name || null,
+            avatar_url: m.avatar_url || null,
+          })),
+        });
+      }
 
       return json({ ranking });
     }
+
 
         // ═══════════════════════════════════════
     // POST /api/prepare-share  (для shareMessage)

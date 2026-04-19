@@ -1,9 +1,8 @@
 /* ══════════════════════════════════════
-   STREAK PET — Liquid Glass Style
+   STREAK PET — Liquid Glass Style v2
    ══════════════════════════════════════ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ── Убрать выделение при долгом нажатии ── */
 * {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
@@ -17,25 +16,25 @@ body {
   overscroll-behavior: none; -webkit-font-smoothing: antialiased;
 }
 
-/* ── Liquid Glass helpers ── */
+/* ── Liquid Glass helpers (менее прозрачные) ── */
 .glass-card {
-  background: rgba(255,255,255,0.55) !important;
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid rgba(255,255,255,0.45);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.82) !important;
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.6);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7);
 }
 .glass-circle {
-  background: rgba(255,255,255,0.45);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 2px solid rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid rgba(255,255,255,0.8);
 }
 .glass-bar {
-  background: rgba(255,255,255,0.35) !important;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.6) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.55);
 }
 
 .sk-loading {
@@ -55,40 +54,20 @@ body {
   padding: 0 16px 32px; transition: background 0.4s ease;
 }
 
-/* ── Top bar: streak | name+pencil | ••• ── */
-.sk-topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  width: 100%; padding: 14px 0 4px;
-  padding-top: max(14px, env(safe-area-inset-top));
+/* ── Имя питомца — чуть выше остального ── */
+.sk-pet-name-row {
+  width: 100%;
+  text-align: center;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: 4px;
 }
-.sk-topbar-left {
-  display: flex; align-items: center; width: 50px;
-}
-.sk-streak-inline {
-  display: flex; align-items: center; gap: 2px;
-}
-.sk-streak-fire { font-size: 18px; }
-.sk-streak-inline-num { font-size: 20px; font-weight: 900; color: #1a1a1a; }
-
-.sk-topbar-center {
-  flex: 1; text-align: center;
-}
-.sk-topbar-name {
-  font-size: 17px; font-weight: 700; color: #1a1a1a; cursor: pointer;
-  position: relative; display: inline-flex; align-items: center; gap: 4px;
+.sk-pet-name-label {
+  font-size: 18px; font-weight: 700; color: #1a1a1a; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
 }
 .sk-edit-pencil {
   font-size: 12px; opacity: 0.5; position: relative; top: -1px;
 }
-
-.sk-topbar-btn {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: rgba(0,0,0,0.06); border: none;
-  font-size: 14px; cursor: pointer; color: #555;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-
 .sk-rename-inline { display: flex; align-items: center; gap: 6px; justify-content: center; }
 .sk-rename-inline input {
   font-size: 16px; font-weight: 700; text-align: center;
@@ -100,10 +79,72 @@ body {
   background: rgba(0,0,0,0.08); border: none; cursor: pointer; font-size: 14px;
 }
 
+/* ── Строка: серия + аватарки + ••• — ниже имени ── */
+.sk-info-row {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 6px 0 2px;
+}
+.sk-info-row-left {
+  display: flex; align-items: center;
+}
+.sk-info-row-right {
+  display: flex; align-items: center; gap: 10px;
+}
+
+/* ── Streak badge (дизайн как на референсе) ── */
+.sk-streak-badge {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.6);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7);
+  border-radius: 20px;
+  padding: 6px 14px 6px 10px;
+}
+.sk-streak-fire {
+  font-size: 22px;
+  filter: drop-shadow(0 2px 4px rgba(255,100,0,0.3));
+}
+.sk-streak-num {
+  font-size: 22px;
+  font-weight: 900;
+  color: #1a1a1a;
+  letter-spacing: -0.5px;
+}
+.sk-streak-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(0,0,0,0.4);
+  margin-left: -2px;
+}
+
+/* ── Avatars ── */
+.sk-avatars { display: flex; align-items: center; }
+.sk-ava {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; overflow: hidden;
+}
+.sk-ava img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.sk-ava-partner { margin-left: -12px; }
+
+/* ── ••• button ── */
+.sk-topbar-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-size: 14px; cursor: pointer; color: #555;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
 /* ── Menu ── */
 .sk-menu-overlay { position: fixed; inset: 0; z-index: 200; }
 .sk-menu {
-  position: absolute; top: 56px; right: 16px;
+  position: absolute; top: 110px; right: 16px;
   border-radius: 16px; padding: 6px;
   min-width: 200px; z-index: 201;
 }
@@ -113,20 +154,6 @@ body {
   border-radius: 12px; color: #333; font-weight: 500;
 }
 .sk-menu button:active { background: rgba(0,0,0,0.04); }
-
-/* ── Header: avatars only (streak moved to topbar) ── */
-.sk-header {
-  display: flex; justify-content: flex-end; align-items: center;
-  width: 100%; margin: 4px 0;
-}
-.sk-avatars { display: flex; align-items: center; }
-.sk-ava {
-  width: 48px; height: 48px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 20px; overflow: hidden;
-}
-.sk-ava img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.sk-ava-partner { margin-left: -14px; }
 
 /* ── Pet area ── */
 .sk-pet-area {
@@ -147,13 +174,21 @@ body {
   100% { transform: scale(1) rotate(0deg); }
 }
 
-/* ── Outfits btn ── */
+/* ── Outfits btn (фон чтобы эмодзи не сливалось) ── */
 .sk-outfits-btn {
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 6px;
   border-radius: 20px; padding: 8px 18px; margin: 4px 0 16px;
   cursor: pointer; transition: all 0.3s;
+  background: rgba(255,255,255,0.85) !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 .sk-outfits-btn:active { transform: scale(0.96); }
+.sk-outfits-icon {
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255,100,0,0.12);
+  border-radius: 10px;
+  padding: 3px 6px;
+}
 .sk-outfits-text { font-weight: 600; color: #333; margin-left: 4px; font-size: 14px; }
 
 /* ── Progress ── */
@@ -211,12 +246,17 @@ body {
 
 /* ── Popup ── */
 .sk-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
   display: flex; align-items: center; justify-content: center; z-index: 1000;
-  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
 }
 .sk-popup {
   border-radius: 24px; padding: 24px; width: 88%; max-width: 340px;
+  background: rgba(255,255,255,0.92) !important;
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.7);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8);
 }
 .sk-popup-wide { max-width: 380px; }
 .sk-popup h3 { text-align: center; margin-bottom: 16px; color: #1a1a1a; font-size: 18px; }
@@ -251,15 +291,27 @@ body {
 .sk-pair-card-add { border: 2px dashed rgba(0,0,0,0.12) !important; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .sk-pair-card-plus { font-size: 32px; font-weight: 300; color: rgba(0,0,0,0.25); }
 
-/* ── Ranking ── */
-.sk-ranking-list { max-height: 320px; overflow-y: auto; }
+/* ── Ranking (Топ 100 пар с аватарками) ── */
+.sk-ranking-list { max-height: 400px; overflow-y: auto; }
 .sk-ranking-row {
   display: flex; align-items: center; gap: 10px; padding: 10px 8px;
   border-bottom: 1px solid rgba(0,0,0,0.04); border-radius: 10px;
 }
 .sk-ranking-row:last-child { border-bottom: none; }
-.sk-ranking-me { background: rgba(245,166,35,0.08); }
-.sk-ranking-pos { width: 32px; font-weight: 700; font-size: 14px; text-align: center; flex-shrink: 0; }
+.sk-ranking-me { background: rgba(245,166,35,0.1); }
+.sk-ranking-pos { width: 28px; font-weight: 800; font-size: 14px; text-align: center; flex-shrink: 0; color: #1a1a1a; }
+.sk-ranking-avatars {
+  display: flex; align-items: center; flex-shrink: 0;
+}
+.sk-ranking-ava {
+  width: 32px; height: 32px; border-radius: 50%; overflow: hidden;
+  background: rgba(255,255,255,0.7);
+  border: 2px solid #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+.sk-ranking-ava img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.sk-ranking-ava + .sk-ranking-ava { margin-left: -10px; }
 .sk-ranking-name { flex: 1; font-weight: 600; font-size: 14px; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sk-ranking-stats { font-size: 12px; color: rgba(0,0,0,0.45); white-space: nowrap; flex-shrink: 0; }
 
