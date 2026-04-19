@@ -17,7 +17,7 @@ async function sendMessage(env, chatId, text, extra = {}) {
   });
 }
 
-const ADMIN_IDS = [713156118];
+const ADMIN_IDS = ['713156118'];
 const MAX_PAIRS = 2;
 
 const PET_STAGES = [
@@ -55,6 +55,12 @@ export async function onRequestPost(context) {
     const text = message.text.trim();
     const isAdmin = ADMIN_IDS.includes(userId);
 
+    const webAppButton = {
+      reply_markup: JSON.stringify({
+        inline_keyboard: [[{ text: '🐾 Open Chumi', web_app: { url: WEBAPP_URL } }]],
+      }),
+    };
+
     if (text === '/start') {
       await sendMessage(env, chatId,
         '🐾 *Chumi* — raise a pet together!\n\n' +
@@ -63,139 +69,89 @@ export async function onRequestPost(context) {
         '/create — create a new pair\n' +
         '/join CODE — join a pair\n' +
         '/status — check your pets\n' +
-        '/mypairs — list all your pairs',
-        {
-          reply_markup: JSON.stringify({
-            inline_keyboard: [[{ text: '🐾 Open Chumi', web_app: { url: WEBAPP_URL } }]],
-          }),
-        }
+        '/mypairs — list all your pairs\n' +
+        '/delete CODE — delete a pair',
+        webAppButton
       );
     }
 
     else if (text === '/create') {
-      const { data: existing } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
-
+      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
       if (!isAdmin && existing && existing.length >= MAX_PAIRS) {
         await sendMessage(env, chatId, `⚠️ Max ${MAX_PAIRS} pairs allowed! Use /mypairs to see them.`);
         return new Response('OK');
       }
 
       const code = generateCode();
-      await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false, streak_days: 0, growth_points: 0 });
+      await supabase.from('pairs').insert({ code, pet_type: 'egg', hatched: false, streak_days: 0, growth_points: 0, pet_name: null });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
-
-      await sendMessage(env, chatId,
-        `✅ Pair created!\n\n🔑 Code: *${code}*\n\nSend this to a friend:\n/join ${code}`
-      );
+      await sendMessage(env, chatId, `✅ Pair created!\n\n🔑 Code: *${code}*\n\nSend this to a friend:\n/join ${code}`);
     }
 
     else if (text.startsWith('/join')) {
       const parts = text.split(' ');
-      if (parts.length < 2) {
-        await sendMessage(env, chatId, '❌ Provide a code! Example: /join ABC123');
-        return new Response('OK');
-      }
+      if (parts.length < 2) { await sendMessage(env, chatId, '❌ Provide a code! Example: /join ABC123'); return new Response('OK'); }
 
       const code = parts[1].trim().toUpperCase();
+      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
+      if (!isAdmin && existing && existing.length >= MAX_PAIRS) { await sendMessage(env, chatId, `⚠️ Max ${MAX_PAIRS} pairs allowed!`); return new Response('OK'); }
+      if (existing?.find(e => e.pair_code === code)) { await sendMessage(env, chatId, '⚠️ You are already in this pair!'); return new Response('OK'); }
 
-      const { data: existing } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
+      const { data: pair } = await supabase.from('pairs').select('code').eq('code', code).single();
+      if (!pair) { await sendMessage(env, chatId, '❌ Code not found.'); return new Response('OK'); }
 
-      if (!isAdmin && existing && existing.length >= MAX_PAIRS) {
-        await sendMessage(env, chatId, `⚠️ Max ${MAX_PAIRS} pairs allowed!`);
-        return new Response('OK');
-      }
-
-      // Проверяем что не уже в этой паре
-      if (existing?.find(e => e.pair_code === code)) {
-        await sendMessage(env, chatId, '⚠️ You are already in this pair!');
-        return new Response('OK');
-      }
-
-      const { data: pair } = await supabase
-        .from('pairs').select('code').eq('code', code).single();
-
-      if (!pair) {
-        await sendMessage(env, chatId, '❌ Code not found.');
-        return new Response('OK');
-      }
-
-      const { data: pairUsers } = await supabase
-        .from('pair_users').select('user_id').eq('pair_code', code);
-
-      if (pairUsers.length >= 2) {
-        await sendMessage(env, chatId, '❌ This pair is full (2/2).');
-        return new Response('OK');
-      }
+      const { data: pairUsers } = await supabase.from('pair_users').select('user_id').eq('pair_code', code);
+      if (pairUsers.length >= 2) { await sendMessage(env, chatId, '❌ This pair is full (2/2).'); return new Response('OK'); }
 
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId });
-
-      await sendMessage(env, chatId,
-        '✅ Joined the pair! 🐾\n\nFeed your pet together for 3 days to hatch it!',
-        {
-          reply_markup: JSON.stringify({
-            inline_keyboard: [[{ text: '🐾 Open Chumi', web_app: { url: WEBAPP_URL } }]],
-          }),
-        }
-      );
+      await sendMessage(env, chatId, '✅ Joined the pair! 🐾\n\nFeed your pet together for 3 days to hatch it!', webAppButton);
 
       const partner = pairUsers[0]?.user_id;
-      if (partner) {
-        await sendMessage(env, partner,
-          '🎉 Your friend joined the pair! Start feeding together.',
-          {
-            reply_markup: JSON.stringify({
-              inline_keyboard: [[{ text: '🐾 Open Chumi', web_app: { url: WEBAPP_URL } }]],
-            }),
-          }
-        );
-      }
+      if (partner) await sendMessage(env, partner, '🎉 Your friend joined the pair! Start feeding together.', webAppButton);
+    }
+
+    else if (text.startsWith('/delete')) {
+      const parts = text.split(' ');
+      if (parts.length < 2) { await sendMessage(env, chatId, '❌ Provide a code! Example: /delete ABC123'); return new Response('OK'); }
+
+      const code = parts[1].trim().toUpperCase();
+      const { data: link } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId).eq('pair_code', code).single();
+      if (!link) { await sendMessage(env, chatId, '❌ You are not in this pair.'); return new Response('OK'); }
+
+      await supabase.from('feedings').delete().eq('pair_code', code);
+      await supabase.from('pair_users').delete().eq('pair_code', code);
+      await supabase.from('pairs').delete().eq('code', code);
+      await sendMessage(env, chatId, `🗑 Pair *${code}* deleted.`);
     }
 
     else if (text === '/mypairs') {
-      const { data: pairLinks } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
-
-      if (!pairLinks || pairLinks.length === 0) {
-        await sendMessage(env, chatId, '❌ No pairs yet. Use /create or /join');
-        return new Response('OK');
-      }
+      const { data: pairLinks } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
+      if (!pairLinks || pairLinks.length === 0) { await sendMessage(env, chatId, '❌ No pairs yet. Use /create or /join'); return new Response('OK'); }
 
       const codes = pairLinks.map(p => p.pair_code);
-      const { data: pairs } = await supabase
-        .from('pairs').select('*').in('code', codes);
+      const { data: pairs } = await supabase.from('pairs').select('*').in('code', codes);
 
       let msg = '🐾 *Your pairs:*\n\n';
       pairs.forEach((p, i) => {
         const stage = getStage(p.growth_points || 0, p.hatched);
-        const name = PET_NAMES[p.pet_type] || p.pet_type;
+        const name = p.pet_name || PET_NAMES[p.pet_type] || p.pet_type;
         msg += `${i + 1}. ${stage.emoji} *${name}* — ${stage.name}\n   Code: \`${p.code}\` | ⭐ ${p.growth_points || 0}\n\n`;
       });
-
       await sendMessage(env, chatId, msg);
     }
 
     else if (text === '/status') {
-      const { data: pairLinks } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
-
-      if (!pairLinks || pairLinks.length === 0) {
-        await sendMessage(env, chatId, '❌ No pairs yet. Use /create or /join');
-        return new Response('OK');
-      }
+      const { data: pairLinks } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
+      if (!pairLinks || pairLinks.length === 0) { await sendMessage(env, chatId, '❌ No pairs yet. Use /create or /join'); return new Response('OK'); }
 
       const codes = pairLinks.map(p => p.pair_code);
-      const { data: pairs } = await supabase
-        .from('pairs').select('*').in('code', codes);
+      const { data: pairs } = await supabase.from('pairs').select('*').in('code', codes);
 
       for (const pair of pairs) {
-        const { data: users } = await supabase
-          .from('pair_users').select('user_id').eq('pair_code', pair.code);
-
+        const { data: users } = await supabase.from('pair_users').select('user_id').eq('pair_code', pair.code);
         const hatched = pair.hatched || false;
         const stage = getStage(pair.growth_points || 0, hatched);
-        const petName = PET_NAMES[pair.pet_type] || pair.pet_type;
+        const petName = pair.pet_name || PET_NAMES[pair.pet_type] || pair.pet_type;
 
         let statusText;
         if (!hatched) {
