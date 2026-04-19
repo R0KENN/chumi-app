@@ -34,7 +34,7 @@ function getTodayDate() { return new Date().toISOString().split('T')[0]; }
 export default function PairScreen({ telegramUserId }) {
   const { pairId } = useParams();
   const navigate = useNavigate();
-  const { pairs, updatePair, refreshPairs } = usePairs();
+  const { pairs, refreshPairs } = usePairs();
   const { lang, setLang, t } = useLang();
 
   const [pair, setPair] = useState(null);
@@ -42,7 +42,6 @@ export default function PairScreen({ telegramUserId }) {
   const [feeding, setFeeding] = useState(false);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('home');
-  const [bgId, setBgId] = useState(() => localStorage.getItem('chumi_bg') || 'room');
   const [soundOn, setSoundOn] = useState(() => localStorage.getItem('chumi_sound') !== 'false');
   const [notifications, setNotifications] = useState(() => localStorage.getItem('chumi_notifications') !== 'false');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -54,6 +53,8 @@ export default function PairScreen({ telegramUserId }) {
   const [renaming, setRenaming] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
 
+  // Фон из данных пары (синхронизируется между участниками)
+  const bgId = pair?.bgId || 'room';
   const currentBg = BACKGROUNDS.find(b => b.id === bgId) || BACKGROUNDS[0];
 
   const fetchPair = useCallback(async () => {
@@ -109,7 +110,19 @@ export default function PairScreen({ telegramUserId }) {
     setRenaming(false);
   };
 
-  const changeBg = (id) => { setBgId(id); localStorage.setItem('chumi_bg', id); setBgPickerOpen(false); };
+  // Фон сохраняется на сервер → синхронизируется у обоих
+  const changeBg = async (id) => {
+    setPair(prev => ({ ...prev, bgId: id }));
+    setBgPickerOpen(false);
+    try {
+      await fetch(`${API_URL}/setbg`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: telegramUserId, pairCode: pair.code, bgId: id }),
+      });
+    } catch (e) { console.error('Failed to save bg:', e); }
+  };
+
   const toggleSound = () => { const v = !soundOn; setSoundOn(v); localStorage.setItem('chumi_sound', String(v)); };
   const toggleNotifications = () => { const v = !notifications; setNotifications(v); localStorage.setItem('chumi_notifications', String(v)); };
 
@@ -134,14 +147,25 @@ export default function PairScreen({ telegramUserId }) {
       {/* ===== HOME ===== */}
       {activeTab === 'home' && (
         <div className="main main--tabbed">
+          {/* Topbar: stage + points */}
           <div className="topbar-glass">
             <div className="topbar-center">
               <span className="topbar-name">{hatched ? stageName : t.egg}</span>
               <span className="topbar-pts">{hatched ? `${pair.growthPoints} / ${getNextThreshold(pair.growthPoints)}` : `${pair.streakDays} / 3 ${t.days}`}</span>
             </div>
           </div>
+
+          {/* Progress bar */}
           <div className="topbar-track"><div className="topbar-fill" style={{ width: hatched ? `${progress}%` : `${(pair.streakDays / 3) * 100}%` }}></div></div>
 
+          {/* Stats — сразу под прогрессом */}
+          <div className="glass-stats">
+            <div className="st"><span className="st-i">🔥</span><span className="st-v">{pair.streakDays}</span></div>
+            <div className="st"><span className="st-i">⭐</span><span className="st-v">{pair.growthPoints}</span></div>
+            <div className="st"><span className="st-i">👥</span><span className="st-v">{pair.users?.length || 0}/2</span></div>
+          </div>
+
+          {/* Pet zone */}
           <div className="pet-zone">
             {useVid ? (
               <div className="pet-wrap pet-wrap--video">
@@ -155,24 +179,21 @@ export default function PairScreen({ telegramUserId }) {
             <div className="pet-shadow"></div>
           </div>
 
+          {/* Pet name */}
           <div className="pet-label" onClick={() => { if (hatched) { setNewName(pair.petName || ''); setShowRename(true); } }}>
             {hatched ? (displayName || <span className="tap-name">{t.tapToName}</span>) : `${t.hatchesIn}: ${daysUntilHatch} ${t.days}`}
           </div>
 
-          <div className="glass-stats">
-            <div className="st"><span className="st-i">🔥</span><span className="st-v">{pair.streakDays}</span></div>
-            <div className="st"><span className="st-i">⭐</span><span className="st-v">{pair.growthPoints}</span></div>
-            <div className="st"><span className="st-i">👥</span><span className="st-v">{pair.users?.length || 0}/2</span></div>
-          </div>
-
+          {/* Action buttons */}
           <div className="home-actions">
             <button className="bg-picker-toggle" onClick={() => setBgPickerOpen(!bgPickerOpen)}>🖼</button>
             <button className={`feed-btn-sm ${todayFed ? 'feed-btn--done' : ''} ${feeding ? 'feed-btn--load' : ''}`} onClick={handleFeed} disabled={todayFed || feeding}>
-              {feeding ? `⏳` : todayFed ? `✅ ${t.fed}` : `🍖 ${t.feed}`}
+              {feeding ? '⏳' : todayFed ? `✅ ${t.fed}` : `🍖 ${t.feed}`}
             </button>
             <button className="glass-btn-sm" onClick={() => setActiveTab('wardrobe')}>👗</button>
           </div>
 
+          {/* BG picker strip */}
           {bgPickerOpen && (
             <div className="bg-strip">
               {BACKGROUNDS.map(bg => (
@@ -183,7 +204,7 @@ export default function PairScreen({ telegramUserId }) {
             </div>
           )}
 
-          {pair.users?.length < 2 && <button className="glass-btn-sm" onClick={handleInvite}>💌 {t.inviteFriend}</button>}
+          {pair.users?.length < 2 && <button className="glass-btn-sm inv-btn-text" onClick={handleInvite}>💌 {t.inviteFriend}</button>}
           {message && <div className="toast-glass">{message}</div>}
         </div>
       )}
@@ -270,32 +291,28 @@ export default function PairScreen({ telegramUserId }) {
 
       {/* ===== DELETE CONFIRM ===== */}
       {showDeleteConfirm && (
-        <div className="modal-overlay">
-          <div className="modal-glass">
-            <h2>🗑 {t.deletePair}</h2>
-            <p>{t.deleteConfirm}</p>
-            <div className="modal-buttons">
-              <button className="glass-btn" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>{t.cancel}</button>
-              <button className="glass-btn danger" onClick={handleDelete} disabled={deleting}>{deleting ? t.deleting : t.delete}</button>
-            </div>
+        <div className="modal-overlay"><div className="modal-glass">
+          <h2>🗑 {t.deletePair}</h2>
+          <p>{t.deleteConfirm}</p>
+          <div className="modal-buttons">
+            <button className="glass-btn" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>{t.cancel}</button>
+            <button className="glass-btn danger" onClick={handleDelete} disabled={deleting}>{deleting ? t.deleting : t.delete}</button>
           </div>
-        </div>
+        </div></div>
       )}
 
-      {/* ===== RENAME MODAL ===== */}
+      {/* ===== RENAME ===== */}
       {showRename && (
-        <div className="modal-overlay">
-          <div className="modal-glass">
-            <h2>✏️ {t.renamePet}</h2>
-            <label>
-              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t.petNamePlaceholder} maxLength={20} autoFocus />
-            </label>
-            <div className="modal-buttons">
-              <button className="glass-btn" onClick={() => setShowRename(false)} disabled={renaming}>{t.cancel}</button>
-              <button className="glass-btn primary" onClick={handleRename} disabled={renaming || !newName.trim()}>{renaming ? t.saving : t.save}</button>
-            </div>
+        <div className="modal-overlay"><div className="modal-glass">
+          <h2>✏️ {t.renamePet}</h2>
+          <label>
+            <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t.petNamePlaceholder} maxLength={20} autoFocus />
+          </label>
+          <div className="modal-buttons">
+            <button className="glass-btn" onClick={() => setShowRename(false)} disabled={renaming}>{t.cancel}</button>
+            <button className="glass-btn primary" onClick={handleRename} disabled={renaming || !newName.trim()}>{renaming ? t.saving : t.save}</button>
           </div>
-        </div>
+        </div></div>
       )}
 
       {/* ===== TAB BAR ===== */}
