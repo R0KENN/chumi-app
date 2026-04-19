@@ -18,9 +18,7 @@ export function PairsProvider({ children, telegramUserId }) {
       setLoading(true);
       const res = await fetch(`${API_URL}/pairs/${telegramUserId}`);
       const data = await res.json();
-      if (data.success) {
-        setPairs(data.pairs || []);
-      }
+      setPairs(data.pairs || []);
     } catch (err) {
       console.error('Error loading pairs:', err);
       setError('Failed to load pairs');
@@ -38,7 +36,7 @@ export function PairsProvider({ children, telegramUserId }) {
   };
 
   const updatePair = (pairId, updates) => {
-    setPairs(prev => prev.map(p => p.id === pairId ? { ...p, ...updates } : p));
+    setPairs(prev => prev.map(p => p.code === pairId ? { ...p, ...updates } : p));
   };
 
   const value = { pairs, loading, error, addPair, updatePair, refreshPairs: fetchPairs };
