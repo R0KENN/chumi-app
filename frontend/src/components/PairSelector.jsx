@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePairs } from '../context/PairsContext';
 import { useLang } from '../context/LangContext';
@@ -8,38 +8,64 @@ import JoinPairModal from './JoinPairModal';
 
 export default function PairSelector() {
   const { pairs, loading } = usePairs();
-  const navigate = useNavigate();
   const { t } = useLang();
+  const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 
-  const telegramUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString()
-    || localStorage.getItem('chumi_test_uid') || '0';
+  // Get Telegram user ID
+  const tg = window.Telegram?.WebApp;
+  const userId = tg?.initDataUnsafe?.user?.id || localStorage.getItem('test_user_id') || '713156118';
 
-  if (loading) return <div className="loading">{t('loading')}</div>;
+  console.log('[PairSelector] loading:', loading, 'pairs:', pairs?.length, 'userId:', userId);
 
-  if (!pairs || pairs.length === 0) {
+  if (loading) {
     return (
-      <>
-        <NoPairs onCreate={() => setShowCreate(true)} onJoin={() => setShowJoin(true)} />
-        {showCreate && (
-          <CreatePairModal
-            telegramUserId={telegramUserId}
-            onClose={() => setShowCreate(false)}
-            onCreated={(code) => { setShowCreate(false); navigate(`/pair/${code}`); }}
-          />
-        )}
-        {showJoin && (
-          <JoinPairModal
-            telegramUserId={telegramUserId}
-            onClose={() => setShowJoin(false)}
-            onJoined={(code) => { setShowJoin(false); navigate(`/pair/${code}`); }}
-          />
-        )}
-      </>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        minHeight: '100vh', color: '#fff'
+      }}>
+        {t('loading') || 'Loading...'}
+      </div>
     );
   }
 
-  // Has pairs — redirect handled by App.jsx useEffect
-  return <div className="loading">{t('loading')}</div>;
+  return (
+    <div>
+      <NoPairs
+        onCreate={() => {
+          console.log('[PairSelector] Opening create modal');
+          setShowCreate(true);
+        }}
+        onJoin={() => {
+          console.log('[PairSelector] Opening join modal');
+          setShowJoin(true);
+        }}
+      />
+
+      {showCreate && (
+        <CreatePairModal
+          userId={userId}
+          onClose={() => setShowCreate(false)}
+          onCreated={(code) => {
+            console.log('[PairSelector] Pair created, navigating to:', code);
+            setShowCreate(false);
+            navigate(`/pair/${code}`);
+          }}
+        />
+      )}
+
+      {showJoin && (
+        <JoinPairModal
+          userId={userId}
+          onClose={() => setShowJoin(false)}
+          onJoined={(code) => {
+            console.log('[PairSelector] Joined pair, navigating to:', code);
+            setShowJoin(false);
+            navigate(`/pair/${code}`);
+          }}
+        />
+      )}
+    </div>
+  );
 }

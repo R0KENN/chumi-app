@@ -1,57 +1,89 @@
 import { useState } from 'react';
-import { usePairs } from '../context/PairsContext';
 import { useLang } from '../context/LangContext';
+import { usePairs } from '../context/PairsContext';
 
-const API_URL = '/api';
-
-export default function CreatePairModal({ telegramUserId, onClose, onCreated }) {
+export default function CreatePairModal({ userId, onClose, onCreated }) {
+  const { t } = useLang();
+  const { refreshPairs } = usePairs();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [code, setCode] = useState('');
-  const { refreshPairs } = usePairs();
-  const { t } = useLang();
+  const [createdCode, setCreatedCode] = useState('');
 
   const handleCreate = async () => {
+    console.log('[CreatePairModal] Creating pair for userId:', userId);
     setLoading(true);
     setError('');
     try {
-      const displayName = window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name || null;
-      const res = await fetch(`${API_URL}/create`, {
+      const res = await fetch('/api/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: telegramUserId, displayName }),
+        body: JSON.stringify({ userId: String(userId) })
       });
+      console.log('[CreatePairModal] Response status:', res.status);
       const data = await res.json();
+      console.log('[CreatePairModal] Response data:', data);
+
       if (data.error) {
         setError(data.error);
-      } else if (data.code) {
-        setCode(data.code);
-        await refreshPairs();
+        return;
       }
+      if (data.code) {
+        setCreatedCode(data.code);
+        await refreshPairs();
+        return;
+      }
+      setError('Unknown error');
     } catch (err) {
-      setError('Connection error');
+      console.error('[CreatePairModal] Fetch error:', err);
+      setError(err.message || 'Network error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard?.writeText(code);
+  const copyCode = () => {
+    navigator.clipboard.writeText(createdCode).catch(() => {});
   };
 
-  if (code) {
+  const goToPair = () => {
+    if (onCreated) onCreated(createdCode);
+  };
+
+  // If pair was created — show the code
+  if (createdCode) {
     return (
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-glass" onClick={e => e.stopPropagation()}>
-          <h3>✅ {t('copied') ? 'Пара создана!' : 'Pair created!'}</h3>
-          <div className="code-display" onClick={handleCopy}>
-            {code}
-          </div>
-          <p style={{fontSize:'13px',opacity:0.6,marginBottom:'12px'}}>
-            {t('copyCode')}
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      }}>
+        <div onClick={e => e.stopPropagation()} style={{
+          background: 'rgba(30,30,50,0.85)', backdropFilter: 'blur(24px)',
+          borderRadius: '24px', padding: '28px', width: '85%', maxWidth: '320px',
+          textAlign: 'center', color: '#fff'
+        }}>
+          <h3 style={{ marginBottom: '12px' }}>✅ {t('pairCreated') || 'Pair created!'}</h3>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', marginBottom: '16px' }}>
+            {t('shareCode') || 'Share this code with your partner:'}
           </p>
-          <div className="modal-btns">
-            <button className="btn-primary" onClick={() => onCreated(code)}>OK</button>
+          <div style={{
+            fontSize: '28px', fontWeight: 700, letterSpacing: '4px',
+            background: 'rgba(138,43,226,0.2)', borderRadius: '12px', padding: '12px', marginBottom: '16px'
+          }}>
+            {createdCode}
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={copyCode} style={{
+              flex: 1, padding: '12px', borderRadius: '14px', border: 'none',
+              background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: '14px', cursor: 'pointer'
+            }}>
+              📋 {t('copyCode') || 'Copy'}
+            </button>
+            <button onClick={goToPair} style={{
+              flex: 1, padding: '12px', borderRadius: '14px', border: 'none',
+              background: 'rgba(138,43,226,0.5)', color: '#fff', fontSize: '14px', cursor: 'pointer'
+            }}>
+              ➡️ {t('open') || 'Open'}
+            </button>
           </div>
         </div>
       </div>
@@ -59,19 +91,35 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-glass" onClick={e => e.stopPropagation()}>
-        <h3>🥚 {t('createPair')}</h3>
-        <p style={{fontSize:'14px',opacity:0.7,marginBottom:'14px'}}>
-          {t('noPetsDesc')}
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'rgba(30,30,50,0.85)', backdropFilter: 'blur(24px)',
+        borderRadius: '24px', padding: '28px', width: '85%', maxWidth: '320px',
+        textAlign: 'center', color: '#fff'
+      }}>
+        <h3 style={{ marginBottom: '12px' }}>{t('createPair') || 'Create pair'}</h3>
+        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', marginBottom: '20px' }}>
+          {t('createPairDesc') || 'A unique code will be generated for your partner.'}
         </p>
-        {error && <p className="error-text">{error}</p>}
-        <div className="modal-btns">
-          <button className="btn-cancel" onClick={onClose} disabled={loading}>
-            {t('cancel')}
+        
+        {error && <p style={{ color: '#ff6b6b', fontSize: '13px', marginBottom: '12px' }}>{error}</p>}
+        
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={onClose} disabled={loading} style={{
+            flex: 1, padding: '12px', borderRadius: '14px', border: 'none',
+            background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: '14px', cursor: 'pointer'
+          }}>
+            {t('cancel') || 'Cancel'}
           </button>
-          <button className="btn-primary" onClick={handleCreate} disabled={loading}>
-            {loading ? '...' : t('create')}
+          <button onClick={handleCreate} disabled={loading} style={{
+            flex: 1, padding: '12px', borderRadius: '14px', border: 'none',
+            background: loading ? 'rgba(138,43,226,0.2)' : 'rgba(138,43,226,0.5)',
+            color: '#fff', fontSize: '14px', cursor: 'pointer'
+          }}>
+            {loading ? '...' : (t('create') || 'Create')}
           </button>
         </div>
       </div>
