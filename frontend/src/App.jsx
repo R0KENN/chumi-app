@@ -18,6 +18,14 @@ const PET_STAGES = [
   { name: 'Legend', minPoints: 1000, imageIndex: 3 },
 ];
 
+const BACKGROUNDS = [
+  { id: 'room', name: 'Cozy Room', file: '/pets/bg_room.jpg' },
+  { id: 'forest', name: 'Magic Forest', file: '/pets/bg_forest.jpg' },
+  { id: 'ocean', name: 'Ocean Cave', file: '/pets/bg_ocean.jpg' },
+  { id: 'sakura', name: 'Sakura Garden', file: '/pets/bg_sakura.jpg' },
+  { id: 'candy', name: 'Candy Land', file: '/pets/bg_candy.jpg' },
+];
+
 function getStageByPoints(points, hatched) {
   if (!hatched) return PET_STAGES[0];
   let stage = PET_STAGES[1];
@@ -64,7 +72,6 @@ function hasVideo(petType, stage, hatched) {
   if (!hatched) return false;
   const idx = stage.imageIndex;
   if (idx < 0) return false;
-  // Only muru_0 has a video for now
   return petType === 'muru' && idx === 0;
 }
 
@@ -105,8 +112,10 @@ function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [notifications, setNotifications] = useState(true);
   const [soundOn, setSoundOn] = useState(true);
+  const [bgId, setBgId] = useState(() => localStorage.getItem('chumi_bg') || 'room');
 
   const API_URL = '/api';
+  const currentBg = BACKGROUNDS.find(b => b.id === bgId) || BACKGROUNDS[0];
 
   useEffect(() => {
     initSounds();
@@ -158,10 +167,12 @@ function App() {
 
   const toggleSound = () => { const v = !soundOn; setSoundOn(v); soundEnabled = v; localStorage.setItem('chumi_sound', String(v)); if (v) playSound('click'); };
   const toggleNotifications = () => { const v = !notifications; setNotifications(v); localStorage.setItem('chumi_notifications', String(v)); playSound('click'); };
+  const changeBg = (id) => { setBgId(id); localStorage.setItem('chumi_bg', id); playSound('click'); };
 
   if (loading) return (
     <div className="app">
-      <div className="stars"></div>
+      <div className="app-bg" style={{ backgroundImage: `url(${currentBg.file})` }}></div>
+      <div className="app-bg-overlay"></div>
       <div className="center-screen">
         <img src="/pets/egg.png" alt="egg" className="load-egg" />
         <p className="load-text">Loading...</p>
@@ -171,7 +182,8 @@ function App() {
 
   if (!pair) return (
     <div className="app">
-      <div className="stars"></div>
+      <div className="app-bg" style={{ backgroundImage: `url(${currentBg.file})` }}></div>
+      <div className="app-bg-overlay"></div>
       <div className="center-screen">
         <img src="/pets/egg.png" alt="egg" className="load-egg" />
         <h1 className="logo">Chumi</h1>
@@ -195,7 +207,8 @@ function App() {
 
   return (
     <div className="app">
-      <div className="stars"></div>
+      <div className="app-bg" style={{ backgroundImage: `url(${currentBg.file})` }}></div>
+      <div className="app-bg-overlay"></div>
 
       {showHatch && (
         <div className="ov">
@@ -219,7 +232,6 @@ function App() {
 
       {activeTab === 'home' && (
         <div className="main">
-          {/* Progress bar top */}
           <div className="topbar">
             <div className="topbar-row">
               <span className="topbar-name">{hatched ? stage.name : 'Egg'}</span>
@@ -230,20 +242,10 @@ function App() {
             </div>
           </div>
 
-          {/* Pet */}
           <div className="pet-zone">
             {useVideo ? (
               <div className="pet-wrap pet-wrap--video">
-<video
-  src={getPetVideo(pair.petType, stage)}
-  className="pet-video"
-  autoPlay
-  loop
-  muted
-  playsInline
-  type="video/webm"
-/>
-
+                <video src={getPetVideo(pair.petType, stage)} className="pet-video" autoPlay loop muted playsInline />
               </div>
             ) : (
               <div className={`pet-wrap ${!hatched ? 'pet-wrap--egg' : 'pet-wrap--img'}`}>
@@ -253,19 +255,16 @@ function App() {
             <div className="pet-shadow"></div>
           </div>
 
-          {/* Name */}
           <div className="pet-label">
             {hatched ? (PET_NAMES[pair.petType] || pair.petType) : `Hatches in: ${daysUntilHatch} days`}
           </div>
 
-          {/* Stats */}
           <div className="stats">
             <div className="st"><span className="st-i">🔥</span><span className="st-v">{pair.streakDays}</span></div>
             <div className="st"><span className="st-i">⭐</span><span className="st-v">{pair.growthPoints}</span></div>
             <div className="st"><span className="st-i">👥</span><span className="st-v">{pair.users?.length || 0}/2</span></div>
           </div>
 
-          {/* Feed */}
           <button className={`fbtn ${todayFed ? 'fbtn--done' : ''} ${feeding ? 'fbtn--load' : ''}`} onClick={feedPet} disabled={todayFed || feeding}>
             {feeding ? '⏳ Feeding...' : todayFed ? '✅ Fed' : '🍖 Feed'}
           </button>
@@ -291,6 +290,7 @@ function App() {
       {activeTab === 'settings' && (
         <div className="main settings">
           <h2 className="stitle">Settings</h2>
+
           <div className="srow">
             <div className="sinfo"><span className="si">🔔</span><div><div className="sn">Notifications</div><div className="sd">Reminders</div></div></div>
             <button className={`tgl ${notifications ? 'tgl--on' : ''}`} onClick={toggleNotifications}><div className="tgl-k"></div></button>
@@ -304,6 +304,21 @@ function App() {
               <div className="sinfo"><span className="si">🔑</span><div><div className="sn">Pair code</div><div className="sd">{pair.code}</div></div></div>
             </div>
           )}
+
+          <h3 className="stitle2">Background</h3>
+          <div className="bg-grid">
+            {BACKGROUNDS.map(bg => (
+              <button
+                key={bg.id}
+                className={`bg-card ${bgId === bg.id ? 'bg-card--active' : ''}`}
+                onClick={() => changeBg(bg.id)}
+              >
+                <img src={bg.file} alt={bg.name} className="bg-card-img" />
+                <span className="bg-card-name">{bg.name}</span>
+                {bgId === bg.id && <span className="bg-card-check">✓</span>}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
