@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { usePairs } from '../context/PairsContext';
+import { useState, useEffect } from 'react';
+import EditPairModal from './EditPairModal';
 
 const API_URL = 'http://localhost:3001/api';
 
@@ -13,6 +15,7 @@ export default function PairScreen({ telegramUserId }) {
   const [pair, setPair] = useState(null);
   const [loading, setLoading] = useState(true);
   const [feedMessage, setFeedMessage] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Сначала ищем пару в контексте (если она уже загружена)
   useEffect(() => {
@@ -82,6 +85,37 @@ export default function PairScreen({ telegramUserId }) {
         <button onClick={handleInvite}>📨 Пригласить друга</button>
       </div>
       {feedMessage && <p className="feed-message">{feedMessage}</p>}
+    </div>
+  );
+    const handleEdit = () => setShowEditModal(true);
+  const handleEditClose = () => setShowEditModal(false);
+  const handleEditUpdated = (updatedPair) => {
+    setPair(updatedPair);
+    setShowEditModal(false);
+  };
+
+  if (loading) return <div>Загрузка...</div>;
+  if (!pair) return <div>Пара не найдена</div>;
+
+  return (
+    <div className="pair-screen">
+      <button className="back-button" onClick={() => navigate('/')}>
+        ← Назад
+      </button>
+      <div className="pair-header">
+        <h1>{pair.name || pair.pet_type}</h1>
+        <button className="edit-button" onClick={handleEdit}>✏️</button>
+      </div>
+      <img src={pair.image_url || '/default-pet.png'} alt={pair.name} />
+      {/* остальное без изменений */}
+      {showEditModal && (
+        <EditPairModal
+          pair={pair}
+          telegramUserId={telegramUserId}
+          onClose={handleEditClose}
+          onUpdated={handleEditUpdated}
+        />
+      )}
     </div>
   );
 }

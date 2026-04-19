@@ -330,36 +330,35 @@ bot.onText(/\/mypairs/, async (msg) => {
 // Создание новой пары
 app.post('/api/pair/create', async (req, res) => {
   try {
-    const { userId, petType } = req.body;
+    const { userId, petType, name, imageUrl } = req.body;
 
-    // Находим пользователя
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id')
       .eq('telegram_id', userId)
       .single();
-
     if (userError || !user) {
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
 
     const code = nanoid(8);
+    const petName = name || petType; // если имя не указано, используем тип
 
     const { data: newPair, error: pairError } = await supabaseAdmin
       .from('pairs')
       .insert({
         code,
         pet_type: petType || 'cat',
+        name: petName,
+        image_url: imageUrl || '/default-pet.png',
         pet_level: 0,
         streak_days: 0,
         growth_points: 0,
       })
       .select()
       .single();
-
     if (pairError) throw pairError;
 
-    // Связываем пользователя как владельца
     const { error: linkError } = await supabaseAdmin
       .from('user_pairs')
       .insert({
@@ -367,7 +366,6 @@ app.post('/api/pair/create', async (req, res) => {
         pair_id: newPair.id,
         role: 'owner',
       });
-
     if (linkError) throw linkError;
 
     res.json({ pair: newPair });
@@ -427,6 +425,51 @@ app.post('/api/pair/join', async (req, res) => {
     res.json({ pair });
   } catch (error) {
     console.error('/api/pair/join error:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
+
+// Обновить данные пары (имя, картинку)
+app.put('/api/pair/:pairId', async (req, res) => {
+  try {
+    const { pairId } = req.params;
+    const { userId, name, imageUrl } = req.body;
+
+    // Проверяем, что пользователь имеет доступ к паре
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_id', userId)
+      .single();
+    if (userError || !user) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    const { data: membership } = await supabase
+      .from('user_pairs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('pair_id', pairId)
+      .maybeSingle();
+    if (!membership) {
+      return res.status(403).json({ error: 'Нет доступа к этой паре' });
+    }
+
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (imageUrl !== undefined) updates.image_url = imageUrl;
+
+    const { data: updatedPair, error: updateError } = await supabaseAdmin
+      .from('pairs')
+      .update(updates)
+      .eq('id', pairId)
+      .select()
+      .single();
+    if (updateError) throw updateError;
+
+    res.json({ pair: updatedPair });
+  } catch (error) {
+    console.error('/api/pair/:pairId update error:', error);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 });

@@ -10,6 +10,7 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { addPair } = usePairs();
+  const [name, setName] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,10 +18,12 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
     setError('');
     try {
       // Создаём пару через API
-      const response = await axios.post(`${API_URL}/pair/create`, {
-        userId: telegramUserId,
-        petType,
-      });
+const response = await axios.post(`${API_URL}/pair/create`, {
+  userId: telegramUserId,
+  petType,
+  name: name || petType, // если имя не введено, используем тип
+  imageUrl: '/default-pet.png', // потом можно добавить выбор
+});
       const newPair = response.data.pair;
       addPair(newPair);
       onCreated(newPair);
@@ -58,4 +61,13 @@ export default function CreatePairModal({ telegramUserId, onClose, onCreated }) 
       </div>
     </div>
   );
+  <label>
+  Имя питомца:
+  <input
+    type="text"
+    value={name}
+    onChange={(e) => setName(e.target.value)}
+    placeholder="Например, Барсик"
+  />
+</label>
 }

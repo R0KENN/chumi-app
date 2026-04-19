@@ -76,6 +76,20 @@ body {
   object-fit: contain;
 }
 
+.pair-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.edit-button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+
 .stats {
   background: var(--tg-theme-secondary-bg-color, #f0f0f0);
   border-radius: 16px;
