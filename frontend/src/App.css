@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════
-   STREAK PET — Liquid Glass Style v4
+   STREAK PET — Liquid Glass Style v5
    ══════════════════════════════════════ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -54,11 +54,11 @@ body {
   padding: 0 16px 32px; transition: background 0.4s ease;
 }
 
-/* ── Info row (streak + avatars + •••) — СВЕРХУ ── */
+/* ── Info row — СДВИНУТО НИЖЕ чтобы не пересекалось с кнопками бота ── */
 .sk-info-row {
   display: flex; align-items: center; justify-content: space-between;
   width: 100%;
-  padding-top: max(56px, calc(env(safe-area-inset-top) + 48px));
+  padding-top: max(72px, calc(env(safe-area-inset-top) + 68px));
   padding-bottom: 4px;
 }
 .sk-info-row-left {
@@ -68,7 +68,7 @@ body {
   display: flex; align-items: center; gap: 10px;
 }
 
-/* ── Имя питомца — ПОД info row ── */
+/* ── Имя питомца ── */
 .sk-pet-name-row {
   width: 100%;
   text-align: center;
@@ -134,12 +134,17 @@ body {
   flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
-/* ── Menu ── */
+/* ── Menu — МЕНЕЕ ПРОЗРАЧНОЕ + СДВИНУТО НИЖЕ ── */
 .sk-menu-overlay { position: fixed; inset: 0; z-index: 200; }
 .sk-menu {
-  position: absolute; top: 130px; right: 16px;
+  position: absolute; top: 164px; right: 16px;
   border-radius: 16px; padding: 6px;
   min-width: 220px; z-index: 201;
+  background: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 .sk-menu button {
   display: block; width: 100%; text-align: left; padding: 14px 16px;
@@ -265,7 +270,7 @@ body {
   font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 8px;
 }
 
-/* ── Popup ── */
+/* ── Popup — МЕНЕЕ ПРОЗРАЧНЫЕ ── */
 .sk-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.45);
   display: flex; align-items: center; justify-content: center; z-index: 1000;
@@ -273,11 +278,11 @@ body {
 }
 .sk-popup {
   border-radius: 24px; padding: 24px; width: 88%; max-width: 340px;
-  background: rgba(255,255,255,0.92) !important;
-  backdrop-filter: blur(28px) saturate(1.6);
-  -webkit-backdrop-filter: blur(28px) saturate(1.6);
-  border: 1px solid rgba(255,255,255,0.7);
-  box-shadow: 0 8px 40px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8);
+  background: rgba(255, 255, 255, 0.97) !important;
+  backdrop-filter: blur(32px) saturate(1.8);
+  -webkit-backdrop-filter: blur(32px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 .sk-popup-wide { max-width: 400px; }
 .sk-popup h3 { text-align: center; margin-bottom: 16px; color: #1a1a1a; font-size: 18px; }

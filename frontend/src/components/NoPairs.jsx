@@ -1,7 +1,14 @@
 import { useLang } from '../context/LangContext';
+import { useNavigate } from 'react-router-dom';
+import { usePairs } from '../context/PairsContext';
 
 export default function NoPairs({ onCreate, onJoin }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const navigate = useNavigate();
+  const { pairs } = usePairs();
+
+  const hasPairs = pairs && pairs.length > 0;
+
   return (
     <div style={{
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
@@ -25,6 +32,16 @@ export default function NoPairs({ onCreate, onJoin }) {
           fontWeight:600, cursor:'pointer'
         }}>🔗 {t('join')}</button>
       </div>
+
+      {hasPairs && (
+        <button onClick={() => navigate(`/pair/${pairs[0].code}`)} style={{
+          marginTop: 20, padding: '12px 32px', borderRadius: 14, border: 'none',
+          background: 'rgba(0,0,0,0.06)', color: 'rgba(0,0,0,0.45)', fontSize: 14,
+          fontWeight: 600, cursor: 'pointer', width: '100%', maxWidth: 300,
+        }}>
+          ← {lang === 'ru' ? 'Вернуться' : 'Go back'}
+        </button>
+      )}
     </div>
   );
 }

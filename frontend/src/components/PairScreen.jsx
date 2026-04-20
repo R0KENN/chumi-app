@@ -91,7 +91,6 @@ export default function PairScreen() {
   const [petAnim, setPetAnim] = useState(false);
   const [avatars, setAvatars] = useState({});
   const [showSoon, setShowSoon] = useState(false);
-  const [confirmTask, setConfirmTask] = useState(null);
   const [completing, setCompleting] = useState(false);
   const [showMyPairs, setShowMyPairs] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
@@ -223,6 +222,7 @@ export default function PairScreen() {
 
   const haptic = (type = 'medium') => { try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {} };
 
+  // Отправка share-задания — СРАЗУ, без попапа подтверждения
   const handleShareTask = async (task) => {
     if (task.completed || completing) return;
     setCompleting(true);
@@ -242,7 +242,8 @@ export default function PairScreen() {
   const handleTask = (task) => {
     if (task.completed || completing) return;
     haptic('light');
-    if (task.action === 'share') { setConfirmTask(task); return; }
+    // Share-задания — сразу отправка, без промежуточного окна
+    if (task.action === 'share') { handleShareTask(task); return; }
     if (task.action === 'add_home') {
       if (tg?.addToHomeScreen) tg.addToHomeScreen();
       setCompleting(true);
@@ -274,12 +275,6 @@ export default function PairScreen() {
     });
     setPair(p => ({ ...p, pet_name: newName.trim() }));
     setRenaming(false);
-  };
-
-  const TASK_HINTS = {
-    send_msg:     { ru: 'Выбери кому отправить сообщение с приглашением.\nЗадание будет засчитано автоматически.', en: 'Choose who to send an invite message to.\nTask will be completed automatically.' },
-    send_sticker: { ru: 'Выбери кому отправить приглашение.\nЗадание будет засчитано автоматически.', en: 'Choose who to send an invite to.\nTask will be completed automatically.' },
-    send_media:   { ru: 'Выбери кому отправить фото-приглашение.\nЗадание будет засчитано автоматически.', en: 'Choose who to send a photo invite to.\nTask will be completed automatically.' },
   };
 
   const myPairsData = pairs || [];
@@ -431,24 +426,6 @@ export default function PairScreen() {
             ))}
           </div>
         </>
-      )}
-
-      {/* ── Share task popup ── */}
-      {confirmTask && (
-        <div className="sk-overlay" onClick={() => setConfirmTask(null)}>
-          <div className="sk-popup" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>{confirmTask.icon}</div>
-            <h3 style={{ marginBottom: 8 }}>{lang === 'ru' ? confirmTask.ru : confirmTask.en}</h3>
-            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, whiteSpace: 'pre-line', lineHeight: 1.5 }}>
-              {TASK_HINTS[confirmTask.key]?.[lang] || TASK_HINTS[confirmTask.key]?.ru}
-            </p>
-            <button onClick={() => { handleShareTask(confirmTask); setConfirmTask(null); }}
-              disabled={completing} className="sk-btn-primary" style={{ background: completing ? '#ccc' : lv.accent }}>
-              {completing ? (lang === 'ru' ? 'Засчитываем...' : 'Completing...') : (lang === 'ru' ? '📤 Выбрать контакт и отправить' : '📤 Choose contact & send')}
-            </button>
-            <button className="sk-popup-close" onClick={() => setConfirmTask(null)}>{lang === 'ru' ? 'Отмена' : 'Cancel'}</button>
-          </div>
-        </div>
       )}
 
       {/* ── Delete confirm ── */}
