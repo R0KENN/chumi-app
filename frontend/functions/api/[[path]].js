@@ -779,6 +779,49 @@ export async function onRequest(context) {
       return json({ error: 'Failed to prepare message', details: data }, 500);
     }
 
+        // ═══════════════════════════════════════
+    // GET /api/user-lang/:userId
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/user-lang\/[^/]+$/)) {
+      const userId = path.split('/')[3];
+
+      const { data } = await supabase
+        .from('user_settings')
+        .select('lang')
+        .eq('telegram_user_id', userId)
+        .single();
+
+      return json({ lang: data?.lang || 'ru' });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/set-lang
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/set-lang') {
+      const body = await request.json();
+      const userId = String(body.userId);
+      const lang = body.lang === 'en' ? 'en' : 'ru';
+
+      const { data: existing } = await supabase
+        .from('user_settings')
+        .select('telegram_user_id')
+        .eq('telegram_user_id', userId)
+        .single();
+
+      if (existing) {
+        await supabase
+          .from('user_settings')
+          .update({ lang, updated_at: new Date().toISOString() })
+          .eq('telegram_user_id', userId);
+      } else {
+        await supabase
+          .from('user_settings')
+          .insert({ telegram_user_id: userId, lang });
+      }
+
+      return json({ success: true, lang });
+    }
+
     // ═══════════════════════════════════════
     // 404
     // ═══════════════════════════════════════

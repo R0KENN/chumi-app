@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const strings = {
   en: {
     loading: 'Loading…',
-noPets: 'Light your spark!', 
+    noPets: 'Light your spark!',
     noPetsDesc: 'Create a pair or join one',
     createPair: 'Create pair',
     createOrJoin: 'Create a pair and grow your flame together',
@@ -69,13 +69,14 @@ noPets: 'Light your spark!',
     notifyPartner: 'Nudge partner',
     nudgeSent: 'Nudge sent!',
     sendInvite: 'Send invite',
+    changeLang: '🌐 Language',
   },
   ru: {
     loading: 'Загрузка…',
-noPets: 'Зажги свою искру!',  
+    noPets: 'Зажги свою искру!',
     noPetsDesc: 'Создай пару или присоединись',
     createPair: 'Создать пару',
-    createOrJoin: 'Создай пару и начни растить огонёк вместе', 
+    createOrJoin: 'Создай пару и начни растить огонёк вместе',
     join: 'Вступить',
     feed: 'Покормить',
     petAction: 'Погладить',
@@ -138,10 +139,11 @@ noPets: 'Зажги свою искру!',
     notifyPartner: 'Напомнить партнёру',
     nudgeSent: 'Напоминание отправлено!',
     sendInvite: 'Отправить приглашение',
+    changeLang: '🌐 Язык',
   }
 };
 
-function detectLanguage() {
+function detectLanguageLocal() {
   const saved = localStorage.getItem('chumi_lang');
   if (saved) return saved;
 
@@ -156,20 +158,53 @@ function detectLanguage() {
   return 'en';
 }
 
+function getUserId() {
+  try {
+    const tg = window.Telegram?.WebApp;
+    const uid = tg?.initDataUnsafe?.user?.id?.toString();
+    if (uid) return uid;
+  } catch (e) {}
+  return localStorage.getItem('chumi_test_uid') || '713156118';
+}
+
 const LangContext = createContext();
 
 export function LangProvider({ children }) {
-  const [lang, setLangState] = useState(detectLanguage);
+  const [lang, setLangState] = useState(detectLanguageLocal);
+  const [loaded, setLoaded] = useState(false);
+
+  // При монтировании — попробовать загрузить язык из базы
+  useEffect(() => {
+    const uid = getUserId();
+    fetch(`/api/user-lang/${uid}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.lang && (data.lang === 'ru' || data.lang === 'en')) {
+          setLangState(data.lang);
+          localStorage.setItem('chumi_lang', data.lang);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
 
   const setLang = (l) => {
     setLangState(l);
     localStorage.setItem('chumi_lang', l);
+
+    // Сохранить в базу
+    const uid = getUserId();
+    fetch('/api/set-lang', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: uid, lang: l }),
+    }).catch(() => {});
   };
 
   const t = (key) => strings[lang]?.[key] || strings.en[key] || key;
 
   return (
-    <LangContext.Provider value={{ lang, setLang, t }}>
+    <LangContext.Provider value={{ lang, setLang, t, loaded }}>
       {children}
     </LangContext.Provider>
   );

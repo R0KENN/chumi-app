@@ -76,7 +76,7 @@ function getShareMessages(petName, streak, pairCode, lang) {
 export default function PairScreen() {
   const { pairId } = useParams();
   const navigate = useNavigate();
-  const { lang } = useLang();
+  const { lang, setLang } = useLang();
   const { pairs, refreshPairs } = usePairs();
   const tg = window.Telegram?.WebApp;
   const userId = String(tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118');
@@ -360,12 +360,21 @@ export default function PairScreen() {
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { if (tg?.addToHomeScreen) { tg.addToHomeScreen(); haptic('light'); } setShowMenu(false); }}>📌 {lang === 'ru' ? 'На главный экран' : 'Home Screen'}</button>
             <button onClick={() => { handleShareInvite(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
+            <button onClick={() => {
+              const newLang = lang === 'ru' ? 'en' : 'ru';
+              setLang(newLang);
+              setShowMenu(false);
+              haptic('light');
+            }}>
+              🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
+            </button>
             <button className="sk-menu-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
               🗑️ {lang === 'ru' ? 'Удалить пару' : 'Delete pair'}
             </button>
           </div>
         </div>
       )}
+
 
       {/* ── Waiting for partner ── */}
       {!hasPartner ? (
