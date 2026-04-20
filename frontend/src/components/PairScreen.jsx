@@ -335,11 +335,15 @@ export default function PairScreen() {
   };
 
   const handleShareInvite = () => {
-    const link = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-    const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(lang === 'ru' ? '🔥 Присоединяйся к Chumi!' : '🔥 Join Chumi!')}`;
-    if (tg?.openTelegramLink) tg.openTelegramLink(url);
-    else window.open(url, '_blank');
+    const botLink = `https://t.me/${BOT_USERNAME}`;
+    const text = lang === 'ru'
+      ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые уровни.\n\nПопробуй 👇`
+      : `🐾 Chumi — get a pet and grow it together with a friend!\n\nComplete tasks every day, keep your streak and unlock new levels.\n\nTry it 👇`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botLink)}&text=${encodeURIComponent(text)}`;
+    if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+    else window.open(shareUrl, '_blank');
   };
+
 
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
 
@@ -476,7 +480,7 @@ export default function PairScreen() {
 
           <div className="sk-tasks glass-card">
             <div className="sk-tasks-top">
-              <h3>{lang === 'ru' ? 'Растите своего Серийчика' : 'Grow your Streak Pet'}</h3>
+              <h3>{lang === 'ru' ? 'Растите своего Питомца' : 'Grow your Pet'}</h3>
               <span className="sk-tasks-count" style={{ color: lv.accent, background: lv.accent + '18' }}>{doneCount}/{totalCount}</span>
             </div>
             {allTasks.map(task => (
