@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
 import { usePairs } from '../context/PairsContext';
@@ -104,6 +104,10 @@ export default function PairScreen() {
   const [expandedRankingName, setExpandedRankingName] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [petTapped, setPetTapped] = useState(false);
+  const idleVideoRef = useRef(null);
+  const tapVideoRef = useRef(null);
+
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
@@ -267,11 +271,35 @@ export default function PairScreen() {
 
   const handlePetClick = () => {
     if (!hasPartner) return;
+    if (petTapped) return; // Не позволяем тапать пока играет анимация
     haptic('medium');
+
+    // Запускаем tap-анимацию
+    setPetTapped(true);
+    setPetAnim(true);
+    setTimeout(() => setPetAnim(false), 800);
+
+    // Когда tap-видео закончится — вернёмся к idle
+    // Ставим таймаут как запасной вариант (на случай если событие не сработает)
+    const fallbackTimer = setTimeout(() => {
+      setPetTapped(false);
+    }, 5000); // 5 секунд максимум
+
+    // Слушаем окончание tap-видео
+    if (tapVideoRef.current) {
+      tapVideoRef.current.currentTime = 0;
+      tapVideoRef.current.play().catch(() => {});
+      tapVideoRef.current.onended = () => {
+        clearTimeout(fallbackTimer);
+        setPetTapped(false);
+      };
+    }
+
+    // Выполняем задание если ещё не сделано
     const petTask = mergedTasks.find(t => t.key === 'pet_touch');
     if (petTask && !petTask.completed) handleTask(petTask);
-    else { setPetAnim(true); setTimeout(() => setPetAnim(false), 800); }
   };
+
 
   const handleRename = async () => {
     if (!newName.trim()) return;
@@ -400,17 +428,37 @@ export default function PairScreen() {
       ) : (
         <>
           <div className="sk-pet-area" onClick={handlePetClick}>
+            {/* Idle видео — зацикленное, показывается когда НЕ тапнули */}
             <video
+              ref={idleVideoRef}
               autoPlay
               loop
               muted
               playsInline
               className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-              style={{ width: 220, height: 280, objectFit: 'contain' }}
+              style={{
+                width: 220, height: 280, objectFit: 'contain',
+                display: petTapped ? 'none' : 'block',
+              }}
             >
               <source src="/pets/axolotl_idle.webm" type="video/webm" />
             </video>
+
+            {/* Tap видео — проигрывается один раз при нажатии */}
+            <video
+              ref={tapVideoRef}
+              muted
+              playsInline
+              className={`pet-animated ${petAnim ? 'tapped' : ''}`}
+              style={{
+                width: 220, height: 280, objectFit: 'contain',
+                display: petTapped ? 'block' : 'none',
+              }}
+            >
+              <source src="/pets/axolotl_tap.webm" type="video/webm" />
+            </video>
           </div>
+
 
 
           <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
