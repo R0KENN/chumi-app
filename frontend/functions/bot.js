@@ -25,11 +25,11 @@ const WEBAPP_URL = 'https://chumi-app.pages.dev';
 const FIRE_EMOJI_ID = '5368324170671202286';
 
 const LEVELS = [
-  { name: 'Spark', emoji: '✨', maxPoints: 30 },
-  { name: 'Flame', emoji: '🔥', maxPoints: 70 },
-  { name: 'Blaze', emoji: '🔥', maxPoints: 50 },
-  { name: 'Fire', emoji: '🔥', maxPoints: 150 },
-  { name: 'Inferno', emoji: '👑', maxPoints: 200 },
+  { name: 'Baby', emoji: '✨', maxPoints: 30 },
+  { name: 'Junior', emoji: '🔥', maxPoints: 70 },
+  { name: 'Teen', emoji: '🔥', maxPoints: 50 },
+  { name: 'Adult', emoji: '🔥', maxPoints: 150 },
+  { name: 'Legend', emoji: '👑', maxPoints: 200 },
 ];
 
 function getLevel(totalPoints) {
@@ -94,8 +94,8 @@ function detectLangFromTelegram(from) {
 // ─── Все тексты бота на двух языках ───
 const T = {
   ru: {
-    welcome: (name) => `Привет, ${name}! 🔥\n\n*Chumi* — растите огонёк вместе с другом!\n\n📝 Команды:\n/create — создать пару\n/join КОД — вступить в пару\n/mypairs — мои огоньки\n/status — подробный статус\n/lang — сменить язык\n/help — справка`,
-    help: `📖 *Команды:*\n\n/start — начать\n/create — создать пару\n/join КОД — вступить\n/mypairs — список\n/status — статус\n/lang — сменить язык\n\n🔥 Выполняйте задания каждый день!`,
+    welcome: (name) => `Привет, ${name}! 🐾\n\n*Chumi* — растите питомца вместе с другом!\n\n📝 Команды:\n/create — создать пару\n/join КОД — вступить в пару\n/mypairs — мои питомцы\n/status — подробный статус\n/lang — сменить язык\n/help — справка`,
+    help: `📖 *Команды:*\n\n/start — начать\n/create — создать пару\n/join КОД — вступить\n/mypairs — список\n/status — статус\n/lang — сменить язык\n\n🐾 Выполняйте задания каждый день!`,
     pairCreated: (code) => `✅ *Пара создана!*\n\nКод: \`${code}\`\n\nОтправь другу или нажми кнопку ниже:`,
     maxPairs: (count, max) => `⚠️ У тебя ${count}/${max} пар.`,
     joinNoCode: '⚠️ Укажи код: `/join ABCDEF`',
@@ -105,7 +105,7 @@ const T = {
     joined: (code) => `✅ *Ты в паре!* Код: \`${code}\``,
     partnerJoined: (name, code) => `🎉 *${name}* присоединился к паре \`${code}\`!`,
     noPairs: '😔 Нет пар. Создай: /create',
-    myPairsTitle: '🔥 *Мои огоньки:*\n\n',
+    myPairsTitle: '🐾 *Мои питомцы:*\n\n',
     statusTitle: '📊 *Статус:*\n\n',
     pairLine: (emoji, name, levelName, code, xp, streak) => `${emoji} *${name}* — ${levelName}\n   Код: \`${code}\` | ${xp} XP | 🔥 ${streak} дн.\n\n`,
     statusLine: (emoji, name, levelName, code, streak, xp, members, partnerName, isDead) => {
@@ -119,14 +119,14 @@ const T = {
     paySupport: '🛟 По оплате: @R0KENN',
     langChanged: '✅ Язык изменён на *Русский* 🇷🇺',
     langPrompt: '🌐 *Выбери язык / Choose language:*',
-    inviteText: (code) => `Присоединяйся к моей паре в Chumi! 🔥\nКод: ${code}`,
+    inviteText: (code) => `Присоединяйся к моей паре в Chumi! 🐾\nКод: ${code}`,
     maxPairsLimit: (max) => `⚠️ Лимит пар: ${max}.`,
     joinedNotify: (name, code) => `🎉 *${name}* присоединился к \`${code}\`!`,
     pairDeleted: (code) => `😢 Пара \`${code}\` была удалена.`,
   },
   en: {
-    welcome: (name) => `Hi, ${name}! 🔥\n\n*Chumi* — grow a flame together with a friend!\n\n📝 Commands:\n/create — create a pair\n/join CODE — join a pair\n/mypairs — my pets\n/status — detailed status\n/lang — change language\n/help — help`,
-    help: `📖 *Commands:*\n\n/start — start\n/create — create a pair\n/join CODE — join\n/mypairs — list\n/status — status\n/lang — change language\n\n🔥 Complete tasks every day!`,
+    welcome: (name) => `Hi, ${name}! 🐾\n\n*Chumi* — grow a pet together with a friend!\n\n📝 Commands:\n/create — create a pair\n/join CODE — join a pair\n/mypairs — my pets\n/status — detailed status\n/lang — change language\n/help — help`,
+    help: `📖 *Commands:*\n\n/start — start\n/create — create a pair\n/join CODE — join\n/mypairs — list\n/status — status\n/lang — change language\n\n🐾 Complete tasks every day!`,
     pairCreated: (code) => `✅ *Pair created!*\n\nCode: \`${code}\`\n\nSend it to your friend or tap the button below:`,
     maxPairs: (count, max) => `⚠️ You have ${count}/${max} pairs.`,
     joinNoCode: '⚠️ Specify code: `/join ABCDEF`',
@@ -136,7 +136,7 @@ const T = {
     joined: (code) => `✅ *You joined!* Code: \`${code}\``,
     partnerJoined: (name, code) => `🎉 *${name}* joined pair \`${code}\`!`,
     noPairs: '😔 No pairs. Create one: /create',
-    myPairsTitle: '🔥 *My pets:*\n\n',
+    myPairsTitle: '🐾 *My pets:*\n\n',
     statusTitle: '📊 *Status:*\n\n',
     pairLine: (emoji, name, levelName, code, xp, streak) => `${emoji} *${name}* — ${levelName}\n   Code: \`${code}\` | ${xp} XP | 🔥 ${streak} days\n\n`,
     statusLine: (emoji, name, levelName, code, streak, xp, members, partnerName, isDead) => {
@@ -150,7 +150,7 @@ const T = {
     paySupport: '🛟 Payment support: @R0KENN',
     langChanged: '✅ Language changed to *English* 🇬🇧',
     langPrompt: '🌐 *Выбери язык / Choose language:*',
-    inviteText: (code) => `Join my pair in Chumi! 🔥\nCode: ${code}`,
+    inviteText: (code) => `Join my pair in Chumi! 🐾\nCode: ${code}`,
     maxPairsLimit: (max) => `⚠️ Pair limit: ${max}.`,
     joinedNotify: (name, code) => `🎉 *${name}* joined \`${code}\`!`,
     pairDeleted: (code) => `😢 Pair \`${code}\` has been deleted.`,

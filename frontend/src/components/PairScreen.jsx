@@ -8,12 +8,13 @@ const ADMIN_IDS = ['713156118'];
 const BOT_USERNAME = 'ChumiPetBot';
 
 const LEVELS = [
-  { level: 0, name: 'Spark',  nameRu: 'Искра',   maxPoints: 30,  bg: ['#FFF8E1','#FFE082'], accent: '#F5A623', check: '#F5A623' },
-  { level: 1, name: 'Flame',  nameRu: 'Огонёк',  maxPoints: 70,  bg: ['#FFE0B2','#FFB74D'], accent: '#FB8C00', check: '#FB8C00' },
-  { level: 2, name: 'Blaze',  nameRu: 'Пламя',   maxPoints: 50,  bg: ['#E8D5F5','#B39DDB'], accent: '#7C4DFF', check: '#7C4DFF' },
-  { level: 3, name: 'Fire',   nameRu: 'Костёр',   maxPoints: 150, bg: ['#BBDEFB','#64B5F6'], accent: '#1E88E5', check: '#1E88E5' },
-  { level: 4, name: 'Inferno',nameRu: 'Инферно', maxPoints: 200, bg: ['#B2DFDB','#4DB6AC'], accent: '#00897B', check: '#00897B' },
+  { level: 0, name: 'Baby',    nameRu: 'Малыш',     maxPoints: 30,  bg: ['#FFF8E1','#FFE082'], accent: '#F5A623', check: '#F5A623' },
+  { level: 1, name: 'Junior',  nameRu: 'Подросток',  maxPoints: 70,  bg: ['#FFE0B2','#FFB74D'], accent: '#FB8C00', check: '#FB8C00' },
+  { level: 2, name: 'Teen',    nameRu: 'Юный',       maxPoints: 50,  bg: ['#E8D5F5','#B39DDB'], accent: '#7C4DFF', check: '#7C4DFF' },
+  { level: 3, name: 'Adult',   nameRu: 'Взрослый',   maxPoints: 150, bg: ['#BBDEFB','#64B5F6'], accent: '#1E88E5', check: '#1E88E5' },
+  { level: 4, name: 'Legend',  nameRu: 'Легенда',    maxPoints: 200, bg: ['#B2DFDB','#4DB6AC'], accent: '#00897B', check: '#00897B' },
 ];
+
 
 function getLevel(totalPoints) {
   let acc = 0;
@@ -33,45 +34,46 @@ function getShareMessages(petName, streak, pairCode, lang) {
   const link = `https://t.me/${BOT_USERNAME}?start=join_${pairCode}`;
   const msg = lang === 'ru' ? {
     send_msg: [
-      `🔥 Привет! Давай не сломаем серию в Chumi — уже ${streak} дней подряд! Зайди → ${link}`,
-      `💌 Это сообщение от твоего партнёра по Chumi! Наш огонёк растёт уже ${streak} дней 🔥 ${link}`,
-      `Эй! 👋 Наш Серийчик ждёт тебя! Серия: ${streak} дней 🔥 Не забудь зайти → ${link}`,
-      `🔥 ${petName} скучает! Мы на серии ${streak} дней — не сломай! ${link}`,
-      `💬 Напоминание от ${petName}! Серия ${streak} дней — заходи скорее 🔥 ${link}`,
-      `🔥 Мы с тобой уже ${streak} дней вместе растим ${petName}! Не останавливайся → ${link}`,
+      `🐾 Привет! Давай не сломаем серию в Chumi — уже ${streak} дней подряд! Зайди → ${link}`,
+      `💌 Это сообщение от твоего партнёра по Chumi! Наш питомец растёт уже ${streak} дней 🐾 ${link}`,
+      `Эй! 👋 ${petName} ждёт тебя! Серия: ${streak} дней 🐾 Не забудь зайти → ${link}`,
+      `🐾 ${petName} скучает! Мы на серии ${streak} дней — не сломай! ${link}`,
+      `💬 Напоминание от ${petName}! Серия ${streak} дней — заходи скорее 🐾 ${link}`,
+      `🐾 Мы с тобой уже ${streak} дней вместе растим ${petName}! Не останавливайся → ${link}`,
     ],
     send_sticker: [
-      `🎨 Лови стикер от ${petName}! Мы растим огонёк уже ${streak} дней 🔥 ${link}`,
-      `✨ Наш Серийчик передаёт привет стикером! ${streak} дней серия 🔥 ${link}`,
-      `🔥 Стикер-напоминание! Серия ${streak} дней, не забывай про ${petName}! ${link}`,
-      `🎭 ${petName} отправляет тебе стикер! Серия: ${streak} 🔥 ${link}`,
+      `🎨 Лови стикер от ${petName}! Мы растим его уже ${streak} дней 🐾 ${link}`,
+      `✨ ${petName} передаёт привет стикером! ${streak} дней серия 🐾 ${link}`,
+      `🐾 Стикер-напоминание! Серия ${streak} дней, не забывай про ${petName}! ${link}`,
+      `🎭 ${petName} отправляет тебе стикер! Серия: ${streak} 🐾 ${link}`,
     ],
     send_media: [
-      `📸 Фото-привет от партнёра по Chumi! Наша серия: ${streak} дней 🔥 Присоединяйся → ${link}`,
-      `🔥 Смотри! Мы растим ${petName} уже ${streak} дней подряд! Присоединяйся → ${link}`,
-      `📷 Ловии! Это от ${petName} — наш огонёк горит ${streak} дней 🔥 ${link}`,
-      `🎬 ${petName} шлёт фото/видео привет! ${streak} дней серия — не сломай 🔥 ${link}`,
+      `📸 Фото-привет от партнёра по Chumi! Наша серия: ${streak} дней 🐾 Присоединяйся → ${link}`,
+      `🐾 Смотри! Мы растим ${petName} уже ${streak} дней подряд! Присоединяйся → ${link}`,
+      `📷 Ловии! Это от ${petName} — наша серия ${streak} дней 🐾 ${link}`,
+      `🎬 ${petName} шлёт фото/видео привет! ${streak} дней серия — не сломай 🐾 ${link}`,
     ],
   } : {
     send_msg: [
-      `🔥 Hey! Let's keep our Chumi streak going — ${streak} days! Join → ${link}`,
-      `💌 Message from your Chumi partner! Our pet is growing for ${streak} days 🔥 ${link}`,
-      `Hey! 👋 ${petName} is waiting! Streak: ${streak} days 🔥 ${link}`,
-      `🔥 ${petName} misses you! ${streak} day streak — don't break it! ${link}`,
+      `🐾 Hey! Let's keep our Chumi streak going — ${streak} days! Join → ${link}`,
+      `💌 Message from your Chumi partner! Our pet is growing for ${streak} days 🐾 ${link}`,
+      `Hey! 👋 ${petName} is waiting! Streak: ${streak} days 🐾 ${link}`,
+      `🐾 ${petName} misses you! ${streak} day streak — don't break it! ${link}`,
     ],
     send_sticker: [
-      `🎨 Sticker from ${petName}! Growing our flame for ${streak} days 🔥 ${link}`,
-      `✨ ${petName} says hi with a sticker! ${streak} days streak 🔥 ${link}`,
-      `🔥 Sticker reminder! ${streak} day streak with ${petName}! ${link}`,
+      `🎨 Sticker from ${petName}! Growing our pet for ${streak} days 🐾 ${link}`,
+      `✨ ${petName} says hi with a sticker! ${streak} days streak 🐾 ${link}`,
+      `🐾 Sticker reminder! ${streak} day streak with ${petName}! ${link}`,
     ],
     send_media: [
-      `📸 Photo from your Chumi partner! Streak: ${streak} days 🔥 Join → ${link}`,
-      `🔥 Look! Growing ${petName} for ${streak} days! Join → ${link}`,
-      `📷 ${petName} sends a photo! ${streak} day streak 🔥 ${link}`,
+      `📸 Photo from your Chumi partner! Streak: ${streak} days 🐾 Join → ${link}`,
+      `🐾 Look! Growing ${petName} for ${streak} days! Join → ${link}`,
+      `📷 ${petName} sends a photo! ${streak} day streak 🐾 ${link}`,
     ],
   };
   return msg;
 }
+
 
 export default function PairScreen() {
   const { pairId } = useParams();
@@ -394,9 +396,18 @@ export default function PairScreen() {
       ) : (
         <>
           <div className="sk-pet-area" onClick={handlePetClick}>
-            <img src="/pets/flame_idle.webp" alt="pet" className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-              style={{ width: 200, height: 260, objectFit: 'contain' }} />
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className={`pet-animated ${petAnim ? 'tapped' : ''}`}
+              style={{ width: 220, height: 280, objectFit: 'contain' }}
+            >
+              <source src="/pets/axolotl_idle.webm" type="video/webm" />
+            </video>
           </div>
+
 
           <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
             <div className="sk-outfits-icon"><span>🔥</span><span>👕</span></div>
