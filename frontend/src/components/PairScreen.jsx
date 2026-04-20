@@ -31,48 +31,48 @@ function getLevel(totalPoints) {
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 function getShareMessages(petName, streak, pairCode, lang) {
-  const link = `https://t.me/${BOT_USERNAME}?start=join_${pairCode}`;
   const msg = lang === 'ru' ? {
     send_msg: [
-      `🐾 Привет! Давай не сломаем серию в Chumi — уже ${streak} дней подряд! Зайди → ${link}`,
-      `💌 Это сообщение от твоего партнёра по Chumi! Наш питомец растёт уже ${streak} дней 🐾 ${link}`,
-      `Эй! 👋 ${petName} ждёт тебя! Серия: ${streak} дней 🐾 Не забудь зайти → ${link}`,
-      `🐾 ${petName} скучает! Мы на серии ${streak} дней — не сломай! ${link}`,
-      `💬 Напоминание от ${petName}! Серия ${streak} дней — заходи скорее 🐾 ${link}`,
-      `🐾 Мы с тобой уже ${streak} дней вместе растим ${petName}! Не останавливайся → ${link}`,
+      `🐾 Привет! Давай не сломаем серию в Chumi — уже ${streak} дней подряд!`,
+      `💌 Сообщение от твоего партнёра по Chumi! Наш питомец растёт уже ${streak} дней 🐾`,
+      `👋 ${petName} ждёт тебя! Серия: ${streak} дней 🐾 Не забудь зайти!`,
+      `🐾 ${petName} скучает! Мы на серии ${streak} дней — не сломай!`,
+      `💬 Напоминание от ${petName}! Серия ${streak} дней — заходи скорее 🐾`,
+      `🐾 Мы с тобой уже ${streak} дней вместе растим ${petName}! Не останавливайся!`,
     ],
     send_sticker: [
-      `🎨 Лови стикер от ${petName}! Мы растим его уже ${streak} дней 🐾 ${link}`,
-      `✨ ${petName} передаёт привет стикером! ${streak} дней серия 🐾 ${link}`,
-      `🐾 Стикер-напоминание! Серия ${streak} дней, не забывай про ${petName}! ${link}`,
-      `🎭 ${petName} отправляет тебе стикер! Серия: ${streak} 🐾 ${link}`,
+      `🎨 Лови стикер от ${petName}! Растим его уже ${streak} дней 🐾`,
+      `✨ ${petName} передаёт привет стикером! ${streak} дней серия 🐾`,
+      `🐾 Стикер-напоминание! Серия ${streak} дней, не забывай про ${petName}!`,
+      `🎭 ${petName} отправляет тебе стикер! Серия: ${streak} 🐾`,
     ],
     send_media: [
-      `📸 Фото-привет от партнёра по Chumi! Наша серия: ${streak} дней 🐾 Присоединяйся → ${link}`,
-      `🐾 Смотри! Мы растим ${petName} уже ${streak} дней подряд! Присоединяйся → ${link}`,
-      `📷 Ловии! Это от ${petName} — наша серия ${streak} дней 🐾 ${link}`,
-      `🎬 ${petName} шлёт фото/видео привет! ${streak} дней серия — не сломай 🐾 ${link}`,
+      `📸 Фото-привет от партнёра по Chumi! Наша серия: ${streak} дней 🐾`,
+      `🐾 Смотри! Мы растим ${petName} уже ${streak} дней подряд!`,
+      `📷 Ловии! Это от ${petName} — наша серия ${streak} дней 🐾`,
+      `🎬 ${petName} шлёт фото/видео привет! ${streak} дней серия 🐾`,
     ],
   } : {
     send_msg: [
-      `🐾 Hey! Let's keep our Chumi streak going — ${streak} days! Join → ${link}`,
-      `💌 Message from your Chumi partner! Our pet is growing for ${streak} days 🐾 ${link}`,
-      `Hey! 👋 ${petName} is waiting! Streak: ${streak} days 🐾 ${link}`,
-      `🐾 ${petName} misses you! ${streak} day streak — don't break it! ${link}`,
+      `🐾 Hey! Let's keep our Chumi streak going — ${streak} days!`,
+      `💌 Message from your Chumi partner! Our pet is growing for ${streak} days 🐾`,
+      `👋 ${petName} is waiting! Streak: ${streak} days 🐾`,
+      `🐾 ${petName} misses you! ${streak} day streak — don't break it!`,
     ],
     send_sticker: [
-      `🎨 Sticker from ${petName}! Growing our pet for ${streak} days 🐾 ${link}`,
-      `✨ ${petName} says hi with a sticker! ${streak} days streak 🐾 ${link}`,
-      `🐾 Sticker reminder! ${streak} day streak with ${petName}! ${link}`,
+      `🎨 Sticker from ${petName}! Growing our pet for ${streak} days 🐾`,
+      `✨ ${petName} says hi with a sticker! ${streak} days streak 🐾`,
+      `🐾 Sticker reminder! ${streak} day streak with ${petName}!`,
     ],
     send_media: [
-      `📸 Photo from your Chumi partner! Streak: ${streak} days 🐾 Join → ${link}`,
-      `🐾 Look! Growing ${petName} for ${streak} days! Join → ${link}`,
-      `📷 ${petName} sends a photo! ${streak} day streak 🐾 ${link}`,
+      `📸 Photo from your Chumi partner! Streak: ${streak} days 🐾`,
+      `🐾 Look! Growing ${petName} for ${streak} days!`,
+      `📷 ${petName} sends a photo! ${streak} day streak 🐾`,
     ],
   };
   return msg;
 }
+
 
 
 export default function PairScreen() {
@@ -234,12 +234,16 @@ export default function PairScreen() {
     setCompleting(false);
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${BOT_USERNAME}?start=join_${pairId}`)}&text=${encodeURIComponent(text)}`;
+    const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
+    // Текст + ссылка через перенос строки, ссылка только одна в конце
+    const fullText = `${text}\n\n${inviteLink}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
     try {
       if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
       else window.open(shareUrl, '_blank');
     } catch (e) {}
   };
+
 
   const handleTask = (task) => {
     if (task.completed || completing) return;
