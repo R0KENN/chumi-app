@@ -239,14 +239,14 @@ export default function PairScreen() {
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
     const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-    // Текст + ссылка через перенос строки, ссылка только одна в конце
     const fullText = `${text}\n\n${inviteLink}`;
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
+    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
     try {
       if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
       else window.open(shareUrl, '_blank');
     } catch (e) {}
   };
+
 
 
   const handleTask = (task) => {
@@ -337,9 +337,9 @@ export default function PairScreen() {
   const handleShareInvite = () => {
     const botLink = `https://t.me/${BOT_USERNAME}`;
     const text = lang === 'ru'
-      ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые уровни.\n\nПопробуй 👇`
-      : `🐾 Chumi — get a pet and grow it together with a friend!\n\nComplete tasks every day, keep your streak and unlock new levels.\n\nTry it 👇`;
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botLink)}&text=${encodeURIComponent(text)}`;
+      ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые уровни.\n\nПопробуй 👇\n${botLink}`
+      : `🐾 Chumi — get a pet and grow it together with a friend!\n\nComplete tasks every day, keep your streak and unlock new levels.\n\nTry it 👇\n${botLink}`;
+    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
     if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
     else window.open(shareUrl, '_blank');
   };
@@ -393,7 +393,6 @@ export default function PairScreen() {
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)}>
           <div className="sk-menu glass-card" onClick={e => e.stopPropagation()}>
             <button onClick={() => { setRenaming(true); setShowMenu(false); }}>✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}</button>
-            <button onClick={() => { navigator.clipboard?.writeText(pairId); setShowMenu(false); haptic('light'); }}>📋 {lang === 'ru' ? 'Копировать код' : 'Copy code'}</button>
             <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🔥 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { if (tg?.addToHomeScreen) { tg.addToHomeScreen(); haptic('light'); } setShowMenu(false); }}>📌 {lang === 'ru' ? 'На главный экран' : 'Home Screen'}</button>
