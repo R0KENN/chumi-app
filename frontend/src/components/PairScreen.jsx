@@ -163,11 +163,17 @@ export default function PairScreen() {
   }, [tg, pair]);
 
   // ══════ BottomButton — кнопка «Пригласить» ══════
-  useEffect(() => {
-    if (!tg) return;
-    const main = tg.MainButton;
-    const secondary = tg.SecondaryButton;
-    if (!main) return;
+useEffect(() => {
+  if (!tg) return;
+  const main = tg.MainButton;
+  const secondary = tg.SecondaryButton;
+  if (main) main.hide();
+  if (secondary) secondary.hide();
+  return () => {
+    if (main) main.hide();
+    if (secondary) secondary.hide();
+  };
+}, [tg]);
 
     if (pair && hasPartner) {
       // Все задания выполнены — показываем «Поделиться в сторис»
