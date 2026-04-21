@@ -3,10 +3,10 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const strings = {
   en: {
     loading: 'Loading…',
-noPets: 'Get your pet!',
+    noPets: 'Get your pet!',
     noPetsDesc: 'Create a pair or join one',
     createPair: 'Create pair',
-createOrJoin: 'Create a pair and grow your pet together',
+    createOrJoin: 'Create a pair and grow your pet together',
     join: 'Join',
     feed: 'Feed',
     petAction: 'Pet',
@@ -70,13 +70,17 @@ createOrJoin: 'Create a pair and grow your pet together',
     nudgeSent: 'Nudge sent!',
     sendInvite: 'Send invite',
     changeLang: '🌐 Language',
+    premium: 'Premium',
+    premiumDesc: 'Unlock exclusive skins, unlimited pairs and more',
+    subscribe: 'Subscribe',
+    shareStory: 'Share to Story',
   },
   ru: {
     loading: 'Загрузка…',
-noPets: 'Заведи питомца!',
+    noPets: 'Заведи питомца!',
     noPetsDesc: 'Создай пару или присоединись',
     createPair: 'Создать пару',
-createOrJoin: 'Создай пару и начни растить питомца вместе',
+    createOrJoin: 'Создай пару и начни растить питомца вместе',
     join: 'Вступить',
     feed: 'Покормить',
     petAction: 'Погладить',
@@ -140,23 +144,12 @@ createOrJoin: 'Создай пару и начни растить питомца
     nudgeSent: 'Напоминание отправлено!',
     sendInvite: 'Отправить приглашение',
     changeLang: '🌐 Язык',
+    premium: 'Премиум',
+    premiumDesc: 'Эксклюзивные скины, безлимит пар и многое другое',
+    subscribe: 'Подписаться',
+    shareStory: 'В сторис',
   }
 };
-
-function detectLanguageLocal() {
-  const saved = localStorage.getItem('chumi_lang');
-  if (saved) return saved;
-
-  try {
-    const tg = window.Telegram?.WebApp;
-    const tgLang = tg?.initDataUnsafe?.user?.language_code;
-    if (tgLang?.startsWith('ru')) return 'ru';
-  } catch (e) {}
-
-  const nav = navigator.language || navigator.userLanguage || '';
-  if (nav.startsWith('ru')) return 'ru';
-  return 'en';
-}
 
 function getUserId() {
   try {
@@ -167,32 +160,77 @@ function getUserId() {
   return localStorage.getItem('chumi_test_uid') || '713156118';
 }
 
+// CloudStorage helpers (Bot API 6.9+)
+const cs = window.Telegram?.WebApp?.CloudStorage;
+
+function csGet(key) {
+  return new Promise((resolve) => {
+    if (!cs) { resolve(null); return; }
+    try {
+      cs.getItem(key, (err, value) => {
+        if (err || !value) resolve(null);
+        else resolve(value);
+      });
+    } catch { resolve(null); }
+  });
+}
+
+function csSet(key, value) {
+  if (!cs) return;
+  try { cs.setItem(key, value, () => {}); } catch (e) {}
+}
+
+function detectLanguageLocal() {
+  const saved = localStorage.getItem('chumi_lang');
+  if (saved) return saved;
+  try {
+    const tg = window.Telegram?.WebApp;
+    const tgLang = tg?.initDataUnsafe?.user?.language_code;
+    if (tgLang?.startsWith('ru')) return 'ru';
+  } catch (e) {}
+  const nav = navigator.language || navigator.userLanguage || '';
+  if (nav.startsWith('ru')) return 'ru';
+  return 'en';
+}
+
 const LangContext = createContext();
 
 export function LangProvider({ children }) {
   const [lang, setLangState] = useState(detectLanguageLocal);
   const [loaded, setLoaded] = useState(false);
 
-  // При монтировании — попробовать загрузить язык из базы
   useEffect(() => {
     const uid = getUserId();
-    fetch(`/api/user-lang/${uid}`)
-      .then(r => r.json())
-      .then(data => {
+
+    (async () => {
+      // 1. Попробовать CloudStorage (мгновенно, кросс-девайс)
+      const cloudLang = await csGet('chumi_lang');
+      if (cloudLang && (cloudLang === 'ru' || cloudLang === 'en')) {
+        setLangState(cloudLang);
+        localStorage.setItem('chumi_lang', cloudLang);
+        setLoaded(true);
+        return;
+      }
+
+      // 2. Фоллбэк — загрузить из API
+      try {
+        const res = await fetch(`/api/user-lang/${uid}`);
+        const data = await res.json();
         if (data.lang && (data.lang === 'ru' || data.lang === 'en')) {
           setLangState(data.lang);
           localStorage.setItem('chumi_lang', data.lang);
+          csSet('chumi_lang', data.lang);
         }
-      })
-      .catch(() => {})
-      .finally(() => setLoaded(true));
+      } catch (e) {}
+      finally { setLoaded(true); }
+    })();
   }, []);
 
   const setLang = (l) => {
     setLangState(l);
     localStorage.setItem('chumi_lang', l);
+    csSet('chumi_lang', l); // сохраняем в CloudStorage
 
-    // Сохранить в базу
     const uid = getUserId();
     fetch('/api/set-lang', {
       method: 'POST',

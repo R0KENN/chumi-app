@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePairs } from '../context/PairsContext';
 import { useLang } from '../context/LangContext';
@@ -13,9 +13,13 @@ export default function PairSelector() {
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 
-  // Get Telegram user ID
   const tg = window.Telegram?.WebApp;
-const userId = tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118';
+  const userId = tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118';
+
+  // На главном экране скрываем BackButton — Telegram покажет свою кнопку «Закрыть»
+  useEffect(() => {
+    if (tg?.BackButton) tg.BackButton.hide();
+  }, [tg]);
 
   console.log('[PairSelector] loading:', loading, 'pairs:', pairs?.length, 'userId:', userId);
 

@@ -13,10 +13,8 @@ function AppContent() {
 
   useEffect(() => {
     if (!loading && pairs && pairs.length > 0) {
-      // Не редиректить если пришли с ?newpair=1
       const params = new URLSearchParams(location.search);
       if (params.get('newpair')) return;
-
       if (location.pathname === '/' || location.pathname === '') {
         navigate(`/pair/${pairs[0].code}`);
       }
@@ -49,6 +47,12 @@ function App() {
 
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
 
+        // Closing confirmation — чтобы случайно не закрыть
+        if (tg.enableClosingConfirmation) {
+          tg.enableClosingConfirmation();
+        }
+
+        // Начальные цвета (будут обновляться из PairScreen)
         try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) {}
         try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) {}
         try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) {}

@@ -822,6 +822,94 @@ description: 'Нажми чтобы пригласить в пару 🐾',
       return json({ success: true, lang });
     }
 
+    // ══════ Push-напоминания ══════
+// POST /api/send-reminders (вызывается cron или вручную)
+if (method === 'POST' && path === '/api/send-reminders') {
+  const BOT_TOKEN = env.BOT_TOKEN;
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+
+  // Получаем все активные пары с 2 участниками
+  const { data: pairs } = await supabase
+    .from('pairs')
+    .select('code, pet_name, streak_days, members:pair_users(user_id)')
+    .gte('streak_days', 1);
+
+  let sent = 0;
+  for (const pair of (pairs || [])) {
+    for (const member of (pair.members || [])) {
+      // Проверяем, выполнил ли daily_open сегодня
+      const { data: tasks } = await supabase
+        .from('daily_tasks')
+        .select('task_key')
+        .eq('pair_code', pair.code)
+        .eq('user_id', member.user_id)
+        .eq('task_key', 'daily_open')
+        .eq('date', todayStr);
+
+      if (!tasks || tasks.length === 0) {
+        // Не заходил — отправляем напоминание
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('lang')
+          .eq('user_id', member.user_id)
+          .single();
+
+        const lang = settings?.lang || 'ru';
+        const name = pair.pet_name || (lang === 'ru' ? 'Питомец' : 'Pet');
+        const text = lang === 'ru'
+          ? `🐾 ${name} ждёт тебя! Серия ${pair.streak_days} дней — не сломай! 🔥`
+          : `🐾 ${name} is waiting! ${pair.streak_days} day streak — don't break it! 🔥`;
+
+        try {
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: member.user_id,
+              text,
+              reply_markup: {
+                inline_keyboard: [[{
+                  text: lang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi',
+                  web_app: { url: `https://chumi-app.pages.dev/pair/${pair.code}` }
+                }]]
+              }
+            }),
+          });
+          sent++;
+        } catch (e) {}
+      }
+    }
+  }
+  return json({ ok: true, sent });
+}
+
+// ══════ Подписка Premium ══════
+// POST /api/create-invoice  — добавить обработку premium_monthly
+// В существующем обработчике create-invoice добавь:
+if (productId === 'premium_monthly') {
+  const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
+    title: 'Chumi Premium',
+    description: 'Exclusive skins, unlimited pairs, unique outfits',
+    payload: `premium_${userId}`,
+    currency: 'XTR',
+    prices: [{ amount: 50, label: 'Premium Monthly' }],
+    subscription_period: 2592000, // 30 дней
+  });
+  return json({ invoiceUrl });
+}
+
+// Хелпер для создания Stars-инвойса с подпиской
+async function createStarsInvoice(botToken, params) {
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/createInvoiceLink`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  return data.result;
+}
+
     // ═══════════════════════════════════════
     // 404
     // ═══════════════════════════════════════

@@ -14,12 +14,14 @@ const EGG_VIDEOS = {
 };
 
 const LEVELS = [
-  { level: 0, name: 'Baby',   nameRu: 'Малыш',    maxPoints: 30,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',  petTap: 'axolotl_tap' },
-  { level: 1, name: 'Junior', nameRu: 'Подросток', maxPoints: 70,  bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A', pet: 'axolotl_peach', petTap: 'axolotl_peach_tap' },
-  { level: 2, name: 'Teen',   nameRu: 'Юный',      maxPoints: 50,  bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A', pet: 'axolotl_pink',  petTap: 'axolotl_pink_tap' },
-  { level: 3, name: 'Adult',  nameRu: 'Взрослый',  maxPoints: 150, bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4', pet: 'axolotl_blue',  petTap: 'axolotl_blue_tap' },
-  { level: 4, name: 'Legend', nameRu: 'Легенда',   maxPoints: 200, bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560', pet: 'axolotl_black', petTap: 'axolotl_black_tap' },
+  { level: 0, name: 'Baby',   nameRu: 'Малыш',    maxPoints: 30,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',  petTap: 'axolotl_tap',        emojiId: null },
+  { level: 1, name: 'Junior', nameRu: 'Подросток', maxPoints: 70,  bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A', pet: 'axolotl_peach', petTap: 'axolotl_peach_tap',  emojiId: null },
+  { level: 2, name: 'Teen',   nameRu: 'Юный',      maxPoints: 50,  bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A', pet: 'axolotl_pink',  petTap: 'axolotl_pink_tap',   emojiId: null },
+  { level: 3, name: 'Adult',  nameRu: 'Взрослый',  maxPoints: 150, bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4', pet: 'axolotl_blue',  petTap: 'axolotl_blue_tap',   emojiId: null },
+  { level: 4, name: 'Legend', nameRu: 'Легенда',   maxPoints: 200, bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560', pet: 'axolotl_black', petTap: 'axolotl_black_tap',  emojiId: null },
 ];
+// Когда у тебя будут custom emoji ID для каждого уровня, заполни поле emojiId
+// Например: emojiId: '5368324170671202286'
 
 const EGG_BG = ['#F5F0FF', '#E8E0F0'];
 const EGG_ACCENT = '#B39DDB';
@@ -86,7 +88,7 @@ export default function PairScreen() {
 
   const [pair, setPair] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);                 // ← FIX 6: error state
+  const [loadError, setLoadError] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState('');
@@ -106,11 +108,13 @@ export default function PairScreen() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [petTapped, setPetTapped] = useState(false);
-  const [maxPairs, setMaxPairs] = useState(3);                       // ← FIX 4: dynamic maxPairs
+  const [maxPairs, setMaxPairs] = useState(3);
+  const [showPremium, setShowPremium] = useState(false);
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
-  const rankingAvatarsRef = useRef({});                              // ← FIX 5: stable ref for ranking avatars
+  const rankingAvatarsRef = useRef({});
+  const prevLevelRef = useRef(null);
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
@@ -131,6 +135,93 @@ export default function PairScreen() {
       icon: '👆', action: 'pet' },
   ];
 
+  // ══════ Адаптивные цвета Telegram UI ══════
+  useEffect(() => {
+    if (!tg || !pair) return;
+    const lv = getLevel(pair.growth_points || 0);
+    const bgColors = isEgg ? EGG_BG : lv.bg;
+    const isDark = !isEgg && lv.idx === 4;
+
+    try { tg.setHeaderColor?.(bgColors[0]); } catch (e) {}
+    try { tg.setBackgroundColor?.(bgColors[1]); } catch (e) {}
+    try { tg.setBottomBarColor?.(isDark ? bgColors[1] : '#f5f5f5'); } catch (e) {}
+  }, [tg, pair, isEgg]);
+
+  // ══════ Emoji Status при повышении уровня ══════
+  useEffect(() => {
+    if (!tg || !pair) return;
+    const lv = getLevel(pair.growth_points || 0);
+    if (prevLevelRef.current !== null && lv.idx > prevLevelRef.current && lv.emojiId) {
+      // Уровень повысился — предложить emoji status
+      if (tg.setEmojiStatus) {
+        tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, (ok) => {
+          if (ok) console.log('Emoji status set!');
+        });
+      }
+    }
+    prevLevelRef.current = lv.idx;
+  }, [tg, pair]);
+
+  // ══════ BottomButton — кнопка «Пригласить» ══════
+  useEffect(() => {
+    if (!tg) return;
+    const main = tg.MainButton;
+    const secondary = tg.SecondaryButton;
+    if (!main) return;
+
+    if (pair && hasPartner) {
+      // Все задания выполнены — показываем «Поделиться в сторис»
+      const lv = getLevel(pair.growth_points || 0);
+      const allDone = TASKS.every(t => pair.daily_tasks?.some(dt => dt.task_key === t.key));
+
+      if (allDone) {
+        main.setText(lang === 'ru' ? '📸 В сторис' : '📸 Share Story');
+        main.color = isEgg ? EGG_ACCENT : lv.accent;
+        main.textColor = '#FFFFFF';
+        main.show();
+        const storyHandler = () => handleShareToStory();
+        main.onClick(storyHandler);
+
+        if (secondary) {
+          secondary.setText(lang === 'ru' ? '📤 Пригласить друга' : '📤 Invite friend');
+          secondary.color = 'rgba(0,0,0,0.05)';
+          secondary.textColor = '#333333';
+          secondary.show();
+          const inviteHandler = () => handleShareInvite();
+          secondary.onClick(inviteHandler);
+          return () => { main.offClick(storyHandler); main.hide(); secondary.offClick(inviteHandler); secondary.hide(); };
+        }
+        return () => { main.offClick(storyHandler); main.hide(); };
+      } else {
+        main.hide();
+        if (secondary) secondary.hide();
+      }
+    } else if (pair && !hasPartner) {
+      main.setText(lang === 'ru' ? '📤 Пригласить партнёра' : '📤 Invite partner');
+      main.color = isEgg ? EGG_ACCENT : '#F5A623';
+      main.textColor = '#FFFFFF';
+      main.show();
+      const handler = () => handleShareInvite();
+      main.onClick(handler);
+      return () => { main.offClick(handler); main.hide(); };
+    }
+
+    return () => { main.hide(); if (secondary) secondary.hide(); };
+  }, [tg, pair, hasPartner, lang, isEgg]);
+
+  // ══════ Back Button ══════
+  useEffect(() => {
+    if (!tg?.BackButton) return;
+    if (pairs && pairs.length > 1) {
+      tg.BackButton.show();
+      const handler = () => navigate('/');
+      tg.BackButton.onClick(handler);
+      return () => { tg.BackButton.offClick(handler); tg.BackButton.hide(); };
+    } else {
+      tg.BackButton.hide();
+    }
+  }, [tg, navigate, pairs]);
+
   const completeTask = useCallback(async (taskKey) => {
     try {
       const res = await fetch(`${API}/complete-task`, {
@@ -144,9 +235,9 @@ export default function PairScreen() {
 
   const load = useCallback(async () => {
     try {
-      setLoadError(false);                                           // ← FIX 6
+      setLoadError(false);
       const res = await fetch(`${API}/pair/${pairId}/${userId}`);
-      if (!res.ok) { setLoadError(true); setLoading(false); return; }  // ← FIX 6
+      if (!res.ok) { setLoadError(true); setLoading(false); return; }
       const data = await res.json();
       if (data.error) { navigate('/'); return; }
       setPair(data);
@@ -162,14 +253,13 @@ export default function PairScreen() {
       }
     } catch (e) {
       console.error(e);
-      setLoadError(true);                                            // ← FIX 6
+      setLoadError(true);
     }
     finally { setLoading(false); }
   }, [pairId, userId, navigate, completeTask]);
 
   useEffect(() => { load(); }, [load]);
 
-  // ← FIX 4: load maxPairs from API
   useEffect(() => {
     if (isAdmin) { setMaxPairs(999); return; }
     (async () => {
@@ -192,13 +282,12 @@ export default function PairScreen() {
     });
   }, [pair?.members]);
 
-  // ← FIX 5: stable ranking avatars using ref
   const loadRankingAvatars = useCallback((entries) => {
     const ids = new Set();
     entries.forEach(r => { if (r.members) r.members.forEach(m => ids.add(m.user_id)); });
     ids.forEach(async (uid) => {
       if (rankingAvatarsRef.current[uid]) return;
-      rankingAvatarsRef.current[uid] = true; // mark as loading
+      rankingAvatarsRef.current[uid] = true;
       try {
         const r = await fetch(`${API}/avatar/${uid}`);
         const d = await r.json();
@@ -232,22 +321,47 @@ export default function PairScreen() {
     finally { setDeleting(false); }
   };
 
-  // ← FIX 8: Telegram Back Button
-  useEffect(() => {
-    if (tg?.BackButton) {
-      tg.BackButton.show();
-      const handler = () => navigate('/');
-      tg.BackButton.onClick(handler);
-      return () => {
-        tg.BackButton.offClick(handler);
-        tg.BackButton.hide();
-      };
+  // ══════ Share to Story ══════
+  const handleShareToStory = () => {
+    if (!tg?.shareToStory) return;
+    const lv = getLevel(pair?.growth_points || 0);
+    // Используем OG-превью или URL питомца
+    const mediaUrl = `https://chumi-app.pages.dev/pets/og-preview.png`;
+    tg.shareToStory(mediaUrl, {
+      text: lang === 'ru'
+        ? `🐾 Мой питомец ${petName} — уровень ${lv.nameRu}! Серия ${streakDays} дней 🔥\n\nПопробуй: https://t.me/${BOT_USERNAME}`
+        : `🐾 My pet ${petName} — level ${lv.name}! ${streakDays} day streak 🔥\n\nTry it: https://t.me/${BOT_USERNAME}`,
+    });
+  };
+
+  // ══════ Share Message (prepared inline) ══════
+  const handleShareMessage = async () => {
+    if (!tg?.shareMessage) {
+      // Фоллбэк на обычный шеринг
+      handleShareInvite();
+      return;
     }
-  }, [tg, navigate]);
+    try {
+      const res = await fetch(`${API}/prepare-share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: pairId, userId }),
+      });
+      const data = await res.json();
+      if (data.messageId) {
+        tg.shareMessage(data.messageId, (ok) => {
+          if (ok) haptic('success');
+        });
+      } else {
+        handleShareInvite();
+      }
+    } catch (e) {
+      handleShareInvite();
+    }
+  };
 
   if (loading) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 
-  // ← FIX 6: error UI
   if (loadError) return (
     <div className="sk-loading">
       <div style={{ fontSize: 48, marginBottom: 12 }}>😿</div>
@@ -288,23 +402,15 @@ export default function PairScreen() {
 
   const haptic = (type = 'medium') => { try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {} };
 
-  // ← FIX 7: share task — only complete AFTER share opens
   const handleShareTask = async (task) => {
     if (task.completed || completing) return;
     haptic('light');
-
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
     const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
     const fullText = `${text}\n\n${inviteLink}`;
     const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-
-    try {
-      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-      else window.open(shareUrl, '_blank');
-    } catch (e) {}
-
-    // Complete task after opening share dialog (not before)
+    try { if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank'); } catch (e) {}
     setCompleting(true);
     await completeTask(task.key);
     await load();
@@ -363,7 +469,6 @@ export default function PairScreen() {
   };
 
   const myPairsData = pairs || [];
-  // ← FIX 10: canAddPair uses dynamic maxPairs from API
   const canAddPair = isAdmin || myPairsData.length < maxPairs;
 
   const handleAddPair = () => {
@@ -389,21 +494,29 @@ export default function PairScreen() {
     if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank');
   };
 
-  const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
+  // ══════ Premium подписка ══════
+  const handleSubscribe = async () => {
+    try {
+      const res = await fetch(`${API}/create-invoice`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, productId: 'premium_monthly' }),
+      });
+      const data = await res.json();
+      if (data.invoiceUrl && tg?.openInvoice) {
+        tg.openInvoice(data.invoiceUrl, (st) => {
+          if (st === 'paid') { haptic('heavy'); setShowPremium(false); load(); }
+        });
+      } else if (data.invoiceUrl) window.open(data.invoiceUrl, '_blank');
+    } catch (e) {}
+  };
 
+  const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
   const eggVideoSrc = EGG_VIDEOS[eggDay];
 
   const renderEgg = () => (
-    <video
-      ref={eggVideoRef}
-      key={`egg-${eggDay}`}
-      autoPlay
-      loop
-      muted
-      playsInline
+    <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-      style={{ width: 220, height: 280, objectFit: 'contain' }}
-    >
+      style={{ width: 220, height: 280, objectFit: 'contain' }}>
       <source src={eggVideoSrc} type="video/webm" />
     </video>
   );
@@ -474,8 +587,10 @@ export default function PairScreen() {
             {!isEgg && <button onClick={() => { setRenaming(true); setShowMenu(false); }}>✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}</button>}
             <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🐾 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
+            <button onClick={() => { handleShareToStory(); setShowMenu(false); }}>📸 {lang === 'ru' ? 'В сторис' : 'Share Story'}</button>
+            <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
             <button onClick={() => { if (tg?.addToHomeScreen) { tg.addToHomeScreen(); haptic('light'); } setShowMenu(false); }}>📌 {lang === 'ru' ? 'На главный экран' : 'Home Screen'}</button>
-            <button onClick={() => { handleShareInvite(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
+            <button onClick={() => { setShowPremium(true); setShowMenu(false); }}>⭐ {lang === 'ru' ? 'Премиум' : 'Premium'}</button>
             <button onClick={() => { const newLang = lang === 'ru' ? 'en' : 'ru'; setLang(newLang); setShowMenu(false); haptic('light'); }}>
               🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
             </button>
@@ -496,9 +611,6 @@ export default function PairScreen() {
           <div className="sk-waiting-code" onClick={() => { navigator.clipboard?.writeText(pairId); haptic('light'); }}>
             {pairId}<span className="sk-waiting-code-copy">📋</span>
           </div>
-          <button className="sk-waiting-btn" style={{ background: accentColor }} onClick={handleShareInvite}>
-            {lang === 'ru' ? '📤 Пригласить партнёра' : '📤 Invite partner'}
-          </button>
         </div>
       ) : (
         <>
@@ -553,6 +665,7 @@ export default function PairScreen() {
         </>
       )}
 
+      {/* Delete confirm */}
       {showDeleteConfirm && (
         <div className="sk-overlay" onClick={() => setShowDeleteConfirm(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
@@ -569,6 +682,7 @@ export default function PairScreen() {
         </div>
       )}
 
+      {/* My pairs */}
       {showMyPairs && (
         <div className="sk-overlay" onClick={() => setShowMyPairs(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
@@ -602,6 +716,7 @@ export default function PairScreen() {
         </div>
       )}
 
+      {/* Ranking */}
       {showRanking && (
         <div className="sk-overlay" onClick={() => setShowRanking(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
@@ -644,6 +759,7 @@ export default function PairScreen() {
         </div>
       )}
 
+      {/* Levels */}
       {showLevels && (
         <div className="sk-overlay" onClick={() => setShowLevels(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
@@ -659,6 +775,32 @@ export default function PairScreen() {
               </div>
             ))}
             <button className="sk-popup-close" onClick={() => setShowLevels(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Premium popup */}
+      {showPremium && (
+        <div className="sk-overlay" onClick={() => setShowPremium(false)}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>⭐</div>
+            <h3>{lang === 'ru' ? 'Chumi Premium' : 'Chumi Premium'}</h3>
+            <div style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.6 }}>
+              {lang === 'ru'
+                ? '• Эксклюзивные скины\n• Безлимитные пары\n• Уникальные наряды\n• Поддержка разработки'
+                : '• Exclusive skins\n• Unlimited pairs\n• Unique outfits\n• Support development'}
+            </div>
+            <div style={{ textAlign: 'center', fontSize: 24, fontWeight: 800, color: '#F5A623', marginBottom: 16 }}>
+              50 ⭐ / {lang === 'ru' ? 'мес' : 'mo'}
+            </div>
+            <button onClick={handleSubscribe} style={{
+              width: '100%', padding: 14, borderRadius: 14, border: 'none',
+              background: 'linear-gradient(135deg, #F5A623, #FF6B35)', color: '#fff',
+              fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 8
+            }}>
+              ⭐ {lang === 'ru' ? 'Подписаться' : 'Subscribe'}
+            </button>
+            <button className="sk-popup-close" onClick={() => setShowPremium(false)}>{lang === 'ru' ? 'Позже' : 'Later'}</button>
           </div>
         </div>
       )}
