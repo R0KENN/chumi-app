@@ -8,9 +8,9 @@ const ADMIN_IDS = ['713156118'];
 const BOT_USERNAME = 'ChumiPetBot';
 
 const EGG_VIDEOS = {
-  1: '/pets/egg_1.webm',
-  2: '/pets/egg_2.webm',
-  3: '/pets/egg_3.webm',
+  1: '/pets/axolotl_idle.webm',
+  2: '/pets/axolotl_idle.webm',
+  3: '/pets/axolotl_idle.webm',
 };
 
 const LEVELS = [
