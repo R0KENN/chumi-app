@@ -129,17 +129,6 @@ export default function PairScreen() {
 };
 
 
-  const TASKS = [
-    { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
-    { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'share' },
-    { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'share' },
-    { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'share' },
-    { key: 'pet_touch',    points: 1,
-      ru: isEgg ? 'Тапнуть яйцо' : `Тапнуть ${petName}`,
-      en: isEgg ? 'Tap the egg' : `Tap ${petName}`,
-      icon: '👆', action: 'pet' },
-  ];
-
   // ══════ Адаптивные цвета Telegram UI ══════
   useEffect(() => {
     if (!tg || !pair) return;
@@ -150,7 +139,7 @@ export default function PairScreen() {
     try { tg.setHeaderColor?.(bgColors[0]); } catch (e) {}
     try { tg.setBackgroundColor?.(bgColors[1]); } catch (e) {}
     try { tg.setBottomBarColor?.(isDark ? bgColors[1] : '#f5f5f5'); } catch (e) {}
-  }, [tg, pair, isEgg]);
+  }, [tg, pair]);
 
   // ══════ Emoji Status при повышении уровня ══════
   useEffect(() => {
@@ -295,12 +284,12 @@ const res = await fetch(`${API}/complete-task`, {
   const handleShareToStory = () => {
     if (!tg?.shareToStory) return;
     const lv = getLevel(pair?.growth_points || 0);
-    // Используем OG-превью или URL питомца
     const mediaUrl = `https://chumi-app.pages.dev/pets/og-preview.png`;
+    const streak = pair?.streak_days || 0;
     tg.shareToStory(mediaUrl, {
       text: lang === 'ru'
-        ? `🐾 Мой питомец ${petName} — уровень ${lv.nameRu}! Серия ${streakDays} дней 🔥\n\nПопробуй: https://t.me/${BOT_USERNAME}`
-        : `🐾 My pet ${petName} — level ${lv.name}! ${streakDays} day streak 🔥\n\nTry it: https://t.me/${BOT_USERNAME}`,
+        ? `🐾 Мой питомец ${petName} — уровень ${lv.nameRu}! Серия ${streak} дней 🔥\n\nПопробуй: https://t.me/${BOT_USERNAME}`
+        : `🐾 My pet ${petName} — level ${lv.name}! ${streak} day streak 🔥\n\nTry it: https://t.me/${BOT_USERNAME}`,
     });
   };
 
@@ -356,6 +345,18 @@ const res = await fetch(`${API}/complete-task`, {
   const pct = Math.min(100, (lv.current / lv.needed) * 100);
   const isEgg = lv.idx === 0;
   const eggDay = Math.min((pair?.streak_days || 0) + 1, 3);
+
+  const TASKS = [
+    { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
+    { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'share' },
+    { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'share' },
+    { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'share' },
+    { key: 'pet_touch',    points: 1,
+      ru: isEgg ? 'Тапнуть яйцо' : `Тапнуть ${petName}`,
+      en: isEgg ? 'Tap the egg' : `Tap ${petName}`,
+      icon: '👆', action: 'pet' },
+  ];
+
   const partner = pair.members?.find(m => m.user_id !== userId);
   const isMaxLevel = lv.idx === LEVELS.length - 1 && lv.remaining === 0;
   const isDark = !isEgg && lv.idx === 5;
@@ -607,7 +608,7 @@ const res = await fetch(`${API}/complete-task`, {
           </div>
 
           {isEgg && (
-            <div style={{ textAlign: 'center', fontSize: 13, color: EGG_ACCENT, marginTop: -8, marginBottom: 8, fontWeight: 500 }}>
+            <div style={{ textAlign: 'center', fontSize: 13, color: accentColor, marginTop: -8, marginBottom: 8, fontWeight: 500 }}>
               {lang === 'ru' ? 'Выполняйте задания — питомец вылупится на 4-й день! 🐣' : 'Complete tasks — your pet hatches on day 4! 🐣'}
             </div>
           )}
