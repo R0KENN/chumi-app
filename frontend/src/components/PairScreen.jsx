@@ -747,27 +747,6 @@ const res = await fetch(`${API}/complete-task`, {
       )}
 
 
-      {/* Levels */}
-      {showLevels && (
-        <div className="sk-overlay" onClick={() => setShowLevels(false)}>
-          <div className="sk-popup" onClick={e => e.stopPropagation()}>
-            <h3>{lang === 'ru' ? 'Уровни' : 'Levels'}</h3>
-            <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 10, background: EGG_ACCENT + '18', color: EGG_ACCENT, fontSize: 13, textAlign: 'center' }}>
-              🥚 {lang === 'ru' ? 'Первые 3 дня — яйцо. На 4-й день питомец вылупляется!' : 'First 3 days — egg. Pet hatches on day 4!'}
-            </div>
-            {LEVELS.map((l, i) => (
-              <div key={l.level} className={`sk-lvl-row ${!isEgg && i === lv.idx ? 'sk-lvl-active' : ''}`}>
-                <div className="sk-lvl-badge" style={{ background: l.accent + '22', color: l.accent }}>{l.level}</div>
-                <span className="sk-lvl-name">{lang === 'ru' ? l.nameRu : l.name}</span>
-                <span className="sk-lvl-pts">{l.maxPoints} pts</span>
-              </div>
-            ))}
-            )}
-            <button className="sk-popup-close" onClick={() => setShowRanking(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
-          </div>
-        </div>
-      )}
-
       {/* Levels popup */}
       {showLevels && (
         <div className="sk-overlay" onClick={() => setShowLevels(false)}>
