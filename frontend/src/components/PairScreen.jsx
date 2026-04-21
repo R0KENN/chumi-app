@@ -163,57 +163,19 @@ export default function PairScreen() {
   }, [tg, pair]);
 
   // ══════ BottomButton — кнопка «Пригласить» ══════
-useEffect(() => {
-  if (!tg) return;
-  const main = tg.MainButton;
-  const secondary = tg.SecondaryButton;
-  if (main) main.hide();
-  if (secondary) secondary.hide();
-  return () => {
+  // ══════ BottomButton — скрываем ══════
+  useEffect(() => {
+    if (!tg) return;
+    const main = tg.MainButton;
+    const secondary = tg.SecondaryButton;
     if (main) main.hide();
     if (secondary) secondary.hide();
-  };
-}, [tg]);
+    return () => {
+      if (main) main.hide();
+      if (secondary) secondary.hide();
+    };
+  }, [tg]);
 
-    if (pair && hasPartner) {
-      // Все задания выполнены — показываем «Поделиться в сторис»
-      const lv = getLevel(pair.growth_points || 0);
-      const allDone = TASKS.every(t => pair.daily_tasks?.some(dt => dt.task_key === t.key));
-
-      if (allDone) {
-        main.setText(lang === 'ru' ? '📸 В сторис' : '📸 Share Story');
-        main.color = isEgg ? EGG_ACCENT : lv.accent;
-        main.textColor = '#FFFFFF';
-        main.show();
-        const storyHandler = () => handleShareToStory();
-        main.onClick(storyHandler);
-
-        if (secondary) {
-          secondary.setText(lang === 'ru' ? '📤 Пригласить друга' : '📤 Invite friend');
-          secondary.color = 'rgba(0,0,0,0.05)';
-          secondary.textColor = '#333333';
-          secondary.show();
-          const inviteHandler = () => handleShareInvite();
-          secondary.onClick(inviteHandler);
-          return () => { main.offClick(storyHandler); main.hide(); secondary.offClick(inviteHandler); secondary.hide(); };
-        }
-        return () => { main.offClick(storyHandler); main.hide(); };
-      } else {
-        main.hide();
-        if (secondary) secondary.hide();
-      }
-    } else if (pair && !hasPartner) {
-      main.setText(lang === 'ru' ? '📤 Пригласить партнёра' : '📤 Invite partner');
-      main.color = isEgg ? EGG_ACCENT : '#F5A623';
-      main.textColor = '#FFFFFF';
-      main.show();
-      const handler = () => handleShareInvite();
-      main.onClick(handler);
-      return () => { main.offClick(handler); main.hide(); };
-    }
-
-    return () => { main.hide(); if (secondary) secondary.hide(); };
-  }, [tg, pair, hasPartner, lang, isEgg]);
 
   // ══════ Back Button ══════
   useEffect(() => {
