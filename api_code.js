@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { createHmac } from 'node:crypto';
 
 // ────────── CONFIG ──────────
 const ADMIN_IDS = ['713156118'];
@@ -10,7 +9,7 @@ const LEVELS = [
   { level: 1, name: 'Junior', nameRu: 'Подросток',  maxPoints: 70  },
   { level: 2, name: 'Teen',   nameRu: 'Юный',       maxPoints: 50  },
   { level: 3, name: 'Adult',  nameRu: 'Взрослый',   maxPoints: 150 },
-  { level: 4, name: 'Legend',  nameRu: 'Легенда',    maxPoints: 200 },
+  { level: 4, name: 'Legend', nameRu: 'Легенда',    maxPoints: 200 },
 ];
 
 const TASK_POINTS = {
@@ -50,7 +49,7 @@ function json(data, status = 200) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type,X-Telegram-Init-Data',
+      'Access-Control-Allow-Headers': 'Content-Type',
     },
   });
 }
@@ -94,44 +93,6 @@ async function sendTelegramMessage(env, chatId, text) {
   }
 }
 
-// ────────── Telegram initData validation ──────────
-function validateInitData(initDataRaw, botToken) {
-  if (!initDataRaw || !botToken) return null;
-  try {
-    const params = new URLSearchParams(initDataRaw);
-    const hash = params.get('hash');
-    if (!hash) return null;
-    params.delete('hash');
-
-    const entries = [...params.entries()];
-    entries.sort((a, b) => a[0].localeCompare(b[0]));
-    const dataCheckString = entries.map(([k, v]) => `${k}=${v}`).join('\n');
-
-    const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
-    const computedHash = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-
-    if (computedHash !== hash) return null;
-
-    const userStr = params.get('user');
-    if (!userStr) return null;
-    const user = JSON.parse(userStr);
-    return { userId: String(user.id), user };
-  } catch (e) {
-    return null;
-  }
-}
-
-// ────────── Extract userId from request (with optional validation) ──────────
-function extractUserId(request, env, bodyUserId) {
-  const initData = request.headers.get('X-Telegram-Init-Data');
-  if (initData) {
-    const validated = validateInitData(initData, env.BOT_TOKEN);
-    if (validated) return validated.userId;
-  }
-  // Fallback: trust body userId (for dev/testing; remove in production)
-  return bodyUserId ? String(bodyUserId) : null;
-}
-
 function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
   const lv = getLevel(pair.growth_points || 0);
   const partner = members?.find(m => m.user_id !== userId);
@@ -147,7 +108,6 @@ function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
     levelName: lv.name,
     bg_id: pair.bg_id || 'room',
     is_dead: pair.is_dead || false,
-    hatched: pair.hatched || false,
     streak_recoveries_used: pair.streak_recoveries_used || 0,
     last_recovery_month: pair.last_recovery_month,
     last_streak_date: pair.last_streak_date,
@@ -155,7 +115,7 @@ function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
       user_id: m.user_id,
       display_name: m.display_name || null,
       username: m.username || null,
-      avatar_url: m.avatar_url ? `/api/avatar/${m.user_id}?proxy=1` : null,
+      avatar_url: m.avatar_url || null,
     })) || [],
     partner_name: partner?.display_name || null,
     partner_username: partner?.username || null,
@@ -169,7 +129,7 @@ function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
 // ────────── Seeded random for daily shuffle ──────────
 function seededRandom(seed) {
   let s = seed;
-  return function () {
+  return function() {
     s = (s * 1103515245 + 12345) & 0x7fffffff;
     return s / 0x7fffffff;
   };
@@ -185,18 +145,6 @@ function shuffleWithSeed(arr, seed) {
   return shuffled;
 }
 
-// ────────── Stars invoice helper ──────────
-async function createStarsInvoice(botToken, params) {
-  const res = await fetch(`https://api.telegram.org/bot${botToken}/createInvoiceLink`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
-  const data = await res.json();
-  if (!data.ok) return null;
-  return data.result;
-}
-
 // ────────── MAIN HANDLER ──────────
 export async function onRequest(context) {
   const { request, env } = context;
@@ -206,7 +154,7 @@ export async function onRequest(context) {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Telegram-Init-Data',
+        'Access-Control-Allow-Headers': 'Content-Type',
       },
     });
   }
@@ -246,6 +194,7 @@ export async function onRequest(context) {
           .eq('user_id', userId)
           .eq('task_date', today);
 
+        // One-time tasks for this user+pair
         const { data: otTasks } = await supabase
           .from('one_time_tasks').select('task_key')
           .eq('pair_code', up.pair_code)
@@ -279,6 +228,7 @@ export async function onRequest(context) {
         .eq('user_id', userId)
         .eq('task_date', today);
 
+      // One-time tasks
       const { data: otTasks } = await supabase
         .from('one_time_tasks').select('task_key')
         .eq('pair_code', pairCode)
@@ -293,20 +243,20 @@ export async function onRequest(context) {
     if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       const tgUserId = path.split('/')[3];
       const BOT_TOKEN = env.BOT_TOKEN;
-      const wantProxy = url.searchParams.get('proxy');
+      const url2 = new URL(request.url);
+      const wantProxy = url2.searchParams.get('proxy');
 
       try {
-        // Check if we have a cached file_path (NOT the full URL with token)
         const { data: cached } = await supabase
           .from('pair_users')
-          .select('avatar_file_path')
+          .select('avatar_url')
           .eq('user_id', tgUserId)
           .limit(1)
           .maybeSingle();
 
-        let filePath = cached?.avatar_file_path;
+        let avatarUrl = cached?.avatar_url;
 
-        if (!filePath) {
+        if (!avatarUrl) {
           const photosRes = await fetch(
             `https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${tgUserId}&limit=1`
           );
@@ -325,17 +275,15 @@ export async function onRequest(context) {
           const fileData = await fileRes.json();
           if (!fileData.ok) return json({ avatar_url: null });
 
-          filePath = fileData.result.file_path;
+          avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
 
-          // Save only file_path, NOT the full URL with token
           await supabase
             .from('pair_users')
-            .update({ avatar_file_path: filePath })
+            .update({ avatar_url: avatarUrl })
             .eq('user_id', tgUserId);
         }
 
         if (wantProxy) {
-          const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
           const imgRes = await fetch(avatarUrl);
           if (!imgRes.ok) return json({ avatar_url: null });
           const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
@@ -394,11 +342,10 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/create') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
+      const userId = String(body.userId);
       const displayName = body.displayName || null;
       const username = body.username || null;
+
       const maxPairs = await getMaxPairs(supabase, userId);
 
       const { data: existing } = await supabase
@@ -420,7 +367,6 @@ export async function onRequest(context) {
         pet_name: null,
         streak_recoveries_used: 0,
         last_recovery_month: null,
-        last_streak_date: null,
         is_dead: false,
       });
 
@@ -428,7 +374,7 @@ export async function onRequest(context) {
         pair_code: code,
         user_id: userId,
         display_name: displayName,
-        username,
+        username: username,
       });
 
       return json({ code });
@@ -439,12 +385,11 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/join') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
+      const userId = String(body.userId);
       const code = (body.code || '').trim().toUpperCase();
       const displayName = body.displayName || null;
       const username = body.username || null;
+
       const maxPairs = await getMaxPairs(supabase, userId);
 
       const { data: existing } = await supabase
@@ -472,12 +417,14 @@ export async function onRequest(context) {
         pair_code: code,
         user_id: userId,
         display_name: displayName,
-        username,
+        username: username,
       });
 
       for (const m of members || []) {
         if (m.user_id !== userId) {
-          await sendTelegramMessage(env, m.user_id, `🎉 Someone joined pair \`${code}\`!`);
+await sendTelegramMessage(env, m.user_id,
+  `🎉 Someone joined pair \`${code}\`!`
+);
         }
       }
 
@@ -489,23 +436,13 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/complete-task') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
       const code = body.code;
+      const userId = String(body.userId);
       const taskKey = body.taskKey;
       const today = getTodayDate();
 
       const points = TASK_POINTS[taskKey];
       if (points === undefined) return json({ error: 'Invalid task' }, 400);
-
-      // Verify user is in this pair
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code)
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (!membership) return json({ error: 'Not a member of this pair' }, 403);
 
       // ── One-time task (add_to_home) ──
       if (taskKey === 'add_to_home') {
@@ -556,54 +493,17 @@ export async function onRequest(context) {
         completed_at: new Date().toISOString(),
       });
 
-      // Points awarded only when BOTH partners completed the same task
-      const { data: members } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code);
+      const { data: pair } = await supabase
+        .from('pairs').select('growth_points').eq('code', code).single();
 
-      const partnerIds = (members || [])
-        .map(m => String(m.user_id))
-        .filter(id => id !== String(userId));
-
-      let pointsAdded = 0;
-
-      if (partnerIds.length > 0) {
-        const partnerId = partnerIds[0];
-        const { data: partnerDone } = await supabase
-          .from('daily_tasks').select('id')
-          .eq('pair_code', code)
-          .eq('user_id', partnerId)
-          .eq('task_key', taskKey)
-          .eq('task_date', today)
-          .maybeSingle();
-
-        if (partnerDone) {
-          const { data: pair } = await supabase
-            .from('pairs').select('growth_points, streak_days, last_streak_date, hatched')
-              .eq('code', code).single();
-          if (pair) {
-            const newPoints = (pair.growth_points || 0) + points;
-            const updates = { growth_points: newPoints };
-
-            // Update streak if both did daily_open today and streak not yet counted
-            if (taskKey === 'daily_open' && pair.last_streak_date !== today) {
-              const newStreak = (pair.streak_days || 0) + 1;
-              updates.streak_days = newStreak;
-              updates.last_streak_date = today;
-
-              // Hatch the egg on day 3+
-              if (!pair.hatched && newStreak >= 3) {
-                updates.hatched = true;
-              }
-            }
-
-            await supabase.from('pairs').update(updates).eq('code', code);
-            pointsAdded = points;
-          }
-        }
+      if (pair) {
+        const newPoints = (pair.growth_points || 0) + points;
+        await supabase.from('pairs')
+          .update({ growth_points: newPoints })
+          .eq('code', code);
       }
 
-      return json({ success: true, points_added: pointsAdded });
+      return json({ success: true, points_added: points });
     }
 
     // ═══════════════════════════════════════
@@ -611,18 +511,9 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/rename') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
       const code = body.code || body.pairCode;
       const name = (body.pet_name || body.name || '').trim().slice(0, 20);
       if (!name) return json({ error: 'Name required' }, 400);
-
-      // Verify membership
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
 
       await supabase.from('pairs').update({ pet_name: name }).eq('code', code);
       return json({ success: true, pet_name: name });
@@ -633,23 +524,19 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/delete') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
       const code = body.pairCode || body.code;
-
-      // Verify membership
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      const userId = String(body.userId || '');
 
       // Notify partner before deleting
-      const { data: members } = await supabase
-        .from('pair_users').select('user_id, display_name').eq('pair_code', code);
-      for (const m of members || []) {
-        if (m.user_id !== userId) {
-          await sendTelegramMessage(env, m.user_id, `😢 Pair \`${code}\` has been deleted.`);
+      if (userId) {
+        const { data: members } = await supabase
+          .from('pair_users').select('user_id, display_name').eq('pair_code', code);
+        for (const m of members || []) {
+          if (m.user_id !== userId) {
+await sendTelegramMessage(env, m.user_id,
+  `😢 Pair \`${code}\` has been deleted.`
+);
+          }
         }
       }
 
@@ -667,19 +554,9 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/setbg') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
-      const code = body.pairCode || body.code;
-
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
-
       await supabase.from('pairs')
         .update({ bg_id: body.bgId })
-        .eq('code', code);
+        .eq('code', body.pairCode || body.code);
       return json({ success: true });
     }
 
@@ -688,23 +565,7 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/notify') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
-      const targetUserId = body.targetUserId;
-
-      // Verify that caller and target are in the same pair
-      const { data: callerPairs } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', userId);
-      const { data: targetPairs } = await supabase
-        .from('pair_users').select('pair_code').eq('user_id', targetUserId);
-
-      const callerCodes = new Set((callerPairs || []).map(p => p.pair_code));
-      const isPartner = (targetPairs || []).some(p => callerCodes.has(p.pair_code));
-
-      if (!isPartner) return json({ error: 'Can only notify your partner' }, 403);
-
-      await sendTelegramMessage(env, targetUserId, body.message || '🔔 Напоминание от Chumi');
+      await sendTelegramMessage(env, body.targetUserId, body.message || '🔔 Напоминание от Chumi');
       return json({ success: true });
     }
 
@@ -713,16 +574,9 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/recover-streak') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
       const code = body.pairCode || body.code;
+      const userId = String(body.userId);
       const currentMonth = getCurrentMonth();
-
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
 
       const { data: pair } = await supabase
         .from('pairs').select('*').eq('code', code).single();
@@ -746,47 +600,37 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/create-invoice') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const userId = String(body.userId);
 
-      const productId = body.productId;
+      const products = {
+        extra_slot: {
+          title: 'Дополнительный слот для пары',
+          description: 'Получите возможность создать ещё одну пару',
+          stars: 50,
+        },
+      };
 
-      // ── Extra slot ──
-      if (productId === 'extra_slot') {
-        const payload = JSON.stringify({ userId, productId, timestamp: Date.now() });
-        const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: 'Дополнительный слот для пары',
-            description: 'Получите возможность создать ещё одну пару',
-            payload,
-            provider_token: '',
-            currency: 'XTR',
-            prices: [{ label: 'Extra pair slot', amount: 50 }],
-          }),
-        });
-        const data = await res.json();
-        if (!data.ok) return json({ error: 'Invoice creation failed' }, 500);
-        return json({ invoiceUrl: data.result });
-      }
+      const product = products[body.productId];
+      if (!product) return json({ error: 'Invalid product' }, 400);
 
-      // ── Premium monthly subscription ──
-      if (productId === 'premium_monthly') {
-        const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
-          title: 'Chumi Premium',
-          description: 'Exclusive skins, unlimited pairs, unique outfits',
-          payload: JSON.stringify({ userId, productId: 'premium_monthly', timestamp: Date.now() }),
+      const payload = JSON.stringify({ userId, productId: body.productId, timestamp: Date.now() });
+
+      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: product.title,
+          description: product.description,
+          payload,
           provider_token: '',
           currency: 'XTR',
-          prices: [{ amount: 50, label: 'Premium Monthly' }],
-          subscription_period: 2592000, // 30 days
-        });
-        if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
-        return json({ invoiceUrl });
-      }
+          prices: [{ label: product.title, amount: product.stars }],
+        }),
+      });
 
-      return json({ error: 'Invalid product' }, 400);
+      const data = await res.json();
+      if (!data.ok) return json({ error: 'Invoice creation failed' }, 500);
+      return json({ invoiceUrl: data.result });
     }
 
     // ═══════════════════════════════════════
@@ -804,15 +648,7 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/create-egg') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
       const code = body.pairCode || body.code;
-
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
 
       await supabase.from('pairs').update({
         pet_type: 'spark',
@@ -822,7 +658,6 @@ export async function onRequest(context) {
         is_dead: false,
         pet_name: null,
         streak_recoveries_used: 0,
-        last_streak_date: null,
       }).eq('code', code);
 
       await supabase.from('feedings').delete().eq('pair_code', code);
@@ -833,7 +668,7 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // GET /api/ranking
+    // GET /api/ranking  (Топ 100 пар с участниками)
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path === '/api/ranking') {
       const { data: allPairs } = await supabase
@@ -846,7 +681,7 @@ export async function onRequest(context) {
       for (const p of (allPairs || [])) {
         const { data: members } = await supabase
           .from('pair_users')
-          .select('user_id, display_name, username')
+          .select('user_id, display_name, username, avatar_url')
           .eq('pair_code', p.code);
 
         ranking.push({
@@ -857,7 +692,7 @@ export async function onRequest(context) {
           members: (members || []).map(m => ({
             user_id: m.user_id,
             display_name: m.display_name || null,
-            avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
+            avatar_url: m.avatar_url || null,
           })),
         });
       }
@@ -866,7 +701,7 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // GET /api/ranking-random
+    // GET /api/ranking-random  (Случайные 50, только с именем)
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path === '/api/ranking-random') {
       const { data: allPairs } = await supabase
@@ -874,7 +709,9 @@ export async function onRequest(context) {
         .select('code, pet_name, growth_points, streak_days')
         .not('pet_name', 'is', null);
 
+      // Фильтруем пустые имена
       const named = (allPairs || []).filter(p => p.pet_name && p.pet_name.trim() !== '');
+
       if (named.length === 0) return json({ ranking: [] });
 
       const today = getTodayDate().replace(/-/g, '');
@@ -885,7 +722,7 @@ export async function onRequest(context) {
       for (const p of shuffled) {
         const { data: members } = await supabase
           .from('pair_users')
-          .select('user_id, display_name, username')
+          .select('user_id, display_name, username, avatar_url')
           .eq('pair_code', p.code);
 
         ranking.push({
@@ -896,7 +733,7 @@ export async function onRequest(context) {
           members: (members || []).map(m => ({
             user_id: m.user_id,
             display_name: m.display_name || null,
-            avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
+            avatar_url: m.avatar_url || null,
           })),
         });
       }
@@ -904,16 +741,15 @@ export async function onRequest(context) {
       return json({ ranking });
     }
 
+
     // ═══════════════════════════════════════
     // POST /api/prepare-share
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/prepare-share') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
+      const userId = String(body.userId);
       const pairCode = body.pairCode;
-      const messageText = body.text || '🐾 Присоединяйся к Chumi — растим питомца вместе!';
+const messageText = body.text || '🐾 Присоединяйся к Chumi — растим питомца вместе!';
 
       const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: 'POST',
@@ -923,11 +759,11 @@ export async function onRequest(context) {
           result: {
             type: 'article',
             id: 'share_' + pairCode + '_' + Date.now(),
-            title: 'Chumi — Вырасти питомца! 🐾',
+title: 'Chumi — Вырасти питомца! 🐾',
             input_message_content: {
               message_text: messageText + `\n\nhttps://t.me/ChumiPetBot?start=join_${pairCode}`,
             },
-            description: 'Нажми чтобы пригласить в пару 🐾',
+description: 'Нажми чтобы пригласить в пару 🐾',
           },
           allow_user_chats: true,
           allow_bot_chats: false,
@@ -943,7 +779,7 @@ export async function onRequest(context) {
       return json({ error: 'Failed to prepare message', details: data }, 500);
     }
 
-    // ═══════════════════════════════════════
+        // ═══════════════════════════════════════
     // GET /api/user-lang/:userId
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path.match(/^\/api\/user-lang\/[^/]+$/)) {
@@ -963,9 +799,7 @@ export async function onRequest(context) {
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/set-lang') {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
+      const userId = String(body.userId);
       const lang = body.lang === 'en' ? 'en' : 'ru';
 
       const { data: existing } = await supabase
@@ -988,161 +822,93 @@ export async function onRequest(context) {
       return json({ success: true, lang });
     }
 
-    // ═══════════════════════════════════════
-    // POST /api/send-reminders
-    // (called by scheduled cron or manually)
-    // ═══════════════════════════════════════
-    if (request.method === 'POST' && path === '/api/send-reminders') {
-      const BOT_TOKEN = env.BOT_TOKEN;
-      const todayStr = getTodayDate();
+    // ══════ Push-напоминания ══════
+// POST /api/send-reminders (вызывается cron или вручную)
+if (method === 'POST' && path === '/api/send-reminders') {
+  const BOT_TOKEN = env.BOT_TOKEN;
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
 
-      // Get all active pairs with at least 1 streak day
-      const { data: allPairs } = await supabase
-        .from('pairs')
-        .select('code, pet_name, streak_days')
-        .gte('streak_days', 1);
+  // Получаем все активные пары с 2 участниками
+  const { data: pairs } = await supabase
+    .from('pairs')
+    .select('code, pet_name, streak_days, members:pair_users(user_id)')
+    .gte('streak_days', 1);
 
-      let sent = 0;
-      for (const pair of (allPairs || [])) {
-        const { data: members } = await supabase
-          .from('pair_users')
-          .select('user_id')
-          .eq('pair_code', pair.code);
+  let sent = 0;
+  for (const pair of (pairs || [])) {
+    for (const member of (pair.members || [])) {
+      // Проверяем, выполнил ли daily_open сегодня
+      const { data: tasks } = await supabase
+        .from('daily_tasks')
+        .select('task_key')
+        .eq('pair_code', pair.code)
+        .eq('user_id', member.user_id)
+        .eq('task_key', 'daily_open')
+        .eq('date', todayStr);
 
-        for (const member of (members || [])) {
-          // Check if user already opened app today
-          const { data: tasks } = await supabase
-            .from('daily_tasks')
-            .select('task_key')
-            .eq('pair_code', pair.code)
-            .eq('user_id', member.user_id)
-            .eq('task_key', 'daily_open')
-            .eq('task_date', todayStr);
+      if (!tasks || tasks.length === 0) {
+        // Не заходил — отправляем напоминание
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('lang')
+          .eq('user_id', member.user_id)
+          .single();
 
-          if (!tasks || tasks.length === 0) {
-            // Hasn't opened — send reminder
-            const { data: settings } = await supabase
-              .from('user_settings')
-              .select('lang')
-              .eq('telegram_user_id', member.user_id)
-              .single();
+        const lang = settings?.lang || 'ru';
+        const name = pair.pet_name || (lang === 'ru' ? 'Питомец' : 'Pet');
+        const text = lang === 'ru'
+          ? `🐾 ${name} ждёт тебя! Серия ${pair.streak_days} дней — не сломай! 🔥`
+          : `🐾 ${name} is waiting! ${pair.streak_days} day streak — don't break it! 🔥`;
 
-            const lang = settings?.lang || 'ru';
-            const name = pair.pet_name || (lang === 'ru' ? 'Питомец' : 'Pet');
-            const text = lang === 'ru'
-              ? `🐾 ${name} ждёт тебя! Серия ${pair.streak_days} дней — не сломай! 🔥`
-              : `🐾 ${name} is waiting! ${pair.streak_days} day streak — don't break it! 🔥`;
-
-            try {
-              await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  chat_id: member.user_id,
-                  text,
-                  reply_markup: {
-                    inline_keyboard: [[{
-                      text: lang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi',
-                      web_app: { url: `https://chumi-app.pages.dev/pair/${pair.code}` },
-                    }]],
-                  },
-                }),
-              });
-              sent++;
-            } catch (e) {
-              console.error('Reminder send error:', e);
-            }
-          }
-        }
+        try {
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: member.user_id,
+              text,
+              reply_markup: {
+                inline_keyboard: [[{
+                  text: lang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi',
+                  web_app: { url: `https://chumi-app.pages.dev/pair/${pair.code}` }
+                }]]
+              }
+            }),
+          });
+          sent++;
+        } catch (e) {}
       }
-      return json({ ok: true, sent });
     }
+  }
+  return json({ ok: true, sent });
+}
 
-    // ═══════════════════════════════════════
-    // POST /api/update-streaks
-    // (called by scheduled cron daily at ~00:05 UTC)
-    // Checks yesterday's activity. If both members didn't do
-    // daily_open yesterday → kill the pet or reset streak.
-    // ═══════════════════════════════════════
-    if (request.method === 'POST' && path === '/api/update-streaks') {
-      // Optional: protect with a secret
-      const authHeader = request.headers.get('Authorization');
-      if (env.CRON_SECRET && authHeader !== `Bearer ${env.CRON_SECRET}`) {
-        return json({ error: 'Unauthorized' }, 401);
-      }
+// ══════ Подписка Premium ══════
+// POST /api/create-invoice  — добавить обработку premium_monthly
+// В существующем обработчике create-invoice добавь:
+if (productId === 'premium_monthly') {
+  const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
+    title: 'Chumi Premium',
+    description: 'Exclusive skins, unlimited pairs, unique outfits',
+    payload: `premium_${userId}`,
+    currency: 'XTR',
+    prices: [{ amount: 50, label: 'Premium Monthly' }],
+    subscription_period: 2592000, // 30 дней
+  });
+  return json({ invoiceUrl });
+}
 
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-      const { data: allPairs } = await supabase
-        .from('pairs')
-        .select('code, streak_days, last_streak_date, is_dead, hatched')
-        .eq('is_dead', false)
-        .gte('streak_days', 1);
-
-      let updated = 0;
-      let killed = 0;
-
-      for (const pair of (allPairs || [])) {
-        // If streak was already updated for yesterday or today, skip
-        if (pair.last_streak_date === yesterdayStr || pair.last_streak_date === getTodayDate()) {
-          continue;
-        }
-
-        // Check if both members completed daily_open yesterday
-        const { data: members } = await supabase
-          .from('pair_users')
-          .select('user_id')
-          .eq('pair_code', pair.code);
-
-        if (!members || members.length < 2) continue;
-
-        let allCompleted = true;
-        for (const m of members) {
-          const { data: task } = await supabase
-            .from('daily_tasks')
-            .select('id')
-            .eq('pair_code', pair.code)
-            .eq('user_id', m.user_id)
-            .eq('task_key', 'daily_open')
-            .eq('task_date', yesterdayStr)
-            .maybeSingle();
-
-          if (!task) {
-            allCompleted = false;
-            break;
-          }
-        }
-
-        if (!allCompleted) {
-          // Missed a day — kill the pet
-          await supabase.from('pairs').update({
-            is_dead: true,
-          }).eq('code', pair.code);
-          killed++;
-
-          // Notify members
-          for (const m of members) {
-            const { data: settings } = await supabase
-              .from('user_settings')
-              .select('lang')
-              .eq('telegram_user_id', m.user_id)
-              .single();
-            const lang = settings?.lang || 'ru';
-            const petName = pair.pet_name || (lang === 'ru' ? 'Питомец' : 'Pet');
-            const text = lang === 'ru'
-              ? `💀 ${petName} умер... Серия ${pair.streak_days} дней сломалась.\n\nТы можешь восстановить серию или начать заново.`
-              : `💀 ${petName} died... Your ${pair.streak_days} day streak is broken.\n\nYou can recover or start a new egg.`;
-            await sendTelegramMessage(env, m.user_id, text);
-          }
-        }
-
-        updated++;
-      }
-
-      return json({ ok: true, checked: updated, killed });
-    }
+// Хелпер для создания Stars-инвойса с подпиской
+async function createStarsInvoice(botToken, params) {
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/createInvoiceLink`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  return data.result;
+}
 
     // ═══════════════════════════════════════
     // 404

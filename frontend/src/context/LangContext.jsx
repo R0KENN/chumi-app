@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
 const strings = {
   en: {
@@ -74,6 +74,10 @@ const strings = {
     premiumDesc: 'Unlock exclusive skins, unlimited pairs and more',
     subscribe: 'Subscribe',
     shareStory: 'Share to Story',
+    pairCreated: 'Pair created!',
+    shareCode: 'Send the code to your partner:',
+    open: 'Open',
+    createPairDesc: 'A code will be generated for your partner.',
   },
   ru: {
     loading: 'Загрузка…',
@@ -148,7 +152,11 @@ const strings = {
     premiumDesc: 'Эксклюзивные скины, безлимит пар и многое другое',
     subscribe: 'Подписаться',
     shareStory: 'В сторис',
-  }
+    pairCreated: 'Пара создана!',
+    shareCode: 'Отправь код партнёру:',
+    open: 'Открыть',
+    createPairDesc: 'Будет сгенерирован код для партнёра.',
+  },
 };
 
 function getUserId() {
@@ -203,7 +211,6 @@ export function LangProvider({ children }) {
     const uid = getUserId();
 
     (async () => {
-      // 1. Попробовать CloudStorage (мгновенно, кросс-девайс)
       const cloudLang = await csGet('chumi_lang');
       if (cloudLang && (cloudLang === 'ru' || cloudLang === 'en')) {
         setLangState(cloudLang);
@@ -212,7 +219,6 @@ export function LangProvider({ children }) {
         return;
       }
 
-      // 2. Фоллбэк — загрузить из API
       try {
         const res = await fetch(`/api/user-lang/${uid}`);
         const data = await res.json();
@@ -229,7 +235,7 @@ export function LangProvider({ children }) {
   const setLang = (l) => {
     setLangState(l);
     localStorage.setItem('chumi_lang', l);
-    csSet('chumi_lang', l); // сохраняем в CloudStorage
+    csSet('chumi_lang', l);
 
     const uid = getUserId();
     fetch('/api/set-lang', {

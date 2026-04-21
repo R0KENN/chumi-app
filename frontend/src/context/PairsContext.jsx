@@ -1,7 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const API_URL = '/api';
 const PairsContext = createContext();
+
+// Global ref for initData so components can use it for API calls
+let _initData = '';
+export function getInitData() { return _initData; }
 
 export function usePairs() {
   return useContext(PairsContext);
@@ -30,24 +34,30 @@ async function dsSet(key, value) {
   try {
     ds.setItem(key, JSON.stringify(value), () => {});
   } catch (e) {
-    console.log('DeviceStorage setItem error:', e);
+    // silent
   }
 }
 
-export function PairsProvider({ children, telegramUserId }) {
+export function PairsProvider({ children, telegramUserId, initData }) {
   const [pairs, setPairs] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Store initData globally
+  useEffect(() => {
+    _initData = initData || '';
+  }, [initData]);
+
   const fetchPairs = useCallback(async () => {
     if (!telegramUserId) return;
     try {
-      const res = await fetch(`${API_URL}/pairs/${telegramUserId}`);
+      const res = await fetch(`${API_URL}/pairs/${telegramUserId}`, {
+        headers: initData ? { 'X-Telegram-Init-Data': initData } : {},
+      });
       const data = await res.json();
       const freshPairs = data.pairs || [];
       setPairs(freshPairs);
       setError(null);
-      // Кэшируем в DeviceStorage
       dsSet(`pairs_${telegramUserId}`, freshPairs);
       dsSet(`pairs_ts_${telegramUserId}`, Date.now());
     } catch (e) {
@@ -55,22 +65,17 @@ export function PairsProvider({ children, telegramUserId }) {
     } finally {
       setLoading(false);
     }
-  }, [telegramUserId]);
+  }, [telegramUserId, initData]);
 
-  // При монтировании: сначала показать кэш, потом обновить
   useEffect(() => {
     if (!telegramUserId) return;
 
     (async () => {
-      // 1. Попробовать загрузить кэш из DeviceStorage
       const cached = await dsGet(`pairs_${telegramUserId}`);
       if (cached && Array.isArray(cached) && cached.length > 0) {
         setPairs(cached);
-        setLoading(false); // UI сразу показывает данные
-        console.log('[PairsContext] Loaded from DeviceStorage cache');
+        setLoading(false);
       }
-
-      // 2. Всегда обновляем с сервера
       fetchPairs();
     })();
   }, [telegramUserId, fetchPairs]);
@@ -92,6 +97,7 @@ export function PairsProvider({ children, telegramUserId }) {
     addPair,
     updatePair,
     refreshPairs: fetchPairs,
+    initData: initData || '',
   };
 
   return (

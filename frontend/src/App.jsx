@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { PairsProvider, usePairs } from './context/PairsContext';
 import { LangProvider } from './context/LangContext';
@@ -31,6 +31,7 @@ function AppContent() {
 
 function App() {
   const [telegramUserId, setTelegramUserId] = useState(null);
+  const [initData, setInitData] = useState('');
 
   useEffect(() => {
     try {
@@ -38,6 +39,11 @@ function App() {
       if (tg) {
         tg.ready();
         tg.expand();
+
+        // Save initData for API auth
+        if (tg.initData) {
+          setInitData(tg.initData);
+        }
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         if (isMobile && tg.isVersionAtLeast?.('8.0')) {
@@ -47,12 +53,10 @@ function App() {
 
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
 
-        // Closing confirmation — чтобы случайно не закрыть
         if (tg.enableClosingConfirmation) {
           tg.enableClosingConfirmation();
         }
 
-        // Начальные цвета (будут обновляться из PairScreen)
         try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) {}
         try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) {}
         try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) {}
@@ -73,7 +77,7 @@ function App() {
   return (
     <BrowserRouter>
       <LangProvider>
-        <PairsProvider telegramUserId={telegramUserId}>
+        <PairsProvider telegramUserId={telegramUserId} initData={initData}>
           <AppContent />
         </PairsProvider>
       </LangProvider>

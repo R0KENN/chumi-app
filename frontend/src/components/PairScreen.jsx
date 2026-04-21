@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
 import { usePairs } from '../context/PairsContext';
+import { getInitData } from '../context/PairsContext';
 
 const API = '/api';
 const ADMIN_IDS = ['713156118'];
@@ -192,10 +193,10 @@ export default function PairScreen() {
 
   const completeTask = useCallback(async (taskKey) => {
     try {
-      const res = await fetch(`${API}/complete-task`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pairId, userId, taskKey }),
-      });
+const res = await fetch(`${API}/complete-task`, {
+   method: 'POST', headers: authHeaders(),
+   body: JSON.stringify({ code: pairId, userId, taskKey }),
+ });
       const data = await res.json();
       return !data.error;
     } catch (e) { return false; }
@@ -288,6 +289,12 @@ export default function PairScreen() {
     } catch (e) {}
     finally { setDeleting(false); }
   };
+const authHeaders = () => {
+  const headers = { 'Content-Type': 'application/json' };
+  const initData = getInitData();
+  if (initData) headers['X-Telegram-Init-Data'] = initData;
+  return headers;
+};
 
   // ══════ Share to Story ══════
   const handleShareToStory = () => {
