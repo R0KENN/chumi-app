@@ -189,15 +189,11 @@ export default function PairScreen() {
   // ══════ Back Button ══════
   useEffect(() => {
     if (!tg?.BackButton) return;
-    if (pairs && pairs.length > 1) {
-      tg.BackButton.show();
-      const handler = () => navigate('/');
-      tg.BackButton.onClick(handler);
-      return () => { tg.BackButton.offClick(handler); tg.BackButton.hide(); };
-    } else {
-      tg.BackButton.hide();
-    }
-  }, [tg, navigate, pairs]);
+    // Hide back button — Telegram will show native "Close"
+    tg.BackButton.hide();
+  }, [tg]);
+
+
 
   const completeTask = useCallback(async (taskKey) => {
     try {
@@ -589,6 +585,22 @@ const res = await fetch(`${API}/complete-task`, {
           <div className="sk-waiting-code" onClick={() => { navigator.clipboard?.writeText(pairId); haptic('light'); }}>
             {pairId}<span className="sk-waiting-code-copy">📋</span>
           </div>
+          <button
+            className="sk-waiting-btn"
+            style={{ background: '#9B72CF', marginTop: 16, width: '100%', maxWidth: 280 }}
+            onClick={() => {
+              const botUsername = BOT_USERNAME;
+              const inviteLink = `https://t.me/${botUsername}?start=join_${pairId}`;
+              const shareText = lang === 'ru'
+                ? `Присоединяйся к моей паре в Chumi! 🐾\nКод: ${pairId}`
+                : `Join my pair in Chumi! 🐾\nCode: ${pairId}`;
+              const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(shareText)}`;
+              if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+              else window.open(shareUrl, '_blank');
+            }}
+          >
+            📨 {lang === 'ru' ? 'Пригласить партнёра' : 'Invite partner'}
+          </button>
         </div>
       ) : (
         <>
@@ -777,7 +789,7 @@ const res = await fetch(`${API}/complete-task`, {
               {lang === 'ru' ? 'Эксклюзивные скины, безлимит пар и уникальные наряды' : 'Exclusive skins, unlimited pairs and unique outfits'}
             </p>
             <button onClick={handleSubscribe} className="sk-btn-primary" style={{ background: '#F5A623' }}>
-              ⭐ 50 Stars / {lang === 'ru' ? 'месяц' : 'month'}
+              ⭐ 150 Stars / {lang === 'ru' ? 'месяц' : 'month'}
             </button>
             <button className="sk-popup-close" onClick={() => setShowPremium(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>

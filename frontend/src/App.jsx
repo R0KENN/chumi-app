@@ -34,16 +34,11 @@ function App() {
   const [initData, setInitData] = useState('');
 
   useEffect(() => {
-    try {
-      const tg = window.Telegram?.WebApp;
-      if (tg) {
-        tg.ready();
-        tg.expand();
+    if (!tg?.BackButton) return;
+    // Hide back button — Telegram will show native "Close"
+    tg.BackButton.hide();
+  }, [tg]);
 
-        // Save initData for API auth
-        if (tg.initData) {
-          setInitData(tg.initData);
-        }
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         if (isMobile && tg.isVersionAtLeast?.('8.0')) {

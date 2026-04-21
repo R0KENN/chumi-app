@@ -779,7 +779,7 @@ export async function onRequest(context) {
           payload: JSON.stringify({ userId, productId: 'premium_monthly', timestamp: Date.now() }),
           provider_token: '',
           currency: 'XTR',
-          prices: [{ amount: 50, label: 'Premium Monthly' }],
+          prices: [{ amount: 150, label: 'Premium Monthly' }],
           subscription_period: 2592000, // 30 days
         });
         if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
