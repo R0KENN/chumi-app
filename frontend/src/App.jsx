@@ -34,15 +34,19 @@ function App() {
   const [initData, setInitData] = useState('');
 
   useEffect(() => {
-    if (!tg?.BackButton) return;
-    // Hide back button — Telegram will show native "Close"
-    tg.BackButton.hide();
-  }, [tg]);
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
 
+        if (tg.initData) {
+          setInitData(tg.initData);
+        }
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         if (isMobile && tg.isVersionAtLeast?.('8.0')) {
-          try { tg.requestFullscreen(); } catch (e) {}
+          try { tg.requestFullscreen(); } catch (e) { /* ignore */ }
           tg.onEvent?.('fullscreenFailed', () => {});
         }
 
@@ -52,9 +56,9 @@ function App() {
           tg.enableClosingConfirmation();
         }
 
-        try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) {}
-        try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) {}
-        try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) {}
+        try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) { /* ignore */ }
+        try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) { /* ignore */ }
+        try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) { /* ignore */ }
 
         const uid = tg.initDataUnsafe?.user?.id?.toString();
         if (uid) { setTelegramUserId(uid); return; }
