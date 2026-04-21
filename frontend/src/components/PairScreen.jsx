@@ -134,7 +134,8 @@ export default function PairScreen() {
     if (!tg || !pair) return;
     const lv = getLevel(pair.growth_points || 0);
     const bgColors = lv.bg;
-    const isDark = !isEgg && lv.idx === 5;
+    const isEggLocal = lv.idx === 0;
+    const isDark = !isEggLocal && lv.idx === 5;
 
     try { tg.setHeaderColor?.(bgColors[0]); } catch (e) {}
     try { tg.setBackgroundColor?.(bgColors[1]); } catch (e) {}
@@ -288,8 +289,8 @@ const res = await fetch(`${API}/complete-task`, {
     const streak = pair?.streak_days || 0;
     tg.shareToStory(mediaUrl, {
       text: lang === 'ru'
-        ? `🐾 Мой питомец ${petName} — уровень ${lv.nameRu}! Серия ${streak} дней 🔥\n\nПопробуй: https://t.me/${BOT_USERNAME}`
-        : `🐾 My pet ${petName} — level ${lv.name}! ${streak} day streak 🔥\n\nTry it: https://t.me/${BOT_USERNAME}`,
+        ? `🐾 Мой питомец ${petName} — уровень ${lv.nameRu}! Серия ${pair?.streak_days || 0} дней 🔥\n\nПопробуй: https://t.me/${BOT_USERNAME}`
+        : `🐾 My pet ${petName} — level ${lv.name}! ${pair?.streak_days || 0} day streak 🔥\n\nTry it: https://t.me/${BOT_USERNAME}`,
     });
   };
 
@@ -538,7 +539,7 @@ const res = await fetch(`${API}/complete-task`, {
 
       <div className="sk-pet-name-row">
         {isEgg ? (
-          <span className="sk-pet-name-label" tyle={{ color: lv.accent }}>
+          <span className="sk-pet-name-label" style={{ color: lv.accent }}>
             {lang === 'ru' ? `🥚 Яйцо — день ${eggDay} из 3` : `🥚 Egg — day ${eggDay} of 3`}
           </span>
         ) : renaming ? (
