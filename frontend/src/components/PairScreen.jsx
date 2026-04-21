@@ -490,7 +490,7 @@ const res = await fetch(`${API}/complete-task`, {
   const renderEgg = () => (
     <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-      style={{ width: 220, height: 280, objectFit: 'contain' }}>
+      style={{ width: 300, height: 380, objectFit: 'contain' }}>
       <source src={eggVideoSrc} type="video/webm" />
     </video>
   );
@@ -499,12 +499,12 @@ const res = await fetch(`${API}/complete-task`, {
     <>
       <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${lv.pet}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 220, height: 280, objectFit: 'contain', display: petTapped ? 'none' : 'block' }}>
+        style={{ width: 300, height: 380, objectFit: 'contain', display: petTapped ? 'none' : 'block' }}>
         <source src={`/pets/${lv.pet}.webm`} type="video/webm" />
       </video>
       <video ref={tapVideoRef} muted playsInline key={`tap-${lv.petTap}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 220, height: 280, objectFit: 'contain', display: petTapped ? 'block' : 'none' }}>
+        style={{ width: 300, height: 380, objectFit: 'contain', display: petTapped ? 'block' : 'none' }}>
         <source src={`/pets/${lv.petTap}.webm`} type="video/webm" />
       </video>
     </>

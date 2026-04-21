@@ -181,10 +181,10 @@ body {
 /* ── Pet area ── */
 .sk-pet-area {
   display: flex; align-items: center; justify-content: center;
-  width: 100%; flex: 1; min-height: 220px; max-height: 340px;
+  width: 100%; flex: 1; min-height: 300px; max-height: 420px;
 }
 .pet-animated {
-  width: 200px; height: 260px; object-fit: contain;
+  width: 300px; height: 380px; object-fit: contain;
   transition: transform 0.2s ease;
   filter: drop-shadow(0 16px 32px rgba(0,0,0,0.1));
 }
