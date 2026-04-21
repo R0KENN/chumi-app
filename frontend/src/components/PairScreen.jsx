@@ -347,8 +347,15 @@ export default function PairScreen() {
 
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
 
+  const isDark = lv.idx === 4;
+
   return (
-    <div className="sk" style={{ background: `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 60%, #f5f5f5 100%)` }}>
+    <div className="sk" style={{
+      background: isDark
+        ? `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 100%)`
+        : `linear-gradient(180deg, ${lv.bg[0]} 0%, ${lv.bg[1]} 60%, #f5f5f5 100%)`,
+    }}>
+
 
       {/* ── СВЕРХУ: серия + аватарки + ••• ── */}
       <div className="sk-info-row">
@@ -381,7 +388,7 @@ export default function PairScreen() {
             <button onClick={handleRename}>✓</button>
           </div>
         ) : (
-          <span className="sk-pet-name-label" onClick={() => { setNewName(pair.pet_name || ''); setRenaming(true); }}>
+          <span className="sk-pet-name-label" style={isDark ? { color: '#fff' } : {}} onClick={() => { setNewName(pair.pet_name || ''); setRenaming(true); }}>
             {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')}
             <span className="sk-edit-pencil">✏️</span>
           </span>
@@ -431,34 +438,36 @@ export default function PairScreen() {
       ) : (
         <>
           <div className="sk-pet-area" onClick={handlePetClick}>
-            {/* Idle видео — зацикленное, показывается когда НЕ тапнули */}
+            {/* Idle видео — зацикленное */}
             <video
               ref={idleVideoRef}
               autoPlay
               loop
               muted
               playsInline
+              key={`idle-${lv.pet}`}
               className={`pet-animated ${petAnim ? 'tapped' : ''}`}
               style={{
                 width: 220, height: 280, objectFit: 'contain',
                 display: petTapped ? 'none' : 'block',
               }}
             >
-              <source src="/pets/axolotl_idle.webm" type="video/webm" />
+              <source src={`/pets/${lv.pet}.webm`} type="video/webm" />
             </video>
 
-            {/* Tap видео — проигрывается один раз при нажатии */}
+            {/* Tap видео — один раз при нажатии */}
             <video
               ref={tapVideoRef}
               muted
               playsInline
+              key={`tap-${lv.petTap}`}
               className={`pet-animated ${petAnim ? 'tapped' : ''}`}
               style={{
                 width: 220, height: 280, objectFit: 'contain',
                 display: petTapped ? 'block' : 'none',
               }}
             >
-              <source src="/pets/axolotl_tap.webm" type="video/webm" />
+              <source src={`/pets/${lv.petTap}.webm`} type="video/webm" />
             </video>
           </div>
 
@@ -474,7 +483,7 @@ export default function PairScreen() {
               <div className="sk-progress-fill" style={{ width: `${pct}%`, background: lv.accent }} />
               <span className="sk-progress-text">{lv.current}/{lv.needed}</span>
             </div>
-            {isMaxLevel && <div className="sk-progress-hint">{lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›</div>}
+            {isMaxLevel && <div className="sk-progress-hint" style={isDark ? { color: 'rgba(255,255,255,0.5)' } : {}}>{lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›</div>}
           </div>
 
           <div className="sk-tasks glass-card">
