@@ -125,6 +125,14 @@ export default function PairScreen() {
   const isEgg = streakDays < 3;
   const eggDay = Math.min(streakDays + 1, 3);
 
+  const authHeaders = () => {
+  const headers = { 'Content-Type': 'application/json' };
+  const initData = getInitData();
+  if (initData) headers['X-Telegram-Init-Data'] = initData;
+  return headers;
+};
+
+
   const TASKS = [
     { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
     { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'share' },
@@ -289,12 +297,7 @@ const res = await fetch(`${API}/complete-task`, {
     } catch (e) {}
     finally { setDeleting(false); }
   };
-const authHeaders = () => {
-  const headers = { 'Content-Type': 'application/json' };
-  const initData = getInitData();
-  if (initData) headers['X-Telegram-Init-Data'] = initData;
-  return headers;
-};
+
 
   // ══════ Share to Story ══════
   const handleShareToStory = () => {
@@ -728,12 +731,21 @@ const authHeaders = () => {
                         ));
                       })()}
                     </div>
-
+                    <span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>
+                      {r.pet_name || '—'}
+                    </span>
+                    <span className="sk-ranking-stats">
+                      ⭐ {r.growth_points} | 🔥 {r.streak_days}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
             <button className="sk-popup-close" onClick={() => setShowRanking(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>
       )}
+
 
       {/* Levels */}
       {showLevels && (
@@ -750,36 +762,48 @@ const authHeaders = () => {
                 <span className="sk-lvl-pts">{l.maxPoints} pts</span>
               </div>
             ))}
+            )}
+            <button className="sk-popup-close" onClick={() => setShowRanking(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Levels popup */}
+      {showLevels && (
+        <div className="sk-overlay" onClick={() => setShowLevels(false)}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+            <h3>{lang === 'ru' ? 'Стадии роста' : 'Growth Stages'}</h3>
+            {LEVELS.map((l, i) => {
+              const isCurrent = lv.idx === i;
+              return (
+                <div key={i} className={`sk-lvl-row ${isCurrent ? 'sk-lvl-active' : ''}`}>
+                  <div className="sk-lvl-badge" style={{ background: l.accent + '20', color: l.accent }}>{i + 1}</div>
+                  <span className="sk-lvl-name">{lang === 'ru' ? l.nameRu : l.name}</span>
+                  <span className="sk-lvl-pts">{l.maxPoints} XP</span>
+                </div>
+              );
+            })}
             <button className="sk-popup-close" onClick={() => setShowLevels(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>
       )}
 
-       {/* Premium popup */}
+      {/* Premium popup */}
       {showPremium && (
         <div className="sk-overlay" onClick={() => setShowPremium(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>⭐</div>
-            <h3>Chumi Premium</h3>
-            <div style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.8 }}>
-              <div>✨ {lang === 'ru' ? 'Эксклюзивные скины' : 'Exclusive skins'}</div>
-              <div>♾️ {lang === 'ru' ? 'Безлимитные пары' : 'Unlimited pairs'}</div>
-              <div>👕 {lang === 'ru' ? 'Уникальные наряды' : 'Unique outfits'}</div>
-              <div>💜 {lang === 'ru' ? 'Поддержка разработки' : 'Support development'}</div>
-            </div>
-            <div style={{ textAlign: 'center', fontSize: 24, fontWeight: 800, color: '#F5A623', marginBottom: 16 }}>
-              50 ⭐ / {lang === 'ru' ? 'мес' : 'mo'}
-            </div>
-            <button onClick={handleSubscribe} style={{
-              width: '100%', padding: 14, borderRadius: 14, border: 'none',
-              background: 'linear-gradient(135deg, #F5A623, #FF6B35)', color: '#fff',
-              fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 8,
-            }}>
-              ⭐ {lang === 'ru' ? 'Подписаться' : 'Subscribe'}
+            <h3>{lang === 'ru' ? 'Chumi Premium' : 'Chumi Premium'}</h3>
+            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
+              {lang === 'ru' ? 'Эксклюзивные скины, безлимит пар и уникальные наряды' : 'Exclusive skins, unlimited pairs and unique outfits'}
+            </p>
+            <button onClick={handleSubscribe} className="sk-btn-primary" style={{ background: '#F5A623' }}>
+              ⭐ 50 Stars / {lang === 'ru' ? 'месяц' : 'month'}
             </button>
-            <button className="sk-popup-close" onClick={() => setShowPremium(false)}>
-              {lang === 'ru' ? 'Позже' : 'Later'}
-            </button>
+            <button className="sk-popup-close" onClick={() => setShowPremium(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
