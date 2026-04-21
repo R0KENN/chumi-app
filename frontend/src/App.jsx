@@ -52,10 +52,6 @@ function App() {
 
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
 
-        if (tg.enableClosingConfirmation) {
-          tg.enableClosingConfirmation();
-        }
-
         try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) { /* ignore */ }
         try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) { /* ignore */ }
         try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) { /* ignore */ }

@@ -6,11 +6,12 @@ const ADMIN_IDS = ['713156118'];
 const MAX_PAIRS_BASE = 2;
 
 const LEVELS = [
-  { level: 0, name: 'Baby',   nameRu: 'Малыш',     maxPoints: 30  },
-  { level: 1, name: 'Junior', nameRu: 'Подросток',  maxPoints: 70  },
-  { level: 2, name: 'Teen',   nameRu: 'Юный',       maxPoints: 50  },
-  { level: 3, name: 'Adult',  nameRu: 'Взрослый',   maxPoints: 150 },
-  { level: 4, name: 'Legend',  nameRu: 'Легенда',    maxPoints: 200 },
+  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 27  },
+  { level: 1, name: 'Baby',   nameRu: 'Малыш',      maxPoints: 45  },
+  { level: 2, name: 'Junior', nameRu: 'Подросток',   maxPoints: 63  },
+  { level: 3, name: 'Teen',   nameRu: 'Юный',        maxPoints: 90  },
+  { level: 4, name: 'Adult',  nameRu: 'Взрослый',    maxPoints: 135 },
+  { level: 5, name: 'Legend', nameRu: 'Легенда',     maxPoints: 200 },
 ];
 
 const TASK_POINTS = {

@@ -25,10 +25,11 @@ const WEBAPP_URL = 'https://chumi-app.pages.dev';
 const FIRE_EMOJI_ID = '5368324170671202286';
 
 const LEVELS = [
-  { name: 'Baby',   emoji: '🐣', maxPoints: 30 },
-  { name: 'Junior', emoji: '🐾', maxPoints: 70 },
-  { name: 'Teen',   emoji: '💜', maxPoints: 50 },
-  { name: 'Adult',  emoji: '💎', maxPoints: 150 },
+  { name: 'Egg',    emoji: '🥚', maxPoints: 27 },
+  { name: 'Baby',   emoji: '🐣', maxPoints: 45 },
+  { name: 'Junior', emoji: '🐾', maxPoints: 63 },
+  { name: 'Teen',   emoji: '💜', maxPoints: 90 },
+  { name: 'Adult',  emoji: '💎', maxPoints: 135 },
   { name: 'Legend', emoji: '👑', maxPoints: 200 },
 ];
 

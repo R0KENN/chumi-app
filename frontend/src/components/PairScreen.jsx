@@ -15,17 +15,16 @@ const EGG_VIDEOS = {
 };
 
 const LEVELS = [
-  { level: 0, name: 'Baby',   nameRu: 'Малыш',    maxPoints: 30,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',  petTap: 'axolotl_tap',        emojiId: null },
-  { level: 1, name: 'Junior', nameRu: 'Подросток', maxPoints: 70,  bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A', pet: 'axolotl_peach', petTap: 'axolotl_peach_tap',  emojiId: null },
-  { level: 2, name: 'Teen',   nameRu: 'Юный',      maxPoints: 50,  bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A', pet: 'axolotl_pink',  petTap: 'axolotl_pink_tap',   emojiId: null },
-  { level: 3, name: 'Adult',  nameRu: 'Взрослый',  maxPoints: 150, bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4', pet: 'axolotl_blue',  petTap: 'axolotl_blue_tap',   emojiId: null },
-  { level: 4, name: 'Legend', nameRu: 'Легенда',   maxPoints: 200, bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560', pet: 'axolotl_black', petTap: 'axolotl_black_tap',  emojiId: null },
+  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 27,  bg: ['#F5F0FF','#E8E0F0'], accent: '#B39DDB', check: '#B39DDB', pet: null,             petTap: null,                 emojiId: null },
+  { level: 1, name: 'Baby',   nameRu: 'Малыш',      maxPoints: 45,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',   petTap: 'axolotl_tap',        emojiId: null },
+  { level: 2, name: 'Junior', nameRu: 'Подросток',   maxPoints: 63,  bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A', pet: 'axolotl_peach',  petTap: 'axolotl_peach_tap',  emojiId: null },
+  { level: 3, name: 'Teen',   nameRu: 'Юный',        maxPoints: 90,  bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A', pet: 'axolotl_pink',   petTap: 'axolotl_pink_tap',   emojiId: null },
+  { level: 4, name: 'Adult',  nameRu: 'Взрослый',    maxPoints: 135, bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4', pet: 'axolotl_blue',   petTap: 'axolotl_blue_tap',   emojiId: null },
+  { level: 5, name: 'Legend', nameRu: 'Легенда',     maxPoints: 200, bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560', pet: 'axolotl_black',  petTap: 'axolotl_black_tap',  emojiId: null },
 ];
 // Когда у тебя будут custom emoji ID для каждого уровня, заполни поле emojiId
 // Например: emojiId: '5368324170671202286'
 
-const EGG_BG = ['#F5F0FF', '#E8E0F0'];
-const EGG_ACCENT = '#B39DDB';
 
 function getLevel(totalPoints) {
   let acc = 0;
@@ -121,9 +120,6 @@ export default function PairScreen() {
   const hasPartner = pair?.member_count >= 2;
   const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
-  const streakDays = pair?.streak_days || 0;
-  const isEgg = streakDays < 3;
-  const eggDay = Math.min(streakDays + 1, 3);
 
   const authHeaders = () => {
   const headers = { 'Content-Type': 'application/json' };
@@ -148,8 +144,8 @@ export default function PairScreen() {
   useEffect(() => {
     if (!tg || !pair) return;
     const lv = getLevel(pair.growth_points || 0);
-    const bgColors = isEgg ? EGG_BG : lv.bg;
-    const isDark = !isEgg && lv.idx === 4;
+    const bgColors = lv.bg;
+    const isDark = !isEgg && lv.idx === 5;
 
     try { tg.setHeaderColor?.(bgColors[0]); } catch (e) {}
     try { tg.setBackgroundColor?.(bgColors[1]); } catch (e) {}
@@ -358,13 +354,15 @@ const res = await fetch(`${API}/complete-task`, {
 
   const lv = getLevel(pair.growth_points || 0);
   const pct = Math.min(100, (lv.current / lv.needed) * 100);
+  const isEgg = lv.idx === 0;
+  const eggDay = Math.min((pair?.streak_days || 0) + 1, 3);
   const partner = pair.members?.find(m => m.user_id !== userId);
   const isMaxLevel = lv.idx === LEVELS.length - 1 && lv.remaining === 0;
-  const isDark = !isEgg && lv.idx === 4;
+  const isDark = !isEgg && lv.idx === 5;
 
-  const bgColors = isEgg ? EGG_BG : lv.bg;
-  const accentColor = isEgg ? EGG_ACCENT : lv.accent;
-  const checkColor = isEgg ? EGG_ACCENT : lv.check;
+  const bgColors = lv.bg;
+  const accentColor = lv.accent;
+  const checkColor = lv.check;
 
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
@@ -539,7 +537,7 @@ const res = await fetch(`${API}/complete-task`, {
 
       <div className="sk-pet-name-row">
         {isEgg ? (
-          <span className="sk-pet-name-label" style={{ color: EGG_ACCENT }}>
+          <span className="sk-pet-name-label" tyle={{ color: lv.accent }}>
             {lang === 'ru' ? `🥚 Яйцо — день ${eggDay} из 3` : `🥚 Egg — day ${eggDay} of 3`}
           </span>
         ) : renaming ? (
