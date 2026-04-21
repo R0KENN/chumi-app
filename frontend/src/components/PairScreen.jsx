@@ -709,18 +709,19 @@ export default function PairScreen() {
                     onClick={() => setExpandedRankingName(expandedRankingName === r.code ? null : r.code)}>
                     <span className="sk-ranking-pos">{rankingTab === 'top' ? (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`) : `#${i+1}`}</span>
                     <div className="sk-ranking-avatars">
-                      {(r.members || []).map(m => (
-                        <div key={m.user_id} className="sk-ranking-ava">
-                          {rankingAvatars[m.user_id] ? <img src={rankingAvatars[m.user_id]} alt="" onError={e => e.target.style.display='none'} /> : <span style={{ fontSize: 14 }}>👤</span>}
-                        </div>
-                      ))}
-                      {(!r.members || r.members.length === 0) && <div className="sk-ranking-ava"><span style={{ fontSize: 14 }}>👤</span></div>}
+                      {(() => {
+                        const sorted = (r.members || []).slice().sort((a, b) => {
+                          return (a.joined_at || '').localeCompare(b.joined_at || '');
+                        });
+                        if (sorted.length === 0) return <div className="sk-ranking-ava"><span style={{ fontSize: 14 }}>👤</span></div>;
+                        return sorted.map((m, idx) => (
+                          <div key={m.user_id} className="sk-ranking-ava" style={{ zIndex: sorted.length - idx }}>
+                            {rankingAvatars[m.user_id] ? <img src={rankingAvatars[m.user_id]} alt="" onError={e => e.target.style.display='none'} /> : <span style={{ fontSize: 14 }}>👤</span>}
+                          </div>
+                        ));
+                      })()}
                     </div>
-                    <span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>{r.pet_name || 'Unnamed'}</span>
-                    <span className="sk-ranking-stats">⭐{r.growth_points || 0} 🔥{r.streak_days || 0}</span>
-                  </div>
-                ))}
-              </div>
+
             )}
             <button className="sk-popup-close" onClick={() => setShowRanking(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
@@ -747,16 +748,17 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* Premium popup */}
+       {/* Premium popup */}
       {showPremium && (
         <div className="sk-overlay" onClick={() => setShowPremium(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>⭐</div>
-            <h3>{lang === 'ru' ? 'Chumi Premium' : 'Chumi Premium'}</h3>
-            <div style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.6 }}>
-              {lang === 'ru'
-                ? '• Эксклюзивные скины\n• Безлимитные пары\n• Уникальные наряды\n• Поддержка разработки'
-                : '• Exclusive skins\n• Unlimited pairs\n• Unique outfits\n• Support development'}
+            <h3>Chumi Premium</h3>
+            <div style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.8 }}>
+              <div>✨ {lang === 'ru' ? 'Эксклюзивные скины' : 'Exclusive skins'}</div>
+              <div>♾️ {lang === 'ru' ? 'Безлимитные пары' : 'Unlimited pairs'}</div>
+              <div>👕 {lang === 'ru' ? 'Уникальные наряды' : 'Unique outfits'}</div>
+              <div>💜 {lang === 'ru' ? 'Поддержка разработки' : 'Support development'}</div>
             </div>
             <div style={{ textAlign: 'center', fontSize: 24, fontWeight: 800, color: '#F5A623', marginBottom: 16 }}>
               50 ⭐ / {lang === 'ru' ? 'мес' : 'mo'}
@@ -764,14 +766,13 @@ export default function PairScreen() {
             <button onClick={handleSubscribe} style={{
               width: '100%', padding: 14, borderRadius: 14, border: 'none',
               background: 'linear-gradient(135deg, #F5A623, #FF6B35)', color: '#fff',
-              fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 8
+              fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 8,
             }}>
               ⭐ {lang === 'ru' ? 'Подписаться' : 'Subscribe'}
             </button>
-            <button className="sk-popup-close" onClick={() => setShowPremium(false)}>{lang === 'ru' ? 'Позже' : 'Later'}</button>
+            <button className="sk-popup-close" onClick={() => setShowPremium(false)}>
+              {lang === 'ru' ? 'Позже' : 'Later'}
+            </button>
           </div>
         </div>
       )}
-    </div>
-  );
-}

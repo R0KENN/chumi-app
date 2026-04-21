@@ -473,38 +473,64 @@ await sendTelegramMessage(env, m.user_id,
         return json({ success: true, points_added: points });
       }
 
-      // ── Daily tasks ──
-      const { data: existing } = await supabase
+    // — Daily tasks —
+    const { data: existing } = await supabase
+      .from('daily_tasks').select('id')
+      .eq('pair_code', code)
+      .eq('user_id', userId)
+      .eq('task_key', taskKey)
+      .eq('task_date', today)
+      .maybeSingle();
+
+    if (existing) return json({ error: 'Already completed' }, 400);
+
+    await supabase.from('daily_tasks').insert({
+      pair_code: code,
+      user_id: userId,
+      task_key: taskKey,
+      task_date: today,
+      completed: true,
+      completed_at: new Date().toISOString(),
+    });
+
+    // Очки начисляются только когда ОБА участника выполнили задание
+    const { data: members } = await supabase
+      .from('pair_users').select('user_id')
+      .eq('pair_code', code);
+
+    const partnerIds = (members || [])
+      .map(m => String(m.user_id))
+      .filter(id => id !== String(userId));
+
+    let pointsAdded = 0;
+
+    if (partnerIds.length > 0) {
+      const partnerId = partnerIds[0];
+      const { data: partnerDone } = await supabase
         .from('daily_tasks').select('id')
         .eq('pair_code', code)
-        .eq('user_id', userId)
+        .eq('user_id', partnerId)
         .eq('task_key', taskKey)
         .eq('task_date', today)
         .maybeSingle();
 
-      if (existing) return json({ error: 'Already completed' }, 400);
-
-      await supabase.from('daily_tasks').insert({
-        pair_code: code,
-        user_id: userId,
-        task_key: taskKey,
-        task_date: today,
-        completed: true,
-        completed_at: new Date().toISOString(),
-      });
-
-      const { data: pair } = await supabase
-        .from('pairs').select('growth_points').eq('code', code).single();
-
-      if (pair) {
-        const newPoints = (pair.growth_points || 0) + points;
-        await supabase.from('pairs')
-          .update({ growth_points: newPoints })
-          .eq('code', code);
+      if (partnerDone) {
+        const { data: pair } = await supabase
+          .from('pairs').select('growth_points').eq('code', code).single();
+        if (pair) {
+          const newPoints = (pair.growth_points || 0) + points;
+          await supabase.from('pairs')
+            .update({ growth_points: newPoints })
+            .eq('code', code);
+          pointsAdded = points;
+        }
       }
-
-      return json({ success: true, points_added: points });
     }
+
+    return json({ success: true, points_added: pointsAdded });
+  }
+
+
 
     // ═══════════════════════════════════════
     // POST /api/rename
