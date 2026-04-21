@@ -422,9 +422,9 @@ export async function onRequest(context) {
 
       for (const m of members || []) {
         if (m.user_id !== userId) {
-          await sendTelegramMessage(env, m.user_id,
-            `🎉 Кто-то присоединился к паре \`${code}\`!`
-          );
+await sendTelegramMessage(env, m.user_id,
+  `🎉 Someone joined pair \`${code}\`!`
+);
         }
       }
 
@@ -533,9 +533,9 @@ export async function onRequest(context) {
           .from('pair_users').select('user_id, display_name').eq('pair_code', code);
         for (const m of members || []) {
           if (m.user_id !== userId) {
-            await sendTelegramMessage(env, m.user_id,
-              `😢 Пара \`${code}\` была удалена.`
-            );
+await sendTelegramMessage(env, m.user_id,
+  `😢 Pair \`${code}\` has been deleted.`
+);
           }
         }
       }
@@ -749,7 +749,7 @@ export async function onRequest(context) {
       const body = await request.json();
       const userId = String(body.userId);
       const pairCode = body.pairCode;
-      const messageText = body.text || '🔥 Присоединяйся к Chumi — растим огонёк вместе!';
+const messageText = body.text || '🐾 Присоединяйся к Chumi — растим питомца вместе!';
 
       const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: 'POST',
@@ -759,11 +759,11 @@ export async function onRequest(context) {
           result: {
             type: 'article',
             id: 'share_' + pairCode + '_' + Date.now(),
-            title: 'Chumi — Вырасти огонёк!',
+title: 'Chumi — Вырасти питомца! 🐾',
             input_message_content: {
               message_text: messageText + `\n\nhttps://t.me/ChumiPetBot?start=join_${pairCode}`,
             },
-            description: 'Нажми чтобы пригласить в пару 🔥',
+description: 'Нажми чтобы пригласить в пару 🐾',
           },
           allow_user_chats: true,
           allow_bot_chats: false,

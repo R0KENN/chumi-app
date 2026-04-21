@@ -160,7 +160,7 @@ const T = {
 const webAppButton = {
   reply_markup: JSON.stringify({
     inline_keyboard: [[{
-      text: '🔥 Открыть Chumi / Open Chumi',
+      text: '🐾 Chumi',
       web_app: { url: WEBAPP_URL },
     }]],
   }),
@@ -177,14 +177,14 @@ function langButtons() {
   };
 }
 
-function inviteButton(code, lang, botUsername = 'chumi_pet_bot') {
+function inviteButton(code, lang, botUsername = 'ChumiPetBot') {
   const inviteUrl = `https://t.me/${botUsername}?start=join_${code}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(T[lang].inviteText(code))}`;
   return {
     reply_markup: JSON.stringify({
       inline_keyboard: [
         [{
-          text: lang === 'ru' ? '🔥 Открыть Chumi' : '🔥 Open Chumi',
+text: '🐾 Chumi',
           web_app: { url: WEBAPP_URL },
         }],
         [{

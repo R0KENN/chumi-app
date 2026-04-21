@@ -15,7 +15,7 @@ export default function PairSelector() {
 
   // Get Telegram user ID
   const tg = window.Telegram?.WebApp;
-  const userId = tg?.initDataUnsafe?.user?.id || localStorage.getItem('test_user_id') || '713156118';
+const userId = tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118';
 
   console.log('[PairSelector] loading:', loading, 'pairs:', pairs?.length, 'userId:', userId);
 

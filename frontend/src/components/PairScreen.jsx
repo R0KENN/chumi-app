@@ -7,19 +7,11 @@ const API = '/api';
 const ADMIN_IDS = ['713156118'];
 const BOT_USERNAME = 'ChumiPetBot';
 
-// ── Яйца: первые 3 дня ──
-// Если у тебя .webp файлы, замени 'webm' на 'webp' ниже
 const EGG_ASSETS = {
-  1: { src: '/pets/egg_1.webp', type: 'image' },
-  2: { src: '/pets/egg_2.webp', type: 'image' },
-  3: { src: '/pets/egg_3.webp', type: 'image' },
+  1: { src: '/pets/egg_1.webm', type: 'video' },
+  2: { src: '/pets/egg_2.webm', type: 'video' },
+  3: { src: '/pets/egg_3.webm', type: 'video' },
 };
-// Если яйца — картинки (.webp/.png), поставь type: 'image':
-// const EGG_ASSETS = {
-//   1: { src: '/pets/egg_1.webp', type: 'image' },
-//   2: { src: '/pets/egg_2.webp', type: 'image' },
-//   3: { src: '/pets/egg_3.webp', type: 'image' },
-// };
 
 const LEVELS = [
   { level: 0, name: 'Baby',   nameRu: 'Малыш',    maxPoints: 30,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',  petTap: 'axolotl_tap' },
@@ -29,7 +21,6 @@ const LEVELS = [
   { level: 4, name: 'Legend', nameRu: 'Легенда',   maxPoints: 200, bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560', pet: 'axolotl_black', petTap: 'axolotl_black_tap' },
 ];
 
-// Фон для яйца (нежный, нейтральный)
 const EGG_BG = ['#F5F0FF', '#E8E0F0'];
 const EGG_ACCENT = '#B39DDB';
 
@@ -55,17 +46,14 @@ function getShareMessages(petName, streak, pairCode, lang) {
       `👋 ${petName} ждёт тебя! Серия: ${streak} дней 🐾 Не забудь зайти!`,
       `🐾 ${petName} скучает! Мы на серии ${streak} дней — не сломай!`,
       `💬 Напоминание от ${petName}! Серия ${streak} дней — заходи скорее 🐾`,
-      `🐾 Мы с тобой уже ${streak} дней вместе растим ${petName}! Не останавливайся!`,
     ],
     send_sticker: [
       `🎨 Лови стикер от ${petName}! Растим его уже ${streak} дней 🐾`,
       `✨ ${petName} передаёт привет стикером! ${streak} дней серия 🐾`,
-      `🐾 Стикер-напоминание! Серия ${streak} дней, не забывай про ${petName}!`,
     ],
     send_media: [
       `📸 Фото-привет от партнёра по Chumi! Наша серия: ${streak} дней 🐾`,
       `🐾 Смотри! Мы растим ${petName} уже ${streak} дней подряд!`,
-      `📷 Ловии! Это от ${petName} — наша серия ${streak} дней 🐾`,
     ],
   } : {
     send_msg: [
@@ -85,7 +73,6 @@ function getShareMessages(petName, streak, pairCode, lang) {
   };
   return msg;
 }
-
 
 
 export default function PairScreen() {
@@ -121,30 +108,29 @@ export default function PairScreen() {
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
 
-
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
   const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
-  // ── Определяем: яйцо или уже вылупился ──
   const streakDays = pair?.streak_days || 0;
-  const isEgg = streakDays < 3; // дни 0, 1, 2 → яйцо (первые 3 дня)
-  const eggDay = Math.min(streakDays + 1, 3); // 1, 2 или 3
+  const isEgg = streakDays < 3;
+  const eggDay = Math.min(streakDays + 1, 3);
 
   const TASKS = [
     { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
     { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'share' },
     { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'share' },
     { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'share' },
-    { key: 'pet_touch',    points: 1, ru: isEgg ? (lang === 'ru' ? 'Тапнуть яйцо' : 'Tap the egg') : `Тапнуть ${petName}`,
-                                       en: isEgg ? 'Tap the egg' : `Tap ${petName}`, icon: '👆', action: 'pet' },
+    { key: 'pet_touch',    points: 1,
+      ru: isEgg ? 'Тапнуть яйцо' : `Тапнуть ${petName}`,
+      en: isEgg ? 'Tap the egg' : `Tap ${petName}`,
+      icon: '👆', action: 'pet' },
   ];
 
   const completeTask = useCallback(async (taskKey) => {
     try {
       const res = await fetch(`${API}/complete-task`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: pairId, userId, taskKey }),
       });
       const data = await res.json();
@@ -213,10 +199,7 @@ export default function PairScreen() {
   const handleDeletePair = async () => {
     setDeleting(true);
     try {
-      await fetch(`${API}/delete`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pairId, userId }),
-      });
+      await fetch(`${API}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: pairId, userId }) });
       if (refreshPairs) refreshPairs();
       navigate('/?newpair=1');
     } catch (e) {}
@@ -232,21 +215,14 @@ export default function PairScreen() {
   const isMaxLevel = lv.idx === LEVELS.length - 1 && lv.remaining === 0;
   const isDark = !isEgg && lv.idx === 4;
 
-  // Выбираем цвета фона: для яйца — нейтральный, для питомца — по уровню
   const bgColors = isEgg ? EGG_BG : lv.bg;
   const accentColor = isEgg ? EGG_ACCENT : lv.accent;
   const checkColor = isEgg ? EGG_ACCENT : lv.check;
 
-  const mergedTasks = TASKS.map(t => ({
-    ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false,
-  }));
+  const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
   if (!addToHomeDone) {
-    allTasks.push({
-      key: 'add_to_home', points: 3,
-      ru: 'Добавить на главный экран', en: 'Add to Home Screen',
-      icon: '📌', action: 'add_home', completed: false, oneTime: true,
-    });
+    allTasks.push({ key: 'add_to_home', points: 3, ru: 'Добавить на главный экран', en: 'Add to Home Screen', icon: '📌', action: 'add_home', completed: false, oneTime: true });
   }
   const doneCount = allTasks.filter(t => t.completed).length;
   const totalCount = allTasks.length;
@@ -265,10 +241,7 @@ export default function PairScreen() {
     const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
     const fullText = `${text}\n\n${inviteLink}`;
     const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-    try {
-      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-      else window.open(shareUrl, '_blank');
-    } catch (e) {}
+    try { if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank'); } catch (e) {}
   };
 
   const handleTask = (task) => {
@@ -292,8 +265,6 @@ export default function PairScreen() {
 
   const handlePetClick = () => {
     if (!hasPartner) return;
-
-    // Для яйца — только тряска + задание, без второго видео
     if (isEgg) {
       haptic('medium');
       setPetAnim(true);
@@ -302,36 +273,24 @@ export default function PairScreen() {
       if (petTask && !petTask.completed) handleTask(petTask);
       return;
     }
-
-    // Для вылупившегося питомца — tap-анимация
     if (petTapped) return;
     haptic('medium');
     setPetTapped(true);
     setPetAnim(true);
     setTimeout(() => setPetAnim(false), 800);
-
     const fallbackTimer = setTimeout(() => { setPetTapped(false); }, 5000);
-
     if (tapVideoRef.current) {
       tapVideoRef.current.currentTime = 0;
       tapVideoRef.current.play().catch(() => {});
-      tapVideoRef.current.onended = () => {
-        clearTimeout(fallbackTimer);
-        setPetTapped(false);
-      };
+      tapVideoRef.current.onended = () => { clearTimeout(fallbackTimer); setPetTapped(false); };
     }
-
     const petTask = mergedTasks.find(t => t.key === 'pet_touch');
     if (petTask && !petTask.completed) handleTask(petTask);
   };
 
-
   const handleRename = async () => {
     if (!newName.trim()) return;
-    await fetch(`${API}/rename`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: pairId, pet_name: newName.trim() }),
-    });
+    await fetch(`${API}/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: pairId, pet_name: newName.trim() }) });
     setPair(p => ({ ...p, pet_name: newName.trim() }));
     setRenaming(false);
   };
@@ -341,19 +300,14 @@ export default function PairScreen() {
   const canAddPair = isAdmin || myPairsData.length < maxPairs;
 
   const handleAddPair = () => {
-    if (canAddPair) {
-      navigate('/?newpair=1');
-    } else {
+    if (canAddPair) { navigate('/?newpair=1'); }
+    else {
       (async () => {
         try {
-          const res = await fetch(`${API}/create-invoice`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, productId: 'extra_slot' }),
-          });
+          const res = await fetch(`${API}/create-invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, productId: 'extra_slot' }) });
           const data = await res.json();
-          if (data.invoiceUrl && tg?.openInvoice) {
-            tg.openInvoice(data.invoiceUrl, (st) => { if (st === 'paid') { haptic('heavy'); setShowMyPairs(false); } });
-          } else if (data.invoiceUrl) window.open(data.invoiceUrl, '_blank');
+          if (data.invoiceUrl && tg?.openInvoice) { tg.openInvoice(data.invoiceUrl, (st) => { if (st === 'paid') { haptic('heavy'); setShowMyPairs(false); } }); }
+          else if (data.invoiceUrl) window.open(data.invoiceUrl, '_blank');
         } catch (e) {}
       })();
     }
@@ -365,64 +319,36 @@ export default function PairScreen() {
       ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые уровни.\n\nПопробуй 👇\n${botLink}`
       : `🐾 Chumi — get a pet and grow it together with a friend!\n\nComplete tasks every day, keep your streak and unlock new levels.\n\nTry it 👇\n${botLink}`;
     const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
-    if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-    else window.open(shareUrl, '_blank');
+    if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank');
   };
-
 
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
 
-  // ── Рендер яйца ──
   const renderEgg = () => {
     const egg = EGG_ASSETS[eggDay];
-    if (egg.type === 'video') {
-      return (
-        <video
-          autoPlay loop muted playsInline
-          className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-          style={{ width: 200, height: 260, objectFit: 'contain' }}
-        >
-          <source src={egg.src} type="video/webm" />
-        </video>
-      );
-    }
-    // Картинка
     return (
-      <img
-        src={egg.src}
-        alt="egg"
+      <video autoPlay loop muted playsInline
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 200, height: 260, objectFit: 'contain' }}
-      />
+        style={{ width: 200, height: 260, objectFit: 'contain' }}>
+        <source src={egg.src} type="video/webm" />
+      </video>
     );
   };
 
-  // ── Рендер питомца (аксолотль) ──
-  const renderPet = () => {
-    return (
-      <>
-        <video
-          ref={idleVideoRef}
-          autoPlay loop muted playsInline
-          key={`idle-${lv.pet}`}
-          className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-          style={{ width: 220, height: 280, objectFit: 'contain', display: petTapped ? 'none' : 'block' }}
-        >
-          <source src={`/pets/${lv.pet}.webm`} type="video/webm" />
-        </video>
-        <video
-          ref={tapVideoRef}
-          muted playsInline
-          key={`tap-${lv.petTap}`}
-          className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-          style={{ width: 220, height: 280, objectFit: 'contain', display: petTapped ? 'block' : 'none' }}
-        >
-          <source src={`/pets/${lv.petTap}.webm`} type="video/webm" />
-        </video>
-      </>
-    );
-  };
-
+  const renderPet = () => (
+    <>
+      <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${lv.pet}`}
+        className={`pet-animated ${petAnim ? 'tapped' : ''}`}
+        style={{ width: 220, height: 280, objectFit: 'contain', display: petTapped ? 'none' : 'block' }}>
+        <source src={`/pets/${lv.pet}.webm`} type="video/webm" />
+      </video>
+      <video ref={tapVideoRef} muted playsInline key={`tap-${lv.petTap}`}
+        className={`pet-animated ${petAnim ? 'tapped' : ''}`}
+        style={{ width: 220, height: 280, objectFit: 'contain', display: petTapped ? 'block' : 'none' }}>
+        <source src={`/pets/${lv.petTap}.webm`} type="video/webm" />
+      </video>
+    </>
+  );
 
   return (
     <div className="sk" style={{
@@ -430,8 +356,6 @@ export default function PairScreen() {
         ? `linear-gradient(180deg, ${bgColors[0]} 0%, ${bgColors[1]} 100%)`
         : `linear-gradient(180deg, ${bgColors[0]} 0%, ${bgColors[1]} 60%, #f5f5f5 100%)`,
     }}>
-
-      {/* ── СВЕРХУ: серия + аватарки + ••• ── */}
       <div className="sk-info-row">
         <div className="sk-info-row-left">
           <div className="sk-streak-badge">
@@ -453,7 +377,6 @@ export default function PairScreen() {
         </div>
       </div>
 
-      {/* ── Имя питомца (или "Яйцо — день X") ── */}
       <div className="sk-pet-name-row">
         {isEgg ? (
           <span className="sk-pet-name-label" style={{ color: EGG_ACCENT }}>
@@ -461,8 +384,7 @@ export default function PairScreen() {
           </span>
         ) : renaming ? (
           <div className="sk-rename-inline">
-            <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={20} autoFocus
-              onKeyDown={e => e.key === 'Enter' && handleRename()} />
+            <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={20} autoFocus onKeyDown={e => e.key === 'Enter' && handleRename()} />
             <button onClick={handleRename}>✓</button>
           </div>
         ) : (
@@ -473,21 +395,15 @@ export default function PairScreen() {
         )}
       </div>
 
-      {/* ── Menu ── */}
       {showMenu && (
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)}>
           <div className="sk-menu glass-card" onClick={e => e.stopPropagation()}>
             {!isEgg && <button onClick={() => { setRenaming(true); setShowMenu(false); }}>✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}</button>}
-            <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🔥 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
+            <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🐾 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { if (tg?.addToHomeScreen) { tg.addToHomeScreen(); haptic('light'); } setShowMenu(false); }}>📌 {lang === 'ru' ? 'На главный экран' : 'Home Screen'}</button>
             <button onClick={() => { handleShareInvite(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
-            <button onClick={() => {
-              const newLang = lang === 'ru' ? 'en' : 'ru';
-              setLang(newLang);
-              setShowMenu(false);
-              haptic('light');
-            }}>
+            <button onClick={() => { const newLang = lang === 'ru' ? 'en' : 'ru'; setLang(newLang); setShowMenu(false); haptic('light'); }}>
               🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
             </button>
             <button className="sk-menu-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
@@ -497,14 +413,12 @@ export default function PairScreen() {
         </div>
       )}
 
-
-      {/* ── Waiting for partner ── */}
       {!hasPartner ? (
         <div className="sk-waiting-partner">
           <div className="sk-waiting-emoji">🥚</div>
           <div className="sk-waiting-title">{lang === 'ru' ? 'Ожидаем партнёра' : 'Waiting for partner'}</div>
           <div className="sk-waiting-desc">
-            {lang === 'ru' ? 'Растить Питомца можно только в паре! Отправь код партнёру или поделись ссылкой.' : 'You need a partner to grow your Pet!'}
+            {lang === 'ru' ? 'Растить питомца можно только в паре! Отправь код партнёру или поделись ссылкой.' : 'You need a partner to grow your Pet!'}
           </div>
           <div className="sk-waiting-code" onClick={() => { navigator.clipboard?.writeText(pairId); haptic('light'); }}>
             {pairId}<span className="sk-waiting-code-copy">📋</span>
@@ -515,20 +429,13 @@ export default function PairScreen() {
         </div>
       ) : (
         <>
-          {/* ── Зона персонажа: яйцо или питомец ── */}
           <div className="sk-pet-area" onClick={handlePetClick}>
             {isEgg ? renderEgg() : renderPet()}
           </div>
 
-          {/* Подсказка для яйца */}
           {isEgg && (
-            <div style={{
-              textAlign: 'center', fontSize: 13, color: EGG_ACCENT,
-              marginTop: -8, marginBottom: 8, fontWeight: 500,
-            }}>
-              {lang === 'ru'
-                ? `Выполняйте задания — питомец вылупится на 4-й день! 🐣`
-                : `Complete tasks — your pet hatches on day 4! 🐣`}
+            <div style={{ textAlign: 'center', fontSize: 13, color: EGG_ACCENT, marginTop: -8, marginBottom: 8, fontWeight: 500 }}>
+              {lang === 'ru' ? 'Выполняйте задания — питомец вылупится на 4-й день! 🐣' : 'Complete tasks — your pet hatches on day 4! 🐣'}
             </div>
           )}
 
@@ -549,10 +456,7 @@ export default function PairScreen() {
 
           <div className="sk-tasks glass-card">
             <div className="sk-tasks-top">
-              <h3>{isEgg
-                ? (lang === 'ru' ? 'Вырастите своего Питомца' : 'Hatch your Pet')
-                : (lang === 'ru' ? 'Растите своего Питомца' : 'Grow your Pet')
-              }</h3>
+              <h3>{isEgg ? (lang === 'ru' ? 'Вырастите своего Питомца' : 'Hatch your Pet') : (lang === 'ru' ? 'Растите своего Питомца' : 'Grow your Pet')}</h3>
               <span className="sk-tasks-count" style={{ color: accentColor, background: accentColor + '18' }}>{doneCount}/{totalCount}</span>
             </div>
             {allTasks.map(task => (
@@ -576,7 +480,6 @@ export default function PairScreen() {
         </>
       )}
 
-      {/* ── Delete confirm ── */}
       {showDeleteConfirm && (
         <div className="sk-overlay" onClick={() => setShowDeleteConfirm(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
@@ -593,7 +496,6 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Мои пары ── */}
       {showMyPairs && (
         <div className="sk-overlay" onClick={() => setShowMyPairs(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
@@ -627,7 +529,6 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Ranking ── */}
       {showRanking && (
         <div className="sk-overlay" onClick={() => setShowRanking(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
@@ -636,6 +537,11 @@ export default function PairScreen() {
               <button className={`sk-ranking-tab ${rankingTab === 'top' ? 'sk-ranking-tab-active' : ''}`} onClick={() => setRankingTab('top')}>{lang === 'ru' ? 'Топ 100' : 'Top 100'}</button>
               <button className={`sk-ranking-tab ${rankingTab === 'random' ? 'sk-ranking-tab-active' : ''}`} onClick={() => setRankingTab('random')}>{lang === 'ru' ? 'Случайно' : 'Random'}</button>
             </div>
+            {rankingTab === 'random' && (
+              <div style={{ textAlign: 'center', fontSize: 11, color: 'rgba(0,0,0,0.35)', marginBottom: 8, fontWeight: 500 }}>
+                {lang === 'ru' ? '🔄 Обновляется раз в сутки' : '🔄 Updates once a day'}
+              </div>
+            )}
             {rankingLoading ? (
               <div style={{ textAlign: 'center', padding: 20 }}><div className="sk-spinner" /></div>
             ) : activeRanking.length === 0 ? (
@@ -665,15 +571,11 @@ export default function PairScreen() {
         </div>
       )}
 
-      {/* ── Levels ── */}
       {showLevels && (
         <div className="sk-overlay" onClick={() => setShowLevels(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <h3>{lang === 'ru' ? 'Уровни' : 'Levels'}</h3>
-            <div style={{
-              padding: '8px 12px', marginBottom: 12, borderRadius: 10,
-              background: EGG_ACCENT + '18', color: EGG_ACCENT, fontSize: 13, textAlign: 'center',
-            }}>
+            <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 10, background: EGG_ACCENT + '18', color: EGG_ACCENT, fontSize: 13, textAlign: 'center' }}>
               🥚 {lang === 'ru' ? 'Первые 3 дня — яйцо. На 4-й день питомец вылупляется!' : 'First 3 days — egg. Pet hatches on day 4!'}
             </div>
             {LEVELS.map((l, i) => (
