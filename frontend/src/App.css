@@ -187,9 +187,11 @@ body {
   width: 200px; height: 260px; object-fit: contain;
   transition: transform 0.2s ease;
   filter: drop-shadow(0 16px 32px rgba(0,0,0,0.1));
-  mix-blend-mode: screen;
 }
-.pet-animated.tapped { animation: pet-tap 0.35s ease forwards; }
+.pet-animated.tapped {
+  animation: pet-tap 0.35s ease forwards;
+}
+
 @keyframes pet-tap {
   0%   { transform: scale(1); }
   30%  { transform: scale(0.95); }

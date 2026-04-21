@@ -86,6 +86,7 @@ export default function PairScreen() {
 
   const [pair, setPair] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);                 // ← FIX 6: error state
   const [showMenu, setShowMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState('');
@@ -105,9 +106,11 @@ export default function PairScreen() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [petTapped, setPetTapped] = useState(false);
+  const [maxPairs, setMaxPairs] = useState(3);                       // ← FIX 4: dynamic maxPairs
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
+  const rankingAvatarsRef = useRef({});                              // ← FIX 5: stable ref for ranking avatars
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
@@ -141,7 +144,9 @@ export default function PairScreen() {
 
   const load = useCallback(async () => {
     try {
+      setLoadError(false);                                           // ← FIX 6
       const res = await fetch(`${API}/pair/${pairId}/${userId}`);
+      if (!res.ok) { setLoadError(true); setLoading(false); return; }  // ← FIX 6
       const data = await res.json();
       if (data.error) { navigate('/'); return; }
       setPair(data);
@@ -155,11 +160,26 @@ export default function PairScreen() {
           if (!d2.error) setPair(d2);
         }
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      setLoadError(true);                                            // ← FIX 6
+    }
     finally { setLoading(false); }
   }, [pairId, userId, navigate, completeTask]);
 
   useEffect(() => { load(); }, [load]);
+
+  // ← FIX 4: load maxPairs from API
+  useEffect(() => {
+    if (isAdmin) { setMaxPairs(999); return; }
+    (async () => {
+      try {
+        const res = await fetch(`${API}/user-slots/${userId}`);
+        const data = await res.json();
+        if (data.maxPairs) setMaxPairs(data.maxPairs);
+      } catch (e) {}
+    })();
+  }, [userId, isAdmin]);
 
   useEffect(() => {
     if (!pair?.members) return;
@@ -172,18 +192,23 @@ export default function PairScreen() {
     });
   }, [pair?.members]);
 
-  const loadRankingAvatars = (entries) => {
+  // ← FIX 5: stable ranking avatars using ref
+  const loadRankingAvatars = useCallback((entries) => {
     const ids = new Set();
     entries.forEach(r => { if (r.members) r.members.forEach(m => ids.add(m.user_id)); });
     ids.forEach(async (uid) => {
-      if (rankingAvatars[uid]) return;
+      if (rankingAvatarsRef.current[uid]) return;
+      rankingAvatarsRef.current[uid] = true; // mark as loading
       try {
         const r = await fetch(`${API}/avatar/${uid}`);
         const d = await r.json();
-        if (d.avatar_url) setRankingAvatars(p => ({ ...p, [uid]: d.avatar_url }));
+        if (d.avatar_url) {
+          rankingAvatarsRef.current[uid] = d.avatar_url;
+          setRankingAvatars(p => ({ ...p, [uid]: d.avatar_url }));
+        }
       } catch (e) {}
     });
-  };
+  }, []);
 
   const loadRanking = async () => {
     setRankingLoading(true);
@@ -207,7 +232,40 @@ export default function PairScreen() {
     finally { setDeleting(false); }
   };
 
+  // ← FIX 8: Telegram Back Button
+  useEffect(() => {
+    if (tg?.BackButton) {
+      tg.BackButton.show();
+      const handler = () => navigate('/');
+      tg.BackButton.onClick(handler);
+      return () => {
+        tg.BackButton.offClick(handler);
+        tg.BackButton.hide();
+      };
+    }
+  }, [tg, navigate]);
+
   if (loading) return <div className="sk-loading"><div className="sk-spinner" /></div>;
+
+  // ← FIX 6: error UI
+  if (loadError) return (
+    <div className="sk-loading">
+      <div style={{ fontSize: 48, marginBottom: 12 }}>😿</div>
+      <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a1a', marginBottom: 8 }}>
+        {lang === 'ru' ? 'Ошибка загрузки' : 'Failed to load'}
+      </div>
+      <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.5)', marginBottom: 16 }}>
+        {lang === 'ru' ? 'Проверьте подключение к интернету' : 'Check your internet connection'}
+      </div>
+      <button onClick={() => { setLoading(true); load(); }} style={{
+        padding: '12px 32px', borderRadius: 14, border: 'none',
+        background: '#9B72CF', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer'
+      }}>
+        {lang === 'ru' ? 'Повторить' : 'Retry'}
+      </button>
+    </div>
+  );
+
   if (!pair) return <div className="sk-loading">{lang === 'ru' ? 'Не найдено' : 'Not found'}</div>;
 
   const lv = getLevel(pair.growth_points || 0);
@@ -230,19 +288,27 @@ export default function PairScreen() {
 
   const haptic = (type = 'medium') => { try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {} };
 
+  // ← FIX 7: share task — only complete AFTER share opens
   const handleShareTask = async (task) => {
     if (task.completed || completing) return;
-    setCompleting(true);
     haptic('light');
-    await completeTask(task.key);
-    await load();
-    setCompleting(false);
+
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
     const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
     const fullText = `${text}\n\n${inviteLink}`;
     const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-    try { if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank'); } catch (e) {}
+
+    try {
+      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+      else window.open(shareUrl, '_blank');
+    } catch (e) {}
+
+    // Complete task after opening share dialog (not before)
+    setCompleting(true);
+    await completeTask(task.key);
+    await load();
+    setCompleting(false);
   };
 
   const handleTask = (task) => {
@@ -297,7 +363,7 @@ export default function PairScreen() {
   };
 
   const myPairsData = pairs || [];
-  const maxPairs = isAdmin ? 999 : 3;
+  // ← FIX 10: canAddPair uses dynamic maxPairs from API
   const canAddPair = isAdmin || myPairsData.length < maxPairs;
 
   const handleAddPair = () => {
@@ -307,7 +373,7 @@ export default function PairScreen() {
         try {
           const res = await fetch(`${API}/create-invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, productId: 'extra_slot' }) });
           const data = await res.json();
-          if (data.invoiceUrl && tg?.openInvoice) { tg.openInvoice(data.invoiceUrl, (st) => { if (st === 'paid') { haptic('heavy'); setShowMyPairs(false); } }); }
+          if (data.invoiceUrl && tg?.openInvoice) { tg.openInvoice(data.invoiceUrl, (st) => { if (st === 'paid') { haptic('heavy'); setShowMyPairs(false); if (refreshPairs) refreshPairs(); } }); }
           else if (data.invoiceUrl) window.open(data.invoiceUrl, '_blank');
         } catch (e) {}
       })();
