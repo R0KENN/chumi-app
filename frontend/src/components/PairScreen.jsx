@@ -7,10 +7,10 @@ const API = '/api';
 const ADMIN_IDS = ['713156118'];
 const BOT_USERNAME = 'ChumiPetBot';
 
-const EGG_ASSETS = {
-  1: { src: '/pets/egg_1.webm', type: 'video' },
-  2: { src: '/pets/egg_2.webm', type: 'video' },
-  3: { src: '/pets/egg_3.webm', type: 'video' },
+const EGG_VIDEOS = {
+  1: '/pets/egg_1.webm',
+  2: '/pets/egg_2.webm',
+  3: '/pets/egg_3.webm',
 };
 
 const LEVELS = [
@@ -107,6 +107,7 @@ export default function PairScreen() {
   const [petTapped, setPetTapped] = useState(false);
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
+  const eggVideoRef = useRef(null);
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
@@ -324,16 +325,22 @@ export default function PairScreen() {
 
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
 
-  const renderEgg = () => {
-    const egg = EGG_ASSETS[eggDay];
-    return (
-      <video autoPlay loop muted playsInline
-        className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 200, height: 260, objectFit: 'contain' }}>
-        <source src={egg.src} type="video/webm" />
-      </video>
-    );
-  };
+  const eggVideoSrc = EGG_VIDEOS[eggDay];
+
+  const renderEgg = () => (
+    <video
+      ref={eggVideoRef}
+      key={`egg-${eggDay}`}
+      autoPlay
+      loop
+      muted
+      playsInline
+      className={`pet-animated ${petAnim ? 'tapped' : ''}`}
+      style={{ width: 220, height: 280, objectFit: 'contain' }}
+    >
+      <source src={eggVideoSrc} type="video/webm" />
+    </video>
+  );
 
   const renderPet = () => (
     <>
