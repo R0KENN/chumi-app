@@ -286,7 +286,6 @@ const res = await fetch(`${API}/complete-task`, {
     if (!tg?.shareToStory) return;
     const lv = getLevel(pair?.growth_points || 0);
     const mediaUrl = `https://chumi-app.pages.dev/pets/og-preview.png`;
-    const streak = pair?.streak_days || 0;
     tg.shareToStory(mediaUrl, {
       text: lang === 'ru'
         ? `🐾 Мой питомец ${petName} — уровень ${lv.nameRu}! Серия ${pair?.streak_days || 0} дней 🔥\n\nПопробуй: https://t.me/${BOT_USERNAME}`
@@ -490,7 +489,7 @@ const res = await fetch(`${API}/complete-task`, {
   const renderEgg = () => (
     <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-      style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)' }}>
+      style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none' }}>
       <source src={eggVideoSrc} type="video/webm" />
     </video>
   );
@@ -499,12 +498,12 @@ const res = await fetch(`${API}/complete-task`, {
     <>
       <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${lv.pet}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', display: petTapped ? 'none' : 'block' }}>
+        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'none' : 'block' }}>
         <source src={`/pets/${lv.pet}.webm`} type="video/webm" />
       </video>
       <video ref={tapVideoRef} muted playsInline key={`tap-${lv.petTap}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', display: petTapped ? 'block' : 'none' }}>
+        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'block' : 'none' }}>
         <source src={`/pets/${lv.petTap}.webm`} type="video/webm" />
       </video>
     </>
@@ -680,7 +679,7 @@ const res = await fetch(`${API}/complete-task`, {
             <div className="sk-pairs-grid">
               {myPairsData.map(p => {
                 const plv = getLevel(p.growth_points || 0);
-                const pIsEgg = (p.streak_days || 0) < 3;
+const pIsEgg = plv.idx === 0;
                 return (
                   <div key={p.code} className={`sk-pair-card glass-card ${p.code === pairId ? 'sk-pair-card-active' : ''}`}
                     onClick={() => { setShowMyPairs(false); navigate(`/pair/${p.code}`); }}>

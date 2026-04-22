@@ -6,7 +6,7 @@ const ADMIN_IDS = ['713156118'];
 const MAX_PAIRS_BASE = 2;
 
 const LEVELS = [
-  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 27  },
+  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 33  },
   { level: 1, name: 'Baby',   nameRu: 'Малыш',      maxPoints: 45  },
   { level: 2, name: 'Junior', nameRu: 'Подросток',   maxPoints: 63  },
   { level: 3, name: 'Teen',   nameRu: 'Юный',        maxPoints: 90  },
