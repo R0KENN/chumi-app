@@ -158,6 +158,7 @@ function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
       username: m.username || null,
       avatar_url: m.avatar_url ? `/api/avatar/${m.user_id}?proxy=1` : null,
     })) || [],
+    active_skin: pair.active_skin || null,
     partner_name: partner?.display_name || null,
     partner_username: partner?.username || null,
     my_name: me?.display_name || null,
@@ -1239,6 +1240,205 @@ export async function onRequest(context) {
       }
 
       return json({ ok: true, checked, killed });
+    }
+
+        // ═══════════════════════════════════════
+    // GET /api/skins/:userId
+    // (получить список скинов пользователя)
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/skins\/[^/]+$/)) {
+      const userId = path.split('/')[3];
+
+      const { data: owned } = await supabase
+        .from('user_skins')
+        .select('skin_id')
+        .eq('user_id', userId);
+
+      // Count referrals for bee skin check
+      const { data: referrals } = await supabase
+        .from('user_referrals')
+        .select('invited_user_id')
+        .eq('inviter_user_id', userId);
+
+      return json({
+        owned: (owned || []).map(s => s.skin_id),
+        referral_count: referrals?.length || 0,
+      });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/buy-skin
+    // (купить скин за Stars)
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/buy-skin') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const skinId = body.skinId;
+      const PAID_SKINS = ['strawberry', 'floral', 'astronaut'];
+      const SKIN_PRICE = 25;
+
+      if (!PAID_SKINS.includes(skinId)) {
+        return json({ error: 'Invalid skin or not purchasable' }, 400);
+      }
+
+      // Check if already owned
+      const { data: existing } = await supabase
+        .from('user_skins')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('skin_id', skinId)
+        .maybeSingle();
+
+      if (existing) return json({ error: 'Already owned' }, 400);
+
+      // Create invoice for Stars payment
+      const payload = JSON.stringify({ userId, skinId, type: 'skin', timestamp: Date.now() });
+      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Наряд: ${skinId}`,
+          description: `Уникальный наряд для вашего питомца`,
+          payload,
+          provider_token: '',
+          currency: 'XTR',
+          prices: [{ label: `Skin: ${skinId}`, amount: SKIN_PRICE }],
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.ok) return json({ error: 'Invoice creation failed' }, 500);
+      return json({ invoiceUrl: data.result });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/set-skin
+    // (установить скин для пары)
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/set-skin') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const code = body.pairCode || body.code;
+      const skinId = body.skinId; // null = default skin for current level
+
+      // Verify membership
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
+      if (skinId) {
+        // Verify ownership
+        const { data: owned } = await supabase
+          .from('user_skins')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('skin_id', skinId)
+          .maybeSingle();
+        if (!owned) return json({ error: 'Skin not owned' }, 403);
+      }
+
+      await supabase.from('pairs')
+        .update({ active_skin: skinId || null })
+        .eq('code', code);
+
+      return json({ success: true, active_skin: skinId || null });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/claim-bee-skin
+    // (получить бесплатный скин Bee за 2 реферала)
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/claim-bee-skin') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      // Check already owned
+      const { data: existing } = await supabase
+        .from('user_skins')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('skin_id', 'bee')
+        .maybeSingle();
+      if (existing) return json({ error: 'Already owned' }, 400);
+
+      // Count referrals
+      const { data: referrals } = await supabase
+        .from('user_referrals')
+        .select('invited_user_id')
+        .eq('inviter_user_id', userId);
+
+      if (!referrals || referrals.length < 2) {
+        return json({ error: 'Need 2 referrals', current: referrals?.length || 0 }, 400);
+      }
+
+      await supabase.from('user_skins').insert({
+        user_id: userId,
+        skin_id: 'bee',
+      });
+
+      return json({ success: true, skin_id: 'bee' });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/cleanup-empty-pairs
+    // (удаление пар без партнёра старше 5 дней)
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/cleanup-empty-pairs') {
+      const authHeader = request.headers.get('Authorization');
+      if (env.CRON_SECRET && authHeader !== `Bearer ${env.CRON_SECRET}`) {
+        return json({ error: 'Unauthorized' }, 401);
+      }
+
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      const cutoffDate = fiveDaysAgo.toISOString();
+
+      // Get all pairs created more than 5 days ago
+      const { data: oldPairs } = await supabase
+        .from('pairs')
+        .select('code, created_at')
+        .lt('created_at', cutoffDate);
+
+      let deleted = 0;
+
+      for (const pair of (oldPairs || [])) {
+        // Count members
+        const { data: members } = await supabase
+          .from('pair_users')
+          .select('user_id')
+          .eq('pair_code', pair.code);
+
+        if (!members || members.length < 2) {
+          // Solo pair older than 5 days — delete
+          // Notify the solo member
+          if (members && members.length === 1) {
+            const { data: settings } = await supabase
+              .from('user_settings')
+              .select('lang')
+              .eq('telegram_user_id', members[0].user_id)
+              .single();
+            const lang = settings?.lang || 'ru';
+            const text = lang === 'ru'
+              ? `🕐 Пара \`${pair.code}\` удалена — партнёр не присоединился в течение 5 дней.`
+              : `🕐 Pair \`${pair.code}\` deleted — partner didn't join within 5 days.`;
+            await sendTelegramMessage(env, members[0].user_id, text);
+          }
+
+          await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
+          await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
+          await supabase.from('pair_users').delete().eq('pair_code', pair.code);
+          await supabase.from('pairs').delete().eq('code', pair.code);
+          deleted++;
+        }
+      }
+
+      return json({ ok: true, deleted });
     }
 
     // ═══════════════════════════════════════

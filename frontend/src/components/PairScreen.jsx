@@ -110,6 +110,10 @@ export default function PairScreen() {
   const [petTapped, setPetTapped] = useState(false);
   const [maxPairs, setMaxPairs] = useState(3);
   const [showPremium, setShowPremium] = useState(false);
+  const [showOutfits, setShowOutfits] = useState(false);
+  const [ownedSkins, setOwnedSkins] = useState([]);
+  const [referralCount, setReferralCount] = useState(0);
+  const [skinsLoading, setSkinsLoading] = useState(false);
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
@@ -487,6 +491,61 @@ const res = await fetch(`${API}/complete-task`, {
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
   const eggVideoSrc = EGG_VIDEOS[eggDay];
 
+    const loadSkins = async () => {
+    setSkinsLoading(true);
+    try {
+      const res = await fetch(`${API}/skins/${userId}`);
+      const data = await res.json();
+      setOwnedSkins(data.owned || []);
+      setReferralCount(data.referral_count || 0);
+    } catch (e) {}
+    finally { setSkinsLoading(false); }
+  };
+
+  const handleBuySkin = async (skinId) => {
+    try {
+      const res = await fetch(`${API}/buy-skin`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ userId, skinId }),
+      });
+      const data = await res.json();
+      if (data.invoiceUrl && tg?.openInvoice) {
+        tg.openInvoice(data.invoiceUrl, (st) => {
+          if (st === 'paid') { haptic('heavy'); loadSkins(); load(); }
+        });
+      }
+    } catch (e) {}
+  };
+
+  const handleClaimBee = async () => {
+    try {
+      const res = await fetch(`${API}/claim-bee-skin`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (data.success) { haptic('heavy'); loadSkins(); }
+    } catch (e) {}
+  };
+
+  const handleSetSkin = async (skinId) => {
+    try {
+      await fetch(`${API}/set-skin`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ userId, pairCode: pairId, skinId }),
+      });
+      await load();
+      haptic('light');
+    } catch (e) {}
+  };
+
+  const SKINS = [
+    { id: 'strawberry', name: 'Strawberry', nameRu: 'Клубничка', price: 25, pet: 'axolotl_Strawberry', petTap: 'axolotl_Strawberry_tap' },
+    { id: 'bee',        name: 'Bee',        nameRu: 'Пчёлка',    price: 0,  pet: 'axolotl_Bee',        petTap: 'axolotl_Bee_tap', referralReward: true },
+    { id: 'floral',     name: 'Floral',     nameRu: 'Цветочный',  price: 25, pet: 'axolotl_Floral',     petTap: 'axolotl_Floral_tap' },
+    { id: 'astronaut',  name: 'Astronaut',  nameRu: 'Астронавт',  price: 25, pet: 'axolotl_Astronaut',  petTap: 'axolotl_Astronaut_tap' },
+  ];
+
   const renderEgg = () => (
     <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
@@ -495,20 +554,26 @@ const res = await fetch(`${API}/complete-task`, {
     </video>
   );
 
+  const activeSkin = pair?.active_skin;
+  const petSrc = activeSkin
+    ? { idle: `axolotl_${activeSkin.charAt(0).toUpperCase() + activeSkin.slice(1)}`, tap: `axolotl_${activeSkin.charAt(0).toUpperCase() + activeSkin.slice(1)}_tap` }
+    : { idle: lv.pet, tap: lv.petTap };
+
   const renderPet = () => (
     <>
-      <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${lv.pet}`}
+      <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${petSrc.idle}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
         style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'none' : 'block' }}>
-        <source src={`/pets/${lv.pet}.webm`} type="video/webm" />
+        <source src={`/pets/${petSrc.idle}.webm`} type="video/webm" />
       </video>
-      <video ref={tapVideoRef} muted playsInline key={`tap-${lv.petTap}`}
+      <video ref={tapVideoRef} muted playsInline key={`tap-${petSrc.tap}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
         style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'block' : 'none' }}>
-        <source src={`/pets/${lv.petTap}.webm`} type="video/webm" />
+        <source src={`/pets/${petSrc.tap}.webm`} type="video/webm" />
       </video>
     </>
   );
+
 
   return (
     <div className="sk" style={{
@@ -615,9 +680,9 @@ const res = await fetch(`${API}/complete-task`, {
           )}
 
           {!isEgg && (
-            <div className="sk-outfits-btn" onClick={() => { setShowSoon(true); setTimeout(() => setShowSoon(false), 2000); }}>
+            <div className="sk-outfits-btn" onClick={() => { loadSkins(); setShowOutfits(true); }}>
               <div className="sk-outfits-icon"><span>🐾</span><span>👕</span></div>
-              <span className="sk-outfits-text">{showSoon ? (lang === 'ru' ? 'Скоро!' : 'Soon!') : (lang === 'ru' ? 'Наряды' : 'Outfits')}</span>
+              <span className="sk-outfits-text">{lang === 'ru' ? 'Наряды' : 'Outfits'}</span>
             </div>
           )}
 
@@ -754,6 +819,82 @@ const pIsEgg = plv.idx === 0;
               </div>
             )}
             <button className="sk-popup-close" onClick={() => setShowRanking(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Outfits popup */}
+      {showOutfits && (
+        <div className="sk-overlay" onClick={() => setShowOutfits(false)}>
+          <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
+            <h3>👕 {lang === 'ru' ? 'Наряды' : 'Outfits'}</h3>
+            {skinsLoading ? (
+              <div style={{ textAlign: 'center', padding: 20 }}><div className="sk-spinner" /></div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Default skin — reset to level default */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, background: !pair?.active_skin ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, background: accentColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🐾</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 15, color: '#1a1a1a' }}>{lang === 'ru' ? 'Стандартный' : 'Default'}</div>
+                    <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{lang === 'ru' ? 'Зависит от уровня' : 'Based on level'}</div>
+                  </div>
+                  {pair?.active_skin ? (
+                    <button onClick={() => handleSetSkin(null)} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: accentColor + '20', color: accentColor, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                      {lang === 'ru' ? 'Выбрать' : 'Select'}
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 12, color: '#4CAF50', fontWeight: 600 }}>✓ {lang === 'ru' ? 'Активен' : 'Active'}</span>
+                  )}
+                </div>
+
+                {SKINS.map(skin => {
+                  const owned = ownedSkins.includes(skin.id);
+                  const isActive = pair?.active_skin === skin.id;
+                  const canClaimBee = skin.referralReward && referralCount >= 2 && !owned;
+
+                  return (
+                    <div key={skin.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, background: isActive ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
+                      <video autoPlay loop muted playsInline style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }}>
+                        <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
+                      </video>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 15, color: '#1a1a1a' }}>{lang === 'ru' ? skin.nameRu : skin.name}</div>
+                        {skin.referralReward ? (
+                          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
+                            {owned ? (lang === 'ru' ? 'Разблокировано' : 'Unlocked') : `${lang === 'ru' ? 'Пригласи 2 друга' : 'Invite 2 friends'} (${referralCount}/2)`}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
+                            {owned ? (lang === 'ru' ? 'Куплено' : 'Owned') : `⭐ ${skin.price} Stars`}
+                          </div>
+                        )}
+                      </div>
+                      {isActive ? (
+                        <span style={{ fontSize: 12, color: '#4CAF50', fontWeight: 600 }}>✓ {lang === 'ru' ? 'Активен' : 'Active'}</span>
+                      ) : owned ? (
+                        <button onClick={() => handleSetSkin(skin.id)} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: accentColor + '20', color: accentColor, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          {lang === 'ru' ? 'Выбрать' : 'Select'}
+                        </button>
+                      ) : canClaimBee ? (
+                        <button onClick={handleClaimBee} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: '#4CAF50', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          {lang === 'ru' ? 'Забрать' : 'Claim'}
+                        </button>
+                      ) : skin.referralReward ? (
+                        <button onClick={handleShareInvite} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: 'rgba(0,0,0,0.06)', color: '#888', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          {lang === 'ru' ? 'Пригласить' : 'Invite'}
+                        </button>
+                      ) : (
+                        <button onClick={() => handleBuySkin(skin.id)} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: '#F5A623', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          ⭐ {skin.price}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button className="sk-popup-close" onClick={() => setShowOutfits(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>
       )}

@@ -302,6 +302,17 @@ export async function onRequestPost(context) {
       const lang = await getUserLang(supabase, userId);
       const payload = JSON.parse(payment.invoice_payload);
       if (payload.productId === 'extra_slot') {
+              if (payload.type === 'skin' && payload.skinId) {
+        await supabase.from('user_skins').insert({
+          user_id: userId,
+          skin_id: payload.skinId,
+        }).catch(() => {}); // ignore duplicate
+        const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
+        await sendMessage(env, update.message.chat.id,
+          lang === 'ru' ? `✅ Наряд *${skinName}* разблокирован! 🎨` : `✅ Outfit *${skinName}* unlocked! 🎨`,
+          webAppButton
+        );
+      }
         const { data: existing } = await supabase.from('user_slots').select('extra_slots').eq('telegram_user_id', userId).single();
         if (existing) {
           await supabase.from('user_slots').update({ extra_slots: existing.extra_slots + 1 }).eq('telegram_user_id', userId);
@@ -355,6 +366,16 @@ export async function onRequestPost(context) {
         if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
         if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
         await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username });
+                // Track referral — the existing member invited this user
+        for (const m of members || []) {
+          if (m.user_id !== userId) {
+            await supabase.from('user_referrals').insert({
+              inviter_user_id: m.user_id,
+              invited_user_id: userId,
+              pair_code: joinCode,
+            }).catch(() => {}); // ignore duplicate
+          }
+        }
         await sendMessage(env, chatId, T[lang].joined(joinCode), webAppButton);
         for (const m of members || []) {
           if (m.user_id !== userId) {
@@ -409,6 +430,16 @@ export async function onRequestPost(context) {
       if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
       if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
+              // Track referral — the existing member invited this user
+        for (const m of members || []) {
+          if (m.user_id !== userId) {
+            await supabase.from('user_referrals').insert({
+              inviter_user_id: m.user_id,
+              invited_user_id: userId,
+              pair_code: joinCode,
+            }).catch(() => {}); // ignore duplicate
+          }
+        }
       await sendMessage(env, chatId, T[lang].joined(code), webAppButton);
       for (const m of members || []) {
         if (m.user_id !== userId) {
