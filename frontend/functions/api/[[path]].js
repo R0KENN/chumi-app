@@ -588,13 +588,35 @@ export async function onRequest(context) {
 
             // Update streak if both did daily_open today and streak not yet counted
             if (taskKey === 'daily_open' && pair.last_streak_date !== today) {
-              const newStreak = (pair.streak_days || 0) + 1;
-              updates.streak_days = newStreak;
-              updates.last_streak_date = today;
+              // Don't count streak on the very first day (creation day)
+              // last_streak_date === null means pair was just created
+              if (pair.last_streak_date === null) {
+                // First time both opened — just mark the date, don't increment streak
+                updates.last_streak_date = today;
+              } else {
+                // Check if this is a consecutive day (yesterday or today after previous day)
+                const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
+                const todayDate = new Date(today + 'T00:00:00Z');
+                const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
 
-              // Hatch the egg on day 3+
-              if (!pair.hatched && newStreak >= 3) {
-                updates.hatched = true;
+                if (diffDays === 1) {
+                  // Consecutive day — increment streak
+                  const newStreak = (pair.streak_days || 0) + 1;
+                  updates.streak_days = newStreak;
+                  updates.last_streak_date = today;
+
+                  // Hatch based on growth_points reaching Egg maxPoints (33)
+                  if (!pair.hatched && newPoints >= 33) {
+                    updates.hatched = true;
+                  }
+                } else if (diffDays > 1) {
+                  // Missed days — streak broken (will be handled by cron, but reset here too)
+                  updates.streak_days = 1;
+                  updates.last_streak_date = today;
+                } else {
+                  // Same day (diffDays === 0) — already handled by last_streak_date !== today check
+                  updates.last_streak_date = today;
+                }
               }
             }
 
@@ -1143,6 +1165,80 @@ export async function onRequest(context) {
       }
 
       return json({ ok: true, checked: updated, killed });
+    }
+
+        // ═══════════════════════════════════════
+    // POST /api/update-streaks
+    // (called by scheduled cron daily — checks yesterday's activity,
+    //  kills pets that missed a day)
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/update-streaks') {
+      // Optional: protect with a secret
+      const authHeader = request.headers.get('Authorization');
+      if (env.CRON_SECRET && authHeader !== `Bearer ${env.CRON_SECRET}`) {
+        return json({ error: 'Unauthorized' }, 401);
+      }
+
+      const today = getTodayDate();
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      // Get all active (not dead) pairs that have been active at least once
+      const { data: allPairs } = await supabase
+        .from('pairs')
+        .select('code, streak_days, last_streak_date, is_dead, hatched, pet_name')
+        .eq('is_dead', false)
+        .not('last_streak_date', 'is', null);
+
+      let checked = 0;
+      let killed = 0;
+
+      for (const pair of (allPairs || [])) {
+        // Skip if last activity was today (already active today)
+        if (pair.last_streak_date === today) continue;
+
+        // Skip if last activity was yesterday (they still have today to complete)
+        if (pair.last_streak_date === yesterdayStr) continue;
+
+        // If last_streak_date is older than yesterday — they missed a day
+        const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
+        const todayDate = new Date(today + 'T00:00:00Z');
+        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+
+        if (diffDays >= 2) {
+          // Missed at least one full day — kill the pet
+          await supabase.from('pairs').update({
+            is_dead: true,
+          }).eq('code', pair.code);
+          killed++;
+
+          // Notify members
+          const { data: members } = await supabase
+            .from('pair_users')
+            .select('user_id')
+            .eq('pair_code', pair.code);
+
+          for (const m of (members || [])) {
+            const { data: settings } = await supabase
+              .from('user_settings')
+              .select('lang')
+              .eq('telegram_user_id', m.user_id)
+              .single();
+
+            const lang = settings?.lang || 'ru';
+            const petName = pair.pet_name || (lang === 'ru' ? 'Питомец' : 'Pet');
+            const text = lang === 'ru'
+              ? `💀 ${petName} умер... Серия ${pair.streak_days} дней сломалась.\n\nТы можешь восстановить серию или начать заново.`
+              : `💀 ${petName} died... Your ${pair.streak_days} day streak is broken.\n\nYou can recover or start a new egg.`;
+            await sendTelegramMessage(env, m.user_id, text);
+          }
+        }
+
+        checked++;
+      }
+
+      return json({ ok: true, checked, killed });
     }
 
     // ═══════════════════════════════════════

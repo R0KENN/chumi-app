@@ -15,7 +15,7 @@ const EGG_VIDEOS = {
 };
 
 const LEVELS = [
-  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 27,  bg: ['#F5F0FF','#E8E0F0'], accent: '#B39DDB', check: '#B39DDB', pet: null,             petTap: null,                 emojiId: null },
+  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 33,  bg: ['#F5F0FF','#E8E0F0'], accent: '#B39DDB', check: '#B39DDB', pet: null,             petTap: null,                 emojiId: null },
   { level: 1, name: 'Baby',   nameRu: 'Малыш',      maxPoints: 45,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',   petTap: 'axolotl_tap',        emojiId: null },
   { level: 2, name: 'Junior', nameRu: 'Подросток',   maxPoints: 63,  bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A', pet: 'axolotl_peach',  petTap: 'axolotl_peach_tap',  emojiId: null },
   { level: 3, name: 'Teen',   nameRu: 'Юный',        maxPoints: 90,  bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A', pet: 'axolotl_pink',   petTap: 'axolotl_pink_tap',   emojiId: null },
@@ -344,6 +344,7 @@ const res = await fetch(`${API}/complete-task`, {
   const lv = getLevel(pair.growth_points || 0);
   const pct = Math.min(100, (lv.current / lv.needed) * 100);
   const isEgg = lv.idx === 0;
+  // streak 0 = day 1, streak 1 = day 2, streak 2 = day 3
   const eggDay = Math.min((pair?.streak_days || 0) + 1, 3);
 
   const TASKS = [

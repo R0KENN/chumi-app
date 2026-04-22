@@ -2,6 +2,7 @@ export default {
   async scheduled(event, env) {
     const baseUrl = 'https://chumi-app.pages.dev';
 
+    // 1. Kill dead pets (missed days)
     try {
       const streakRes = await fetch(`${baseUrl}/api/update-streaks`, {
         method: 'POST',
@@ -12,6 +13,7 @@ export default {
       console.error('Streak update error:', e);
     }
 
+    // 2. Send reminders
     try {
       const res = await fetch(`${baseUrl}/api/send-reminders`, {
         method: 'POST',
