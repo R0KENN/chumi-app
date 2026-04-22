@@ -1,16 +1,25 @@
 export default {
   async scheduled(event, env) {
+    const baseUrl = 'https://chumi-app.pages.dev';
+
     try {
-      const res = await fetch('https://chumi-app.pages.dev/api/send-reminders', {
+      const streakRes = await fetch(`${baseUrl}/api/update-streaks`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
-      console.log('Reminders result:', data);
+      console.log('Streaks updated:', await streakRes.json());
     } catch (e) {
-      console.error('Cron error:', e);
+      console.error('Streak update error:', e);
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/api/send-reminders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      console.log('Reminders result:', await res.json());
+    } catch (e) {
+      console.error('Reminder error:', e);
     }
   },
 
