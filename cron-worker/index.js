@@ -1,22 +1,23 @@
 export default {
   async scheduled(event, env) {
     const baseUrl = 'https://chumi-app.pages.dev';
+    const headers = { 'Content-Type': 'application/json' };
 
-    // 1. Kill dead pets
+    // 1. Update streaks / kill dead pets
     try {
-      const r1 = await fetch(`${baseUrl}/api/update-streaks`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const r1 = await fetch(`${baseUrl}/api/update-streaks`, { method: 'POST', headers });
       console.log('Streaks:', await r1.json());
     } catch (e) { console.error('Streak error:', e); }
 
-    // 2. Send reminders
+    // 2. Send reminders to users who haven't opened today
     try {
-      const r2 = await fetch(`${baseUrl}/api/send-reminders`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const r2 = await fetch(`${baseUrl}/api/send-reminders`, { method: 'POST', headers });
       console.log('Reminders:', await r2.json());
     } catch (e) { console.error('Reminder error:', e); }
 
     // 3. Cleanup solo pairs older than 5 days
     try {
-      const r3 = await fetch(`${baseUrl}/api/cleanup-empty-pairs`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const r3 = await fetch(`${baseUrl}/api/cleanup-empty-pairs`, { method: 'POST', headers });
       console.log('Cleanup:', await r3.json());
     } catch (e) { console.error('Cleanup error:', e); }
   },

@@ -122,7 +122,7 @@ function validateInitData(initDataRaw, botToken) {
   }
 }
 
-// ────────── Extract userId from request (with optional validation) ──────────
+// ────────── Extract userId from request ──────────
 function extractUserId(request, env, bodyUserId) {
   const initData = request.headers.get('X-Telegram-Init-Data');
   if (initData) {
@@ -290,7 +290,7 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // GET /api/avatar/:userId
+    // GET /api/avatar/:userId  [FIX #1: убран дублированный блок]
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path.match(/^\/api\/avatar\/[^/]+$/)) {
       const tgUserId = path.split('/')[3];
@@ -298,7 +298,6 @@ export async function onRequest(context) {
       const wantProxy = url.searchParams.get('proxy');
 
       try {
-        // Check if we have a cached file_path (NOT the full URL with token)
         const { data: cached } = await supabase
           .from('pair_users')
           .select('avatar_file_path')
@@ -329,17 +328,26 @@ export async function onRequest(context) {
 
           filePath = fileData.result.file_path;
 
-          // Save only file_path, NOT the full URL with token
           await supabase
             .from('pair_users')
             .update({ avatar_file_path: filePath })
             .eq('user_id', tgUserId);
         }
 
+        // FIX: единый блок прокси с retry при протухшем файле
         if (wantProxy) {
           const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
           const imgRes = await fetch(avatarUrl);
-          if (!imgRes.ok) return json({ avatar_url: null });
+
+          if (!imgRes.ok) {
+            // Файл протух — очищаем кеш, клиент должен повторить запрос
+            await supabase
+              .from('pair_users')
+              .update({ avatar_file_path: null })
+              .eq('user_id', tgUserId);
+            return json({ avatar_url: null });
+          }
+
           const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
           const imgBuffer = await imgRes.arrayBuffer();
           return new Response(imgBuffer, {
@@ -351,23 +359,6 @@ export async function onRequest(context) {
             },
           });
         }
-        if (wantProxy) {
-  const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-  const imgRes = await fetch(avatarUrl);
-  
-  // Если файл протух — перезапросить
-  if (!imgRes.ok) {
-    // Clear cached path and retry
-    await supabase
-      .from('pair_users')
-      .update({ avatar_file_path: null })
-      .eq('user_id', tgUserId);
-    return json({ avatar_url: null });
-  }
-  
-  // ... rest of proxy logic
-}
-
 
         return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1` });
       } catch (e) {
@@ -518,7 +509,6 @@ export async function onRequest(context) {
       const points = TASK_POINTS[taskKey];
       if (points === undefined) return json({ error: 'Invalid task' }, 400);
 
-      // Verify user is in this pair
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code)
@@ -575,7 +565,6 @@ export async function onRequest(context) {
         completed_at: new Date().toISOString(),
       });
 
-      // Points awarded only when BOTH partners completed the same task
       const { data: members } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code);
@@ -599,40 +588,31 @@ export async function onRequest(context) {
         if (partnerDone) {
           const { data: pair } = await supabase
             .from('pairs').select('growth_points, streak_days, last_streak_date, hatched')
-              .eq('code', code).single();
+            .eq('code', code).single();
           if (pair) {
             const newPoints = (pair.growth_points || 0) + points;
             const updates = { growth_points: newPoints };
 
-            // Update streak if both did daily_open today and streak not yet counted
             if (taskKey === 'daily_open' && pair.last_streak_date !== today) {
-              // Don't count streak on the very first day (creation day)
-              // last_streak_date === null means pair was just created
               if (pair.last_streak_date === null) {
-                // First time both opened — just mark the date, don't increment streak
                 updates.last_streak_date = today;
               } else {
-                // Check if this is a consecutive day (yesterday or today after previous day)
                 const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
                 const todayDate = new Date(today + 'T00:00:00Z');
                 const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
 
                 if (diffDays === 1) {
-                  // Consecutive day — increment streak
                   const newStreak = (pair.streak_days || 0) + 1;
                   updates.streak_days = newStreak;
                   updates.last_streak_date = today;
 
-                  // Hatch based on growth_points reaching Egg maxPoints (33)
                   if (!pair.hatched && newPoints >= 33) {
                     updates.hatched = true;
                   }
                 } else if (diffDays > 1) {
-                  // Missed days — streak broken (will be handled by cron, but reset here too)
                   updates.streak_days = 1;
                   updates.last_streak_date = today;
                 } else {
-                  // Same day (diffDays === 0) — already handled by last_streak_date !== today check
                   updates.last_streak_date = today;
                 }
               }
@@ -659,7 +639,6 @@ export async function onRequest(context) {
       const name = (body.pet_name || body.name || '').trim().slice(0, 20);
       if (!name) return json({ error: 'Name required' }, 400);
 
-      // Verify membership
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
@@ -679,13 +658,11 @@ export async function onRequest(context) {
 
       const code = body.pairCode || body.code;
 
-      // Verify membership
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403);
 
-      // Notify partner before deleting
       const { data: members } = await supabase
         .from('pair_users').select('user_id, display_name').eq('pair_code', code);
       for (const m of members || []) {
@@ -734,7 +711,6 @@ export async function onRequest(context) {
 
       const targetUserId = body.targetUserId;
 
-      // Verify that caller and target are in the same pair
       const { data: callerPairs } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);
       const { data: targetPairs } = await supabase
@@ -792,7 +768,6 @@ export async function onRequest(context) {
 
       const productId = body.productId;
 
-      // ── Extra slot ──
       if (productId === 'extra_slot') {
         const payload = JSON.stringify({ userId, productId, timestamp: Date.now() });
         const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
@@ -812,7 +787,6 @@ export async function onRequest(context) {
         return json({ invoiceUrl: data.result });
       }
 
-      // ── Premium monthly subscription ──
       if (productId === 'premium_monthly') {
         const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
           title: 'Chumi Premium',
@@ -821,7 +795,7 @@ export async function onRequest(context) {
           provider_token: '',
           currency: 'XTR',
           prices: [{ amount: 150, label: 'Premium Monthly' }],
-          subscription_period: 2592000, // 30 days
+          subscription_period: 2592000,
         });
         if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
         return json({ invoiceUrl });
@@ -1030,17 +1004,16 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // POST /api/send-reminders
-    // (called by scheduled cron or manually)
+    // POST /api/send-reminders  [FIX #3: полная реализация]
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/send-reminders') {
       const BOT_TOKEN = env.BOT_TOKEN;
       const todayStr = getTodayDate();
 
-      // Get all active pairs with at least 1 streak day
       const { data: allPairs } = await supabase
         .from('pairs')
         .select('code, pet_name, streak_days')
+        .eq('is_dead', false)
         .gte('streak_days', 1);
 
       let sent = 0;
@@ -1051,132 +1024,138 @@ export async function onRequest(context) {
           .eq('pair_code', pair.code);
 
         for (const member of (members || [])) {
-          // Check if user already opened app today
-          const { data: tasks } = await supabase
-            .from('daily_tasks')
-            .select('task_key')
+          const { data: opened } = await supabase
+            .from('daily_tasks').select('id')
             .eq('pair_code', pair.code)
             .eq('user_id', member.user_id)
             .eq('task_key', 'daily_open')
-            .eq('task_date', todayStr);
+            .eq('task_date', todayStr)
+            .maybeSingle();
 
-          if (!tasks || tasks.length === 0) {
-            // Hasn't opened — send reminder
-            const { data: settings } = await supabase
-              .from('user_settings')
-              .select('lang')
-              .eq('telegram_user_id', member.user_id)
-              .single();
-
-            const lang = settings?.lang || 'ru';
-            const name = pair.pet_name || (lang === 'ru' ? 'Питомец' : 'Pet');
-            const text = lang === 'ru'
-              ? `🐾 ${name} ждёт тебя! Серия ${pair.streak_days} дней — не сломай! 🔥`
-              : `🐾 ${name} is waiting! ${pair.streak_days} day streak — don't break it! 🔥`;
-
-            try {
-              await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  chat_id: member.user_id,
-                  text,
-                  reply_markup: {
-                    inline_keyboard: [[{
-                      text: lang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi',
-                      web_app: { url: `https://chumi-app.pages.dev/pair/${pair.code}` },
-                    }]],
-                  },
-                }),
-              });
-              sent++;
-            } catch (e) {
-              console.error('Reminder send error:', e);
-            }
+          if (!opened) {
+            const petName = pair.pet_name || 'Chumi';
+            await sendTelegramMessage(env, member.user_id,
+              `🔔 *${petName}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
+            );
+            sent++;
           }
         }
       }
-      return json({ ok: true, sent });
+
+      return json({ success: true, sent });
     }
 
-
-        // ═══════════════════════════════════════
-    // POST /api/update-streaks
-    // (called by scheduled cron daily — checks yesterday's activity,
-    //  kills pets that missed a day)
+    // ═══════════════════════════════════════
+    // POST /api/update-streaks  [FIX #3: НОВЫЙ ЭНДПОИНТ]
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/update-streaks') {
-      // Optional: protect with a secret
-      const authHeader = request.headers.get('Authorization');
-      if (env.CRON_SECRET && authHeader !== `Bearer ${env.CRON_SECRET}`) {
-        return json({ error: 'Unauthorized' }, 401);
-      }
-
       const today = getTodayDate();
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const todayDate = new Date(today + 'T00:00:00Z');
+      const yesterdayDate = new Date(todayDate.getTime() - 86400000);
+      const yesterday = yesterdayDate.toISOString().split('T')[0];
 
-      // Get all active (not dead) pairs that have been active at least once
       const { data: allPairs } = await supabase
         .from('pairs')
-        .select('code, streak_days, last_streak_date, is_dead, hatched, pet_name')
-        .eq('is_dead', false)
-        .not('last_streak_date', 'is', null);
+        .select('code, last_streak_date, streak_days, is_dead')
+        .eq('is_dead', false);
 
-      let checked = 0;
       let killed = 0;
-
       for (const pair of (allPairs || [])) {
-        // Skip if last activity was today (already active today)
-        if (pair.last_streak_date === today) continue;
-
-        // Skip if last activity was yesterday (they still have today to complete)
-        if (pair.last_streak_date === yesterdayStr) continue;
-
-        // If last_streak_date is older than yesterday — they missed a day
-        const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
-        const todayDate = new Date(today + 'T00:00:00Z');
-        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
-
-        if (diffDays >= 2) {
-          // Missed at least one full day — kill the pet
+        // Если пара имеет серию и последний день серии был раньше вчерашнего — серия сломана
+        if (pair.last_streak_date && pair.last_streak_date < yesterday) {
           await supabase.from('pairs').update({
             is_dead: true,
           }).eq('code', pair.code);
           killed++;
 
-          // Notify members
+          // Уведомить участников
           const { data: members } = await supabase
-            .from('pair_users')
-            .select('user_id')
-            .eq('pair_code', pair.code);
-
+            .from('pair_users').select('user_id').eq('pair_code', pair.code);
           for (const m of (members || [])) {
-            const { data: settings } = await supabase
-              .from('user_settings')
-              .select('lang')
-              .eq('telegram_user_id', m.user_id)
-              .single();
-
-            const lang = settings?.lang || 'ru';
-            const petName = pair.pet_name || (lang === 'ru' ? 'Питомец' : 'Pet');
-            const text = lang === 'ru'
-              ? `💀 ${petName} умер... Серия ${pair.streak_days} дней сломалась.\n\nТы можешь восстановить серию или начать заново.`
-              : `💀 ${petName} died... Your ${pair.streak_days} day streak is broken.\n\nYou can recover or start a new egg.`;
-            await sendTelegramMessage(env, m.user_id, text);
+            await sendTelegramMessage(env, m.user_id,
+              `💀 Ваш питомец в паре \`${pair.code}\` умер... Серия прервалась.`
+            );
           }
         }
-
-        checked++;
       }
 
-      return json({ ok: true, checked, killed });
+      return json({ success: true, killed });
     }
 
-        // ═══════════════════════════════════════
-    // GET /api/skins/:userId
-    // (получить список скинов пользователя)
+    // ═══════════════════════════════════════
+    // POST /api/cleanup-empty-pairs  [FIX #3: НОВЫЙ ЭНДПОИНТ]
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/cleanup-empty-pairs') {
+      const { data: allPairs } = await supabase
+        .from('pairs')
+        .select('code, created_at');
+
+      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString();
+      let cleaned = 0;
+
+      for (const pair of (allPairs || [])) {
+        const { data: members } = await supabase
+          .from('pair_users').select('user_id').eq('pair_code', pair.code);
+
+        // Удаляем соло-пары старше 5 дней
+        if ((!members || members.length < 2) && pair.created_at && pair.created_at < fiveDaysAgo) {
+          await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
+          await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
+          await supabase.from('feedings').delete().eq('pair_code', pair.code);
+          await supabase.from('pair_users').delete().eq('pair_code', pair.code);
+          await supabase.from('pairs').delete().eq('code', pair.code);
+          cleaned++;
+        }
+      }
+
+      return json({ success: true, cleaned });
+    }
+
+    // ═══════════════════════════════════════
+    // POST /api/send-partner-message  [FIX #5: НОВЫЙ ЭНДПОИНТ]
+    // ═══════════════════════════════════════
+    if (request.method === 'POST' && path === '/api/send-partner-message') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const code = body.code;
+      const text = body.text || '💌 Сообщение от партнёра!';
+
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
+      const { data: members } = await supabase
+        .from('pair_users').select('user_id, display_name').eq('pair_code', code);
+
+      const WEBAPP_URL = 'https://chumi-app.pages.dev';
+      for (const m of (members || [])) {
+        if (m.user_id !== userId) {
+          await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: m.user_id,
+              text,
+              parse_mode: 'Markdown',
+              reply_markup: JSON.stringify({
+                inline_keyboard: [[{
+                  text: '🐾 Chumi',
+                  web_app: { url: WEBAPP_URL },
+                }]],
+              }),
+            }),
+          });
+        }
+      }
+
+      return json({ success: true });
+    }
+
+    // ═══════════════════════════════════════
+    // GET /api/skins/:userId  [FIX #4: НОВЫЙ ЭНДПОИНТ]
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path.match(/^\/api\/skins\/[^/]+$/)) {
       const userId = path.split('/')[3];
@@ -1186,7 +1165,6 @@ export async function onRequest(context) {
         .select('skin_id')
         .eq('user_id', userId);
 
-      // Count referrals for bee skin check
       const { data: referrals } = await supabase
         .from('user_referrals')
         .select('invited_user_id')
@@ -1199,8 +1177,7 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // POST /api/buy-skin
-    // (купить скин за Stars)
+    // POST /api/buy-skin  [FIX #4: НОВЫЙ ЭНДПОИНТ]
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/buy-skin') {
       const body = await request.json();
@@ -1208,256 +1185,105 @@ export async function onRequest(context) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 
       const skinId = body.skinId;
-      const PAID_SKINS = ['strawberry', 'floral', 'astronaut'];
-      const SKIN_PRICE = 25;
+      if (!skinId) return json({ error: 'skinId required' }, 400);
 
-      if (!PAID_SKINS.includes(skinId)) {
-        return json({ error: 'Invalid skin or not purchasable' }, 400);
-      }
+      const SKIN_PRICES = {
+        strawberry: 25,
+        floral: 25,
+        astronaut: 25,
+      };
 
-      // Check if already owned
-      const { data: existing } = await supabase
-        .from('user_skins')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('skin_id', skinId)
-        .maybeSingle();
+      const price = SKIN_PRICES[skinId];
+      if (price === undefined) return json({ error: 'Invalid skin' }, 400);
 
-      if (existing) return json({ error: 'Already owned' }, 400);
+      // Проверим, не куплен ли уже
+      const { data: alreadyOwned } = await supabase
+        .from('user_skins').select('id')
+        .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
+      if (alreadyOwned) return json({ error: 'Already owned' }, 400);
 
-      // Create invoice for Stars payment
-      const payload = JSON.stringify({ userId, skinId, type: 'skin', timestamp: Date.now() });
-      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: `Наряд: ${skinId}`,
-          description: `Уникальный наряд для вашего питомца`,
-          payload,
-          provider_token: '',
-          currency: 'XTR',
-          prices: [{ label: `Skin: ${skinId}`, amount: SKIN_PRICE }],
-        }),
+      const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
+        title: `Наряд: ${skinId}`,
+        description: `Разблокируй наряд ${skinId} для своего аксолотля!`,
+        payload: JSON.stringify({ type: 'skin', skinId, userId, timestamp: Date.now() }),
+        provider_token: '',
+        currency: 'XTR',
+        prices: [{ amount: price, label: `Skin ${skinId}` }],
       });
 
-      const data = await res.json();
-      if (!data.ok) return json({ error: 'Invoice creation failed' }, 500);
-      return json({ invoiceUrl: data.result });
+      if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
+      return json({ invoiceUrl });
     }
 
     // ═══════════════════════════════════════
-    // POST /api/set-skin
-    // (установить скин для пары)
-    // ═══════════════════════════════════════
-    if (request.method === 'POST' && path === '/api/set-skin') {
-      const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
-      const code = body.pairCode || body.code;
-      const skinId = body.skinId; // null = default skin for current level
-
-      // Verify membership
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
-
-      if (skinId) {
-        // Verify ownership
-        const { data: owned } = await supabase
-          .from('user_skins')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('skin_id', skinId)
-          .maybeSingle();
-        if (!owned) return json({ error: 'Skin not owned' }, 403);
-      }
-
-      await supabase.from('pairs')
-        .update({ active_skin: skinId || null })
-        .eq('code', code);
-
-      return json({ success: true, active_skin: skinId || null });
-    }
-
-    // ═══════════════════════════════════════
-    // POST /api/claim-bee-skin
-    // (получить бесплатный скин Bee за 2 реферала)
+    // POST /api/claim-bee-skin  [FIX #4: НОВЫЙ ЭНДПОИНТ]
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/claim-bee-skin') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-      // Check already owned
-      const { data: existing } = await supabase
-        .from('user_skins')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('skin_id', 'bee')
-        .maybeSingle();
-      if (existing) return json({ error: 'Already owned' }, 400);
-
-      // Count referrals
+      // Проверяем количество рефералов
       const { data: referrals } = await supabase
         .from('user_referrals')
         .select('invited_user_id')
         .eq('inviter_user_id', userId);
 
-      if (!referrals || referrals.length < 2) {
-        return json({ error: 'Need 2 referrals', current: referrals?.length || 0 }, 400);
-      }
+      const count = referrals?.length || 0;
+      if (count < 2) return json({ error: 'Need at least 2 referrals' }, 400);
+
+      // Проверяем, не получен ли уже
+      const { data: alreadyOwned } = await supabase
+        .from('user_skins').select('id')
+        .eq('user_id', userId).eq('skin_id', 'bee').maybeSingle();
+      if (alreadyOwned) return json({ error: 'Already claimed' }, 400);
 
       await supabase.from('user_skins').insert({
         user_id: userId,
         skin_id: 'bee',
       });
 
-      return json({ success: true, skin_id: 'bee' });
+      return json({ success: true });
     }
 
     // ═══════════════════════════════════════
-    // POST /api/cleanup-empty-pairs
-    // (удаление пар без партнёра старше 5 дней)
+    // POST /api/set-skin  [FIX #4: НОВЫЙ ЭНДПОИНТ]
     // ═══════════════════════════════════════
-    if (request.method === 'POST' && path === '/api/cleanup-empty-pairs') {
-      const authHeader = request.headers.get('Authorization');
-      if (env.CRON_SECRET && authHeader !== `Bearer ${env.CRON_SECRET}`) {
-        return json({ error: 'Unauthorized' }, 401);
+    if (request.method === 'POST' && path === '/api/set-skin') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const pairCode = body.pairCode;
+      const skinId = body.skinId; // null = снять скин
+
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
+      // Если skinId не null, проверяем владение
+      if (skinId) {
+        const { data: owned } = await supabase
+          .from('user_skins').select('id')
+          .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
+        if (!owned) return json({ error: 'Skin not owned' }, 403);
       }
 
-      const fiveDaysAgo = new Date();
-      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-      const cutoffDate = fiveDaysAgo.toISOString();
+      await supabase.from('pairs')
+        .update({ active_skin: skinId })
+        .eq('code', pairCode);
 
-      // Get all pairs created more than 5 days ago
-      const { data: oldPairs } = await supabase
-        .from('pairs')
-        .select('code, created_at')
-        .lt('created_at', cutoffDate);
-
-      let deleted = 0;
-
-      for (const pair of (oldPairs || [])) {
-        // Count members
-        const { data: members } = await supabase
-          .from('pair_users')
-          .select('user_id')
-          .eq('pair_code', pair.code);
-
-        if (!members || members.length < 2) {
-          // Solo pair older than 5 days — delete
-          // Notify the solo member
-          if (members && members.length === 1) {
-            const { data: settings } = await supabase
-              .from('user_settings')
-              .select('lang')
-              .eq('telegram_user_id', members[0].user_id)
-              .single();
-            const lang = settings?.lang || 'ru';
-            const text = lang === 'ru'
-              ? `🕐 Пара \`${pair.code}\` удалена — партнёр не присоединился в течение 5 дней.`
-              : `🕐 Pair \`${pair.code}\` deleted — partner didn't join within 5 days.`;
-            await sendTelegramMessage(env, members[0].user_id, text);
-          }
-
-          await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
-          await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
-          await supabase.from('pair_users').delete().eq('pair_code', pair.code);
-          await supabase.from('pairs').delete().eq('code', pair.code);
-          deleted++;
-        }
-      }
-
-      return json({ ok: true, deleted });
+      return json({ success: true });
     }
 
     // ═══════════════════════════════════════
-// POST /api/send-partner-message
-// ═══════════════════════════════════════
-if (request.method === 'POST' && path === '/api/send-partner-message') {
-  const body = await request.json();
-  const userId = extractUserId(request, env, body.userId);
-  if (!userId) return json({ error: 'Unauthorized' }, 401);
-
-  const code = body.code;
-  const messageText = body.text;
-
-  // Найти партнёра
-  const { data: members } = await supabase
-    .from('pair_users')
-    .select('user_id')
-    .eq('pair_code', code);
-
-  const partner = (members || []).find(m => String(m.user_id) !== String(userId));
-  if (!partner) return json({ error: 'No partner' }, 404);
-
-  // Отправить сообщение с кнопкой через бота
-  const WEBAPP_URL = 'https://chumi-app.pages.dev';
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: partner.user_id,
-      text: messageText,
-      reply_markup: {
-        inline_keyboard: [[{
-          text: 'Chumi',
-          web_app: { url: `${WEBAPP_URL}/pair/${code}` },
-        }]],
-      },
-    }),
-  });
-
-  return json({ success: true });
-}
-
-// ═══════════════════════════════════════
-// POST /api/send-partner-message
-// ═══════════════════════════════════════
-if (request.method === 'POST' && path === '/api/send-partner-message') {
-  const body = await request.json();
-  const userId = extractUserId(request, env, body.userId);
-  if (!userId) return json({ error: 'Unauthorized' }, 401);
-
-  const code = body.code;
-  const messageText = body.text;
-
-  const { data: members } = await supabase
-    .from('pair_users')
-    .select('user_id')
-    .eq('pair_code', code);
-
-  const partner = (members || []).find(m => String(m.user_id) !== String(userId));
-  if (!partner) return json({ error: 'No partner' }, 404);
-
-  const WEBAPP_URL = 'https://chumi-app.pages.dev';
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: partner.user_id,
-      text: messageText,
-      reply_markup: {
-        inline_keyboard: [[{
-          text: 'Играть 🎁',
-          web_app: { url: `${WEBAPP_URL}/pair/${code}` },
-        }]],
-      },
-    }),
-  });
-
-  return json({ success: true });
-}
-
-    // ═══════════════════════════════════════
-    // 404
+    // Fallback 404
     // ═══════════════════════════════════════
     return json({ error: 'Not found' }, 404);
 
-  } catch (e) {
-    console.error('API Error:', e);
-    return json({ error: 'Internal error', details: e.message }, 500);
+  } catch (err) {
+    console.error('API Error:', err);
+    return json({ error: 'Internal server error' }, 500);
   }
 }

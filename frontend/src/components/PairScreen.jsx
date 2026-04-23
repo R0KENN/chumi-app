@@ -274,15 +274,19 @@ const res = await fetch(`${API}/complete-task`, {
     finally { setRankingLoading(false); }
   };
 
-  const handleDeletePair = async () => {
-    setDeleting(true);
-    try {
-      await fetch(`${API}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: pairId, userId }) });
-      if (refreshPairs) refreshPairs();
-      navigate('/?newpair=1');
-    } catch (e) {}
-    finally { setDeleting(false); }
-  };
+const handleDeletePair = async () => {
+  setDeleting(true);
+  try {
+    await fetch(`${API}/delete`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ code: pairId, userId }),
+    });
+    if (refreshPairs) refreshPairs();
+    navigate('/?newpair=1');
+  } catch (e) {}
+  finally { setDeleting(false); }
+};
 
 
   // ══════ Share to Story ══════
@@ -298,21 +302,20 @@ const res = await fetch(`${API}/complete-task`, {
   };
 
   // ══════ Share Message (prepared inline) ══════
-  const handleShareMessage = async () => {
+const handleShareMessage = async () => {
     if (!tg?.shareMessage) {
-      // Фоллбэк на обычный шеринг
       handleShareInvite();
       return;
     }
     try {
       const res = await fetch(`${API}/prepare-share`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pairId, userId }),
+        headers: authHeaders(),
+        body: JSON.stringify({ pairCode: pairId, userId }),
       });
       const data = await res.json();
-      if (data.messageId) {
-        tg.shareMessage(data.messageId, (ok) => {
+      if (data.prepared_message_id) {
+        tg.shareMessage(data.prepared_message_id, (ok) => {
           if (ok) haptic('success');
         });
       } else {
@@ -380,29 +383,30 @@ const res = await fetch(`${API}/complete-task`, {
 
   const haptic = (type = 'medium') => { try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {} };
 
+// ══════ handleTask — ОТДЕЛЬНАЯ ФУНКЦИЯ (вне handleShareTask) ══════
+const handleTask = (task) => {
+  if (task.completed || completing) return;
+  haptic('light');
+  if (task.action === 'share') { handleShareTask(task); return; }
+  if (task.action === 'add_home') {
+    if (tg?.addToHomeScreen) tg.addToHomeScreen();
+    setCompleting(true);
+    completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
+    return;
+  }
+  if (task.action === 'pet') {
+    haptic('medium');
+    setPetAnim(true);
+    setTimeout(() => setPetAnim(false), 800);
+    setCompleting(true);
+    completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
+  }
+};
+
+// ══════ handleShareTask ══════
 const handleShareTask = async (task) => {
   if (task.completed || completing) return;
   haptic('light');
-
-  const handleTask = (task) => {
-    if (task.completed || completing) return;
-    haptic('light');
-    if (task.action === 'share') { handleShareTask(task); return; }
-    if (task.action === 'add_home') {
-      if (tg?.addToHomeScreen) tg.addToHomeScreen();
-      setCompleting(true);
-      completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
-      return;
-    }
-    if (task.action === 'pet') {
-      haptic('medium');
-      setPetAnim(true);
-      setTimeout(() => setPetAnim(false), 800);
-      setCompleting(true);
-      completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
-    }
-  };
-
 
   const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
   const text = pickRandom(msgs[task.key] || msgs.send_msg);
@@ -437,6 +441,7 @@ const handleShareTask = async (task) => {
   setCompleting(false);
 };
 
+
   const handlePetClick = () => {
     if (!hasPartner) return;
     if (isEgg) {
@@ -462,12 +467,16 @@ const handleShareTask = async (task) => {
     if (petTask && !petTask.completed) handleTask(petTask);
   };
 
-  const handleRename = async () => {
-    if (!newName.trim()) return;
-    await fetch(`${API}/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: pairId, pet_name: newName.trim() }) });
-    setPair(p => ({ ...p, pet_name: newName.trim() }));
-    setRenaming(false);
-  };
+const handleRename = async () => {
+  if (!newName.trim()) return;
+  await fetch(`${API}/rename`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ code: pairId, pet_name: newName.trim(), userId }),
+  });
+  setPair(p => ({ ...p, pet_name: newName.trim() }));
+  setRenaming(false);
+};
 
   const myPairsData = pairs || [];
   const canAddPair = isAdmin || myPairsData.length < maxPairs;
@@ -477,7 +486,12 @@ const handleShareTask = async (task) => {
     else {
       (async () => {
         try {
-          const res = await fetch(`${API}/create-invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, productId: 'extra_slot' }) });
+// handleAddPair — внутри else ветки
+const res = await fetch(`${API}/create-invoice`, { 
+  method: 'POST', 
+  headers: authHeaders(), 
+  body: JSON.stringify({ userId, productId: 'extra_slot' }) 
+});
           const data = await res.json();
           if (data.invoiceUrl && tg?.openInvoice) { tg.openInvoice(data.invoiceUrl, (st) => { if (st === 'paid') { haptic('heavy'); setShowMyPairs(false); if (refreshPairs) refreshPairs(); } }); }
           else if (data.invoiceUrl) window.open(data.invoiceUrl, '_blank');
@@ -498,10 +512,11 @@ const handleShareTask = async (task) => {
   // ══════ Premium подписка ══════
   const handleSubscribe = async () => {
     try {
-      const res = await fetch(`${API}/create-invoice`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, productId: 'premium_monthly' }),
-      });
+const res = await fetch(`${API}/create-invoice`, {
+  method: 'POST', 
+  headers: authHeaders(),
+  body: JSON.stringify({ userId, productId: 'premium_monthly' }),
+});
       const data = await res.json();
       if (data.invoiceUrl && tg?.openInvoice) {
         tg.openInvoice(data.invoiceUrl, (st) => {

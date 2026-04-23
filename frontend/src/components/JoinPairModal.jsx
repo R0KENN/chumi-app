@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLang } from '../context/LangContext';
-import { usePairs } from '../context/PairsContext';
+import { usePairs, getInitData } from '../context/PairsContext';
 
 export default function JoinPairModal({ userId, onClose, onJoined }) {
   const { t } = useLang();
@@ -13,6 +13,13 @@ export default function JoinPairModal({ userId, onClose, onJoined }) {
   const username = tg?.initDataUnsafe?.user?.username || null;
   const displayName = tg?.initDataUnsafe?.user?.first_name || null;
 
+  const authHeaders = () => {
+    const headers = { 'Content-Type': 'application/json' };
+    const initData = getInitData();
+    if (initData) headers['X-Telegram-Init-Data'] = initData;
+    return headers;
+  };
+
   const handleJoin = async () => {
     const trimmed = code.trim().toUpperCase();
     if (trimmed.length < 6) return;
@@ -21,7 +28,7 @@ export default function JoinPairModal({ userId, onClose, onJoined }) {
     try {
       const res = await fetch('/api/join', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ userId: String(userId), code: trimmed, displayName, username }),
       });
       const data = await res.json();

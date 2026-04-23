@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLang } from '../context/LangContext';
-import { usePairs } from '../context/PairsContext';
+import { usePairs, getInitData } from '../context/PairsContext';
 
 export default function CreatePairModal({ userId, onClose, onCreated }) {
   const { t, lang } = useLang();
@@ -14,13 +14,20 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
   const username = tg?.initDataUnsafe?.user?.username || null;
   const displayName = tg?.initDataUnsafe?.user?.first_name || null;
 
+  const authHeaders = () => {
+    const headers = { 'Content-Type': 'application/json' };
+    const initData = getInitData();
+    if (initData) headers['X-Telegram-Init-Data'] = initData;
+    return headers;
+  };
+
   const handleCreate = async () => {
     setLoading(true);
     setError('');
     try {
       const res = await fetch('/api/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ userId: String(userId), displayName, username }),
       });
       const data = await res.json();
@@ -61,7 +68,6 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
           <p style={{ color:'#888',fontSize:14,marginBottom:16 }}>{t('shareCode') || 'Отправь код партнёру:'}</p>
           <div style={{ fontSize:28,fontWeight:700,letterSpacing:4,background:'rgba(255,140,50,0.1)',borderRadius:12,padding:12,marginBottom:16,color:'#e67e00' }}>{createdCode}</div>
           <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-            {/* Пригласить партнера — главная кнопка */}
             <button onClick={handleInvite} style={{
               width:'100%', padding:14, borderRadius:14, border:'none',
               background:'#F5A623', color:'#fff', fontSize:15, fontWeight:700,
