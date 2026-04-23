@@ -380,39 +380,42 @@ const res = await fetch(`${API}/complete-task`, {
 
   const haptic = (type = 'medium') => { try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {} };
 
-  const handleShareTask = async (task) => {
-    if (task.completed || completing) return;
-    haptic('light');
-    const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
-    const text = pickRandom(msgs[task.key] || msgs.send_msg);
-    const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-    const fullText = `${text}\n\n${inviteLink}`;
-    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-    try { if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank'); } catch (e) {}
-    setCompleting(true);
-    await completeTask(task.key);
-    await load();
-    setCompleting(false);
-  };
+const handleShareTask = async (task) => {
+  if (task.completed || completing) return;
+  haptic('light');
 
-  const handleTask = (task) => {
-    if (task.completed || completing) return;
-    haptic('light');
-    if (task.action === 'share') { handleShareTask(task); return; }
-    if (task.action === 'add_home') {
-      if (tg?.addToHomeScreen) tg.addToHomeScreen();
-      setCompleting(true);
-      completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
-      return;
-    }
-    if (task.action === 'pet') {
-      haptic('medium');
-      setPetAnim(true);
-      setTimeout(() => setPetAnim(false), 800);
-      setCompleting(true);
-      completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
-    }
-  };
+  const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
+  const text = pickRandom(msgs[task.key] || msgs.send_msg);
+
+  // Для send_msg — отправляем через бота с кнопкой "Играть"
+  if (task.key === 'send_msg') {
+    setCompleting(true);
+    try {
+      await fetch(`${API}/send-partner-message`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ code: pairId, userId, text }),
+      });
+      await completeTask(task.key);
+      await load();
+    } catch (e) {}
+    finally { setCompleting(false); }
+    return;
+  }
+
+  // Для остальных (send_sticker, send_media) — открываем чат через Telegram
+  const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
+  const fullText = `${text}\n\n${inviteLink}`;
+  const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
+  try {
+    if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+    else window.open(shareUrl, '_blank');
+  } catch (e) {}
+  setCompleting(true);
+  await completeTask(task.key);
+  await load();
+  setCompleting(false);
+};
 
   const handlePetClick = () => {
     if (!hasPartner) return;

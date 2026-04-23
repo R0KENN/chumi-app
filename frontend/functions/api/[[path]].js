@@ -1357,6 +1357,46 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
+// POST /api/send-partner-message
+// ═══════════════════════════════════════
+if (request.method === 'POST' && path === '/api/send-partner-message') {
+  const body = await request.json();
+  const userId = extractUserId(request, env, body.userId);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+  const code = body.code;
+  const messageText = body.text;
+
+  // Найти партнёра
+  const { data: members } = await supabase
+    .from('pair_users')
+    .select('user_id')
+    .eq('pair_code', code);
+
+  const partner = (members || []).find(m => String(m.user_id) !== String(userId));
+  if (!partner) return json({ error: 'No partner' }, 404);
+
+  // Отправить сообщение с кнопкой через бота
+  const WEBAPP_URL = 'https://chumi-app.pages.dev';
+  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: partner.user_id,
+      text: messageText,
+      reply_markup: {
+        inline_keyboard: [[{
+          text: 'Chumi',
+          web_app: { url: `${WEBAPP_URL}/pair/${code}` },
+        }]],
+      },
+    }),
+  });
+
+  return json({ success: true });
+}
+
+    // ═══════════════════════════════════════
     // 404
     // ═══════════════════════════════════════
     return json({ error: 'Not found' }, 404);
