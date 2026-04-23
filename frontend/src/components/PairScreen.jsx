@@ -384,6 +384,26 @@ const handleShareTask = async (task) => {
   if (task.completed || completing) return;
   haptic('light');
 
+  const handleTask = (task) => {
+    if (task.completed || completing) return;
+    haptic('light');
+    if (task.action === 'share') { handleShareTask(task); return; }
+    if (task.action === 'add_home') {
+      if (tg?.addToHomeScreen) tg.addToHomeScreen();
+      setCompleting(true);
+      completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
+      return;
+    }
+    if (task.action === 'pet') {
+      haptic('medium');
+      setPetAnim(true);
+      setTimeout(() => setPetAnim(false), 800);
+      setCompleting(true);
+      completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
+    }
+  };
+
+
   const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
   const text = pickRandom(msgs[task.key] || msgs.send_msg);
 

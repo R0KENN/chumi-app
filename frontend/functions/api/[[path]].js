@@ -351,6 +351,23 @@ export async function onRequest(context) {
             },
           });
         }
+        if (wantProxy) {
+  const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+  const imgRes = await fetch(avatarUrl);
+  
+  // Если файл протух — перезапросить
+  if (!imgRes.ok) {
+    // Clear cached path and retry
+    await supabase
+      .from('pair_users')
+      .update({ avatar_file_path: null })
+      .eq('user_id', tgUserId);
+    return json({ avatar_url: null });
+  }
+  
+  // ... rest of proxy logic
+}
+
 
         return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1` });
       } catch (e) {
@@ -1387,6 +1404,44 @@ if (request.method === 'POST' && path === '/api/send-partner-message') {
       reply_markup: {
         inline_keyboard: [[{
           text: 'Chumi',
+          web_app: { url: `${WEBAPP_URL}/pair/${code}` },
+        }]],
+      },
+    }),
+  });
+
+  return json({ success: true });
+}
+
+// ═══════════════════════════════════════
+// POST /api/send-partner-message
+// ═══════════════════════════════════════
+if (request.method === 'POST' && path === '/api/send-partner-message') {
+  const body = await request.json();
+  const userId = extractUserId(request, env, body.userId);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+  const code = body.code;
+  const messageText = body.text;
+
+  const { data: members } = await supabase
+    .from('pair_users')
+    .select('user_id')
+    .eq('pair_code', code);
+
+  const partner = (members || []).find(m => String(m.user_id) !== String(userId));
+  if (!partner) return json({ error: 'No partner' }, 404);
+
+  const WEBAPP_URL = 'https://chumi-app.pages.dev';
+  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: partner.user_id,
+      text: messageText,
+      reply_markup: {
+        inline_keyboard: [[{
+          text: 'Играть 🎁',
           web_app: { url: `${WEBAPP_URL}/pair/${code}` },
         }]],
       },

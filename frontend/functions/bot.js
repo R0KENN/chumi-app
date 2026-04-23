@@ -295,15 +295,8 @@ export async function onRequestPost(context) {
       return new Response('OK');
     }
 
-    // ═══ PAYMENT ═══
-    if (update.message?.successful_payment) {
-      const payment = update.message.successful_payment;
-      const userId = String(update.message.from.id);
-      const lang = await getUserLang(supabase, userId);
-      const payload = JSON.parse(payment.invoice_payload);
-      if (payload.productId === 'extra_slot') {
-              if (payload.type === 'skin' && payload.skinId) {
-                if (update.message?.successful_payment) {
+// ═══ PAYMENT ═══
+if (update.message?.successful_payment) {
   const payment = update.message.successful_payment;
   const userId = String(update.message.from.id);
   const lang = await getUserLang(supabase, userId);
@@ -336,6 +329,7 @@ export async function onRequestPost(context) {
 
   return new Response('OK');
 }
+
 
         await supabase.from('user_skins').insert({
           user_id: userId,
