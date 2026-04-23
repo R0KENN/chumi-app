@@ -899,18 +899,6 @@ export async function onRequest(context) {
           streak_days: p.streak_days || 0,
           members: membersList,
         });
-
-        ranking.push({
-          code: p.code,
-          pet_name: p.pet_name,
-          growth_points: p.growth_points || 0,
-          streak_days: p.streak_days || 0,
-          members: (members || []).map(m => ({
-            user_id: m.user_id,
-            display_name: m.display_name || null,
-            avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
-          })),
-        });
       }
 
       return json({ ranking });
@@ -955,18 +943,6 @@ export async function onRequest(context) {
           growth_points: p.growth_points || 0,
           streak_days: p.streak_days || 0,
           members: membersList,
-        });
-
-        ranking.push({
-          code: p.code,
-          pet_name: p.pet_name,
-          growth_points: p.growth_points || 0,
-          streak_days: p.streak_days || 0,
-          members: (members || []).map(m => ({
-            user_id: m.user_id,
-            display_name: m.display_name || null,
-            avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
-          })),
         });
       }
 

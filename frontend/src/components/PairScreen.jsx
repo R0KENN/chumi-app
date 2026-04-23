@@ -7,8 +7,6 @@ import { getInitData } from '../context/PairsContext';
 const API = '/api';
 const ADMIN_IDS = ['713156118'];
 const BOT_USERNAME = 'ChumiPetBot';
-const [premiumActive, setPremiumActive] = useState(false);
-const [premiumExpires, setPremiumExpires] = useState(null);
 
 
 const EGG_VIDEOS = {
@@ -117,6 +115,8 @@ export default function PairScreen() {
   const [ownedSkins, setOwnedSkins] = useState([]);
   const [referralCount, setReferralCount] = useState(0);
   const [skinsLoading, setSkinsLoading] = useState(false);
+  const [premiumActive, setPremiumActive] = useState(false);
+  const [premiumExpires, setPremiumExpires] = useState(null); 
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
@@ -668,10 +668,10 @@ const res = await fetch(`${API}/create-invoice`, {
             <button onClick={handleRename}>✓</button>
           </div>
         ) : (
-<span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>
-  {r.pet_name || '—'}
-  {r.members?.some(m => m.is_premium) && <span style={{ marginLeft: 4, fontSize: 11 }}>⭐</span>}
-</span>
+          <span className="sk-pet-name-label" style={isDark ? { color: '#fff' } : {}} onClick={() => { setNewName(pair.pet_name || ''); setRenaming(true); }}>
+            {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')}
+            <span className="sk-edit-pencil">✏️</span>
+          </span>
         )}
       </div>
 
@@ -865,6 +865,7 @@ const pIsEgg = plv.idx === 0;
                     </div>
                     <span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>
                       {r.pet_name || '—'}
+                      {r.members?.some(m => m.is_premium) && <span style={{ marginLeft: 4, fontSize: 11 }}>⭐</span>}
                     </span>
                     <span className="sk-ranking-stats">
                       ⭐ {r.growth_points} | 🔥 {r.streak_days}
@@ -991,17 +992,21 @@ const pIsEgg = plv.idx === 0;
                   {premiumExpires ? new Date(premiumExpires).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US') : '—'}
                 </p>
                 <div style={{ fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 1.6, marginBottom: 16 }}>
-                  {lang === 'ru'
-                    ? '• Безлимит пар\n• Все наряды открыты\n• Премиум-бейдж в рейтинге'
-                    : '• Unlimited pairs\n• All outfits unlocked\n• Premium badge in ranking'}
+                  {lang === 'ru' ? (
+                    <>• Безлимит пар<br/>• Все наряды открыты<br/>• Премиум-бейдж в рейтинге</>
+                  ) : (
+                    <>• Unlimited pairs<br/>• All outfits unlocked<br/>• Premium badge in ranking</>
+                  )}
                 </div>
               </>
             ) : (
               <>
                 <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
-                  {lang === 'ru'
-                    ? '• Безлимит пар\n• Все наряды без покупки\n• Премиум-бейдж в рейтинге'
-                    : '• Unlimited pairs\n• All outfits unlocked\n• Premium badge in ranking'}
+                  {lang === 'ru' ? (
+                    <>• Безлимит пар<br/>• Все наряды без покупки<br/>• Премиум-бейдж в рейтинге</>
+                  ) : (
+                    <>• Unlimited pairs<br/>• All outfits unlocked<br/>• Premium badge in ranking</>
+                  )}
                 </p>
                 <button onClick={handleSubscribe} className="sk-btn-primary" style={{ background: '#F5A623' }}>
                   ⭐ 150 Stars / {lang === 'ru' ? 'месяц' : 'month'}
@@ -1015,3 +1020,4 @@ const pIsEgg = plv.idx === 0;
     </div>
   );
 }
+
