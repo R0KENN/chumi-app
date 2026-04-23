@@ -75,12 +75,30 @@ function getLevel(totalPoints) {
 
 async function getMaxPairs(supabase, userId) {
   if (ADMIN_IDS.includes(userId)) return 999;
+  const premium = await isPremium(supabase, userId);
+  if (premium) return 999;
   const { data } = await supabase
     .from('user_slots')
     .select('extra_slots')
     .eq('telegram_user_id', userId)
     .single();
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
+}
+
+
+// ────────── Check Premium ──────────
+async function isPremium(supabase, userId) {
+  const { data } = await supabase
+    .from('user_subscriptions')
+    .select('id, expires_at')
+    .eq('telegram_user_id', userId)
+    .eq('status', 'active')
+    .order('expires_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return false;
+  return new Date(data.expires_at) > new Date();
 }
 
 async function sendTelegramMessage(env, chatId, text) {
@@ -863,6 +881,24 @@ export async function onRequest(context) {
           .from('pair_users')
           .select('user_id, display_name, username')
           .eq('pair_code', p.code);
+                  const membersList = [];
+        for (const m of (members || [])) {
+          const memberPremium = await isPremium(supabase, m.user_id);
+          membersList.push({
+            user_id: m.user_id,
+            display_name: m.display_name || null,
+            avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
+            is_premium: memberPremium,
+          });
+        }
+
+        ranking.push({
+          code: p.code,
+          pet_name: p.pet_name,
+          growth_points: p.growth_points || 0,
+          streak_days: p.streak_days || 0,
+          members: membersList,
+        });
 
         ranking.push({
           code: p.code,
@@ -902,6 +938,24 @@ export async function onRequest(context) {
           .from('pair_users')
           .select('user_id, display_name, username')
           .eq('pair_code', p.code);
+                  const membersList = [];
+        for (const m of (members || [])) {
+          const memberPremium = await isPremium(supabase, m.user_id);
+          membersList.push({
+            user_id: m.user_id,
+            display_name: m.display_name || null,
+            avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
+            is_premium: memberPremium,
+          });
+        }
+
+        ranking.push({
+          code: p.code,
+          pet_name: p.pet_name,
+          growth_points: p.growth_points || 0,
+          streak_days: p.streak_days || 0,
+          members: membersList,
+        });
 
         ranking.push({
           code: p.code,
@@ -1155,7 +1209,7 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // GET /api/skins/:userId  [FIX #4: НОВЫЙ ЭНДПОИНТ]
+    // GET /api/skins/:userId
     // ═══════════════════════════════════════
     if (request.method === 'GET' && path.match(/^\/api\/skins\/[^/]+$/)) {
       const userId = path.split('/')[3];
@@ -1170,9 +1224,12 @@ export async function onRequest(context) {
         .select('invited_user_id')
         .eq('inviter_user_id', userId);
 
+      const premium = await isPremium(supabase, userId);
+
       return json({
         owned: (owned || []).map(s => s.skin_id),
         referral_count: referrals?.length || 0,
+        premium,
       });
     }
 
@@ -1247,7 +1304,7 @@ export async function onRequest(context) {
     }
 
     // ═══════════════════════════════════════
-    // POST /api/set-skin  [FIX #4: НОВЫЙ ЭНДПОИНТ]
+    // POST /api/set-skin
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/set-skin') {
       const body = await request.json();
@@ -1255,19 +1312,22 @@ export async function onRequest(context) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 
       const pairCode = body.pairCode;
-      const skinId = body.skinId; // null = снять скин
+      const skinId = body.skinId;
 
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403);
 
-      // Если skinId не null, проверяем владение
+      // Если skinId не null, проверяем владение ИЛИ Premium
       if (skinId) {
-        const { data: owned } = await supabase
-          .from('user_skins').select('id')
-          .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
-        if (!owned) return json({ error: 'Skin not owned' }, 403);
+        const premium = await isPremium(supabase, userId);
+        if (!premium) {
+          const { data: owned } = await supabase
+            .from('user_skins').select('id')
+            .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
+          if (!owned) return json({ error: 'Skin not owned' }, 403);
+        }
       }
 
       await supabase.from('pairs')
@@ -1275,6 +1335,30 @@ export async function onRequest(context) {
         .eq('code', pairCode);
 
       return json({ success: true });
+    }
+
+
+        // ═══════════════════════════════════════
+    // GET /api/premium/:userId
+    // ═══════════════════════════════════════
+    if (request.method === 'GET' && path.match(/^\/api\/premium\/[^/]+$/)) {
+      const userId = path.split('/')[3];
+      const premium = await isPremium(supabase, userId);
+
+      let expiresAt = null;
+      if (premium) {
+        const { data } = await supabase
+          .from('user_subscriptions')
+          .select('expires_at')
+          .eq('telegram_user_id', userId)
+          .eq('status', 'active')
+          .order('expires_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        expiresAt = data?.expires_at || null;
+      }
+
+      return json({ premium, expires_at: expiresAt });
     }
 
     // ═══════════════════════════════════════

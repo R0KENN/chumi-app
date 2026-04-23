@@ -7,6 +7,9 @@ import { getInitData } from '../context/PairsContext';
 const API = '/api';
 const ADMIN_IDS = ['713156118'];
 const BOT_USERNAME = 'ChumiPetBot';
+const [premiumActive, setPremiumActive] = useState(false);
+const [premiumExpires, setPremiumExpires] = useState(null);
+
 
 const EGG_VIDEOS = {
   1: '/pets/egg_1.webm',
@@ -481,6 +484,18 @@ const handleRename = async () => {
   const myPairsData = pairs || [];
   const canAddPair = isAdmin || myPairsData.length < maxPairs;
 
+    useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/premium/${userId}`);
+        const data = await res.json();
+        setPremiumActive(data.premium || false);
+        setPremiumExpires(data.expires_at || null);
+      } catch (e) {}
+    })();
+  }, [userId]);
+
+
   const handleAddPair = () => {
     if (canAddPair) { navigate('/?newpair=1'); }
     else {
@@ -529,16 +544,18 @@ const res = await fetch(`${API}/create-invoice`, {
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
   const eggVideoSrc = EGG_VIDEOS[eggDay];
 
-    const loadSkins = async () => {
+  const loadSkins = async () => {
     setSkinsLoading(true);
     try {
       const res = await fetch(`${API}/skins/${userId}`);
       const data = await res.json();
       setOwnedSkins(data.owned || []);
       setReferralCount(data.referral_count || 0);
+      if (data.premium !== undefined) setPremiumActive(data.premium);
     } catch (e) {}
     finally { setSkinsLoading(false); }
   };
+
 
   const handleBuySkin = async (skinId) => {
     try {
@@ -651,10 +668,10 @@ const res = await fetch(`${API}/create-invoice`, {
             <button onClick={handleRename}>✓</button>
           </div>
         ) : (
-          <span className="sk-pet-name-label" style={isDark ? { color: '#fff' } : {}} onClick={() => { setNewName(pair.pet_name || ''); setRenaming(true); }}>
-            {pair.pet_name || (lang === 'ru' ? 'Без имени' : 'Unnamed')}
-            <span className="sk-edit-pencil">✏️</span>
-          </span>
+<span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>
+  {r.pet_name || '—'}
+  {r.members?.some(m => m.is_premium) && <span style={{ marginLeft: 4, fontSize: 11 }}>⭐</span>}
+</span>
         )}
       </div>
 
@@ -887,7 +904,7 @@ const pIsEgg = plv.idx === 0;
                 </div>
 
                 {SKINS.map(skin => {
-                  const owned = ownedSkins.includes(skin.id);
+                  const owned = ownedSkins.includes(skin.id) || premiumActive;
                   const isActive = pair?.active_skin === skin.id;
                   const canClaimBee = skin.referralReward && referralCount >= 2 && !owned;
 
@@ -963,13 +980,34 @@ const pIsEgg = plv.idx === 0;
         <div className="sk-overlay" onClick={() => setShowPremium(false)}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>⭐</div>
-            <h3>{lang === 'ru' ? 'Chumi Premium' : 'Chumi Premium'}</h3>
-            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
-              {lang === 'ru' ? 'Эксклюзивные скины, безлимит пар' : 'Exclusive skins, unlimited pairs and unique outfits'}
-            </p>
-            <button onClick={handleSubscribe} className="sk-btn-primary" style={{ background: '#F5A623' }}>
-              ⭐ 150 Stars / {lang === 'ru' ? 'месяц' : 'month'}
-            </button>
+            <h3>Chumi Premium</h3>
+            {premiumActive ? (
+              <>
+                <p style={{ fontSize: 14, color: '#4CAF50', textAlign: 'center', marginBottom: 8, fontWeight: 600 }}>
+                  {lang === 'ru' ? '✅ Активен' : '✅ Active'}
+                </p>
+                <p style={{ fontSize: 13, color: '#666', textAlign: 'center', marginBottom: 20 }}>
+                  {lang === 'ru' ? 'Действует до' : 'Valid until'}{' '}
+                  {premiumExpires ? new Date(premiumExpires).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US') : '—'}
+                </p>
+                <div style={{ fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 1.6, marginBottom: 16 }}>
+                  {lang === 'ru'
+                    ? '• Безлимит пар\n• Все наряды открыты\n• Премиум-бейдж в рейтинге'
+                    : '• Unlimited pairs\n• All outfits unlocked\n• Premium badge in ranking'}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
+                  {lang === 'ru'
+                    ? '• Безлимит пар\n• Все наряды без покупки\n• Премиум-бейдж в рейтинге'
+                    : '• Unlimited pairs\n• All outfits unlocked\n• Premium badge in ranking'}
+                </p>
+                <button onClick={handleSubscribe} className="sk-btn-primary" style={{ background: '#F5A623' }}>
+                  ⭐ 150 Stars / {lang === 'ru' ? 'месяц' : 'month'}
+                </button>
+              </>
+            )}
             <button className="sk-popup-close" onClick={() => setShowPremium(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>

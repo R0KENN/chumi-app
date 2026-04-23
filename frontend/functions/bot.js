@@ -45,6 +45,17 @@ function getLevel(totalPoints) {
 }
 
 async function getMaxPairs(supabase, userId) {
+  // Check premium
+  const { data: sub } = await supabase
+    .from('user_subscriptions')
+    .select('expires_at')
+    .eq('telegram_user_id', userId)
+    .eq('status', 'active')
+    .order('expires_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (sub && new Date(sub.expires_at) > new Date()) return 999;
+
   const { data } = await supabase
     .from('user_slots')
     .select('extra_slots')
@@ -52,6 +63,7 @@ async function getMaxPairs(supabase, userId) {
     .single();
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
+
 
 // ─── Получить язык пользователя из базы ───
 async function getUserLang(supabase, userId) {
@@ -325,10 +337,43 @@ export async function onRequestPost(context) {
           await supabase.from('user_slots').insert({ telegram_user_id: userId, extra_slots: 1 });
         }
         await sendMessage(env, update.message.chat.id, T[lang].slotBought, webAppButton);
+        return new Response('OK');
+      }
+
+      // ── Premium monthly ──
+      if (payload.productId === 'premium_monthly') {
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30 дней
+
+        // Деактивируем старые подписки
+        await supabase
+          .from('user_subscriptions')
+          .update({ status: 'expired', updated_at: now.toISOString() })
+          .eq('telegram_user_id', userId)
+          .eq('status', 'active');
+
+        // Создаём новую
+        await supabase.from('user_subscriptions').insert({
+          telegram_user_id: userId,
+          plan: 'premium_monthly',
+          status: 'active',
+          telegram_payment_charge_id: payment.telegram_payment_charge_id || null,
+          starts_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+        });
+
+        await sendMessage(env, update.message.chat.id,
+          lang === 'ru'
+            ? `⭐ *Chumi Premium активирован!*\n\nТеперь у тебя:\n• Безлимит пар\n• Все наряды открыты\n• Премиум-бейдж в рейтинге\n\nДействует до ${expiresAt.toLocaleDateString('ru-RU')}`
+            : `⭐ *Chumi Premium activated!*\n\nYou now have:\n• Unlimited pairs\n• All outfits unlocked\n• Premium badge in ranking\n\nValid until ${expiresAt.toLocaleDateString('en-US')}`,
+          webAppButton
+        );
+        return new Response('OK');
       }
 
       return new Response('OK');
     }
+
 
 
     // ═══ MESSAGES ═══
