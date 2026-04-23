@@ -3,6 +3,11 @@ export default {
     const baseUrl = 'https://chumi-app.pages.dev';
     const headers = { 'Content-Type': 'application/json' };
 
+    // FIX #4: добавлен Authorization header
+    if (env.CRON_SECRET) {
+      headers['Authorization'] = `Bearer ${env.CRON_SECRET}`;
+    }
+
     // 1. Update streaks / kill dead pets
     try {
       const r1 = await fetch(`${baseUrl}/api/update-streaks`, { method: 'POST', headers });

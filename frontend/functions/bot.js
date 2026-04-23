@@ -463,7 +463,7 @@ export async function onRequestPost(context) {
       const code = generateCode();
       await supabase.from('pairs').insert({ code, pet_type: 'spark', streak_days: 0, growth_points: 0, hatched: false, bg_id: 'room', pet_name: null, streak_recoveries_used: 0, is_dead: false });
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
-      const botUser = env.BOT_USERNAME || 'chumi_pet_bot';
+      const botUser = env.BOT_USERNAME || 'ChumiPetBot';
       await sendMessage(env, chatId, T[lang].pairCreated(code), inviteButton(code, lang, botUser));
       return new Response('OK');
     }

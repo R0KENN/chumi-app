@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { getInitData } from './PairsContext';
 
 const strings = {
   en: {
@@ -232,15 +233,20 @@ export function LangProvider({ children }) {
     })();
   }, []);
 
+  // FIX #1: добавлен X-Telegram-Init-Data заголовок
   const setLang = (l) => {
     setLangState(l);
     localStorage.setItem('chumi_lang', l);
     csSet('chumi_lang', l);
 
     const uid = getUserId();
+    const headers = { 'Content-Type': 'application/json' };
+    const initData = getInitData();
+    if (initData) headers['X-Telegram-Init-Data'] = initData;
+
     fetch('/api/set-lang', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ userId: uid, lang: l }),
     }).catch(() => {});
   };

@@ -1,3 +1,14 @@
+/* FIX #10: safe-area для fullscreen на iOS */
+.sk {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.sk-loading {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+
 /* ══════════════════════════════════════
    STREAK PET — Liquid Glass Style v5
    ══════════════════════════════════════ */

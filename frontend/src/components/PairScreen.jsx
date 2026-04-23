@@ -15,6 +15,7 @@ const EGG_VIDEOS = {
   3: '/pets/egg_3.webm',
 };
 
+// ── LEVELS: при изменении порогов синхронизируй с [[path]].js и bot.js ──
 const LEVELS = [
   { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 33,  bg: ['#F5F0FF','#E8E0F0'], accent: '#B39DDB', check: '#B39DDB', pet: null,             petTap: null,                 emojiId: null },
   { level: 1, name: 'Baby',   nameRu: 'Малыш',      maxPoints: 45,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',   petTap: 'axolotl_tap',        emojiId: null },
@@ -23,8 +24,6 @@ const LEVELS = [
   { level: 4, name: 'Adult',  nameRu: 'Взрослый',    maxPoints: 135, bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4', pet: 'axolotl_blue',   petTap: 'axolotl_blue_tap',   emojiId: null },
   { level: 5, name: 'Legend', nameRu: 'Легенда',     maxPoints: 200, bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560', pet: 'axolotl_black',  petTap: 'axolotl_black_tap',  emojiId: null },
 ];
-// Когда у тебя будут custom emoji ID для каждого уровня, заполни поле emojiId
-// Например: emojiId: '5368324170671202286'
 
 
 function getLevel(totalPoints) {
@@ -116,7 +115,7 @@ export default function PairScreen() {
   const [referralCount, setReferralCount] = useState(0);
   const [skinsLoading, setSkinsLoading] = useState(false);
   const [premiumActive, setPremiumActive] = useState(false);
-  const [premiumExpires, setPremiumExpires] = useState(null); 
+  const [premiumExpires, setPremiumExpires] = useState(null);
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
@@ -129,12 +128,22 @@ export default function PairScreen() {
 
 
   const authHeaders = () => {
-  const headers = { 'Content-Type': 'application/json' };
-  const initData = getInitData();
-  if (initData) headers['X-Telegram-Init-Data'] = initData;
-  return headers;
-};
+    const headers = { 'Content-Type': 'application/json' };
+    const initData = getInitData();
+    if (initData) headers['X-Telegram-Init-Data'] = initData;
+    return headers;
+  };
 
+  // FIX #8: корректный haptic с поддержкой notification типов
+  const haptic = (type = 'medium') => {
+    try {
+      if (type === 'success' || type === 'error' || type === 'warning') {
+        tg?.HapticFeedback?.notificationOccurred(type);
+      } else {
+        tg?.HapticFeedback?.impactOccurred(type);
+      }
+    } catch (e) {}
+  };
 
   // ══════ Адаптивные цвета Telegram UI ══════
   useEffect(() => {
@@ -154,7 +163,6 @@ export default function PairScreen() {
     if (!tg || !pair) return;
     const lv = getLevel(pair.growth_points || 0);
     if (prevLevelRef.current !== null && lv.idx > prevLevelRef.current && lv.emojiId) {
-      // Уровень повысился — предложить emoji status
       if (tg.setEmojiStatus) {
         tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, (ok) => {
           if (ok) console.log('Emoji status set!');
@@ -164,7 +172,6 @@ export default function PairScreen() {
     prevLevelRef.current = lv.idx;
   }, [tg, pair]);
 
-  // ══════ BottomButton — кнопка «Пригласить» ══════
   // ══════ BottomButton — скрываем ══════
   useEffect(() => {
     if (!tg) return;
@@ -182,7 +189,6 @@ export default function PairScreen() {
   // ══════ Back Button ══════
   useEffect(() => {
     if (!tg?.BackButton) return;
-    // Hide back button — Telegram will show native "Close"
     tg.BackButton.hide();
   }, [tg]);
 
@@ -190,10 +196,10 @@ export default function PairScreen() {
 
   const completeTask = useCallback(async (taskKey) => {
     try {
-const res = await fetch(`${API}/complete-task`, {
-   method: 'POST', headers: authHeaders(),
-   body: JSON.stringify({ code: pairId, userId, taskKey }),
- });
+      const res = await fetch(`${API}/complete-task`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ code: pairId, userId, taskKey }),
+      });
       const data = await res.json();
       return !data.error;
     } catch (e) { return false; }
@@ -277,19 +283,19 @@ const res = await fetch(`${API}/complete-task`, {
     finally { setRankingLoading(false); }
   };
 
-const handleDeletePair = async () => {
-  setDeleting(true);
-  try {
-    await fetch(`${API}/delete`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ code: pairId, userId }),
-    });
-    if (refreshPairs) refreshPairs();
-    navigate('/?newpair=1');
-  } catch (e) {}
-  finally { setDeleting(false); }
-};
+  const handleDeletePair = async () => {
+    setDeleting(true);
+    try {
+      await fetch(`${API}/delete`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ code: pairId, userId }),
+      });
+      if (refreshPairs) refreshPairs();
+      navigate('/?newpair=1');
+    } catch (e) {}
+    finally { setDeleting(false); }
+  };
 
 
   // ══════ Share to Story ══════
@@ -305,7 +311,7 @@ const handleDeletePair = async () => {
   };
 
   // ══════ Share Message (prepared inline) ══════
-const handleShareMessage = async () => {
+  const handleShareMessage = async () => {
     if (!tg?.shareMessage) {
       handleShareInvite();
       return;
@@ -319,6 +325,7 @@ const handleShareMessage = async () => {
       const data = await res.json();
       if (data.prepared_message_id) {
         tg.shareMessage(data.prepared_message_id, (ok) => {
+          // FIX #8: используем notificationOccurred вместо impactOccurred
           if (ok) haptic('success');
         });
       } else {
@@ -354,7 +361,6 @@ const handleShareMessage = async () => {
   const lv = getLevel(pair.growth_points || 0);
   const pct = Math.min(100, (lv.current / lv.needed) * 100);
   const isEgg = lv.idx === 0;
-  // streak 0 = day 1, streak 1 = day 2, streak 2 = day 3
   const eggDay = Math.min((pair?.streak_days || 0) + 1, 3);
 
   const TASKS = [
@@ -384,65 +390,61 @@ const handleShareMessage = async () => {
   const doneCount = allTasks.filter(t => t.completed).length;
   const totalCount = allTasks.length;
 
-  const haptic = (type = 'medium') => { try { tg?.HapticFeedback?.impactOccurred(type); } catch (e) {} };
+  // ══════ handleTask ══════
+  const handleTask = (task) => {
+    if (task.completed || completing) return;
+    haptic('light');
+    if (task.action === 'share') { handleShareTask(task); return; }
+    if (task.action === 'add_home') {
+      if (tg?.addToHomeScreen) tg.addToHomeScreen();
+      setCompleting(true);
+      completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
+      return;
+    }
+    if (task.action === 'pet') {
+      haptic('medium');
+      setPetAnim(true);
+      setTimeout(() => setPetAnim(false), 800);
+      setCompleting(true);
+      completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
+    }
+  };
 
-// ══════ handleTask — ОТДЕЛЬНАЯ ФУНКЦИЯ (вне handleShareTask) ══════
-const handleTask = (task) => {
-  if (task.completed || completing) return;
-  haptic('light');
-  if (task.action === 'share') { handleShareTask(task); return; }
-  if (task.action === 'add_home') {
-    if (tg?.addToHomeScreen) tg.addToHomeScreen();
-    setCompleting(true);
-    completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
-    return;
-  }
-  if (task.action === 'pet') {
-    haptic('medium');
-    setPetAnim(true);
-    setTimeout(() => setPetAnim(false), 800);
-    setCompleting(true);
-    completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
-  }
-};
+  // ══════ handleShareTask ══════
+  const handleShareTask = async (task) => {
+    if (task.completed || completing) return;
+    haptic('light');
 
-// ══════ handleShareTask ══════
-const handleShareTask = async (task) => {
-  if (task.completed || completing) return;
-  haptic('light');
+    const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
+    const text = pickRandom(msgs[task.key] || msgs.send_msg);
 
-  const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
-  const text = pickRandom(msgs[task.key] || msgs.send_msg);
+    if (task.key === 'send_msg') {
+      setCompleting(true);
+      try {
+        await fetch(`${API}/send-partner-message`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ code: pairId, userId, text }),
+        });
+        await completeTask(task.key);
+        await load();
+      } catch (e) {}
+      finally { setCompleting(false); }
+      return;
+    }
 
-  // Для send_msg — отправляем через бота с кнопкой "Играть"
-  if (task.key === 'send_msg') {
-    setCompleting(true);
+    const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
+    const fullText = `${text}\n\n${inviteLink}`;
+    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
     try {
-      await fetch(`${API}/send-partner-message`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ code: pairId, userId, text }),
-      });
-      await completeTask(task.key);
-      await load();
+      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+      else window.open(shareUrl, '_blank');
     } catch (e) {}
-    finally { setCompleting(false); }
-    return;
-  }
-
-  // Для остальных (send_sticker, send_media) — открываем чат через Telegram
-  const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-  const fullText = `${text}\n\n${inviteLink}`;
-  const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-  try {
-    if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-    else window.open(shareUrl, '_blank');
-  } catch (e) {}
-  setCompleting(true);
-  await completeTask(task.key);
-  await load();
-  setCompleting(false);
-};
+    setCompleting(true);
+    await completeTask(task.key);
+    await load();
+    setCompleting(false);
+  };
 
 
   const handlePetClick = () => {
@@ -470,21 +472,21 @@ const handleShareTask = async (task) => {
     if (petTask && !petTask.completed) handleTask(petTask);
   };
 
-const handleRename = async () => {
-  if (!newName.trim()) return;
-  await fetch(`${API}/rename`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ code: pairId, pet_name: newName.trim(), userId }),
-  });
-  setPair(p => ({ ...p, pet_name: newName.trim() }));
-  setRenaming(false);
-};
+  const handleRename = async () => {
+    if (!newName.trim()) return;
+    await fetch(`${API}/rename`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ code: pairId, pet_name: newName.trim(), userId }),
+    });
+    setPair(p => ({ ...p, pet_name: newName.trim() }));
+    setRenaming(false);
+  };
 
   const myPairsData = pairs || [];
   const canAddPair = isAdmin || myPairsData.length < maxPairs;
 
-    useEffect(() => {
+  useEffect(() => {
     (async () => {
       try {
         const res = await fetch(`${API}/premium/${userId}`);
@@ -501,12 +503,11 @@ const handleRename = async () => {
     else {
       (async () => {
         try {
-// handleAddPair — внутри else ветки
-const res = await fetch(`${API}/create-invoice`, { 
-  method: 'POST', 
-  headers: authHeaders(), 
-  body: JSON.stringify({ userId, productId: 'extra_slot' }) 
-});
+          const res = await fetch(`${API}/create-invoice`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ userId, productId: 'extra_slot' })
+          });
           const data = await res.json();
           if (data.invoiceUrl && tg?.openInvoice) { tg.openInvoice(data.invoiceUrl, (st) => { if (st === 'paid') { haptic('heavy'); setShowMyPairs(false); if (refreshPairs) refreshPairs(); } }); }
           else if (data.invoiceUrl) window.open(data.invoiceUrl, '_blank');
@@ -527,11 +528,11 @@ const res = await fetch(`${API}/create-invoice`, {
   // ══════ Premium подписка ══════
   const handleSubscribe = async () => {
     try {
-const res = await fetch(`${API}/create-invoice`, {
-  method: 'POST', 
-  headers: authHeaders(),
-  body: JSON.stringify({ userId, productId: 'premium_monthly' }),
-});
+      const res = await fetch(`${API}/create-invoice`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, productId: 'premium_monthly' }),
+      });
       const data = await res.json();
       if (data.invoiceUrl && tg?.openInvoice) {
         tg.openInvoice(data.invoiceUrl, (st) => {
@@ -544,10 +545,14 @@ const res = await fetch(`${API}/create-invoice`, {
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
   const eggVideoSrc = EGG_VIDEOS[eggDay];
 
+  // FIX #7: loadSkins с auth заголовком
   const loadSkins = async () => {
     setSkinsLoading(true);
     try {
-      const res = await fetch(`${API}/skins/${userId}`);
+      const headers = {};
+      const initData = getInitData();
+      if (initData) headers['X-Telegram-Init-Data'] = initData;
+      const res = await fetch(`${API}/skins/${userId}`, { headers });
       const data = await res.json();
       setOwnedSkins(data.owned || []);
       setReferralCount(data.referral_count || 0);
@@ -800,7 +805,7 @@ const res = await fetch(`${API}/create-invoice`, {
             <div className="sk-pairs-grid">
               {myPairsData.map(p => {
                 const plv = getLevel(p.growth_points || 0);
-const pIsEgg = plv.idx === 0;
+                const pIsEgg = plv.idx === 0;
                 return (
                   <div key={p.code} className={`sk-pair-card glass-card ${p.code === pairId ? 'sk-pair-card-active' : ''}`}
                     onClick={() => { setShowMyPairs(false); navigate(`/pair/${p.code}`); }}>
@@ -888,7 +893,7 @@ const pIsEgg = plv.idx === 0;
               <div style={{ textAlign: 'center', padding: 20 }}><div className="sk-spinner" /></div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {/* Default skin — reset to level default */}
+                {/* Default skin */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, background: !pair?.active_skin ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
                   <div style={{ width: 48, height: 48, borderRadius: 12, background: accentColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🐾</div>
                   <div style={{ flex: 1 }}>
@@ -955,7 +960,6 @@ const pIsEgg = plv.idx === 0;
         </div>
       )}
 
-
       {/* Levels popup */}
       {showLevels && (
         <div className="sk-overlay" onClick={() => setShowLevels(false)}>
@@ -1020,4 +1024,3 @@ const pIsEgg = plv.idx === 0;
     </div>
   );
 }
-

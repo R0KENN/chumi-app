@@ -503,9 +503,19 @@ export async function onRequest(context) {
         username,
       });
 
+      // FIX #14: уведомление на языке партнёра
       for (const m of members || []) {
         if (m.user_id !== userId) {
-          await sendTelegramMessage(env, m.user_id, `🎉 Someone joined pair \`${code}\`!`);
+          const { data: partnerSettings } = await supabase
+            .from('user_settings')
+            .select('lang')
+            .eq('telegram_user_id', m.user_id)
+            .maybeSingle();
+          const partnerLang = partnerSettings?.lang || 'ru';
+          const msg = partnerLang === 'ru'
+            ? `🎉 Кто-то присоединился к паре \`${code}\`!`
+            : `🎉 Someone joined pair \`${code}\`!`;
+          await sendTelegramMessage(env, m.user_id, msg);
         }
       }
 
@@ -959,6 +969,8 @@ export async function onRequest(context) {
 
       const pairCode = body.pairCode;
       const messageText = body.text || '🐾 Присоединяйся к Chumi — растим питомца вместе!';
+      // FIX #9: используем env.BOT_USERNAME вместо хардкода
+      const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
 
       const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: 'POST',
@@ -970,7 +982,7 @@ export async function onRequest(context) {
             id: 'share_' + pairCode + '_' + Date.now(),
             title: 'Chumi — Вырасти питомца! 🐾',
             input_message_content: {
-              message_text: messageText + `\n\nhttps://t.me/ChumiPetBot?start=join_${pairCode}`,
+              message_text: messageText + `\n\nhttps://t.me/${botUsername}?start=join_${pairCode}`,
             },
             description: 'Нажми чтобы пригласить в пару 🐾',
           },
@@ -1128,7 +1140,9 @@ export async function onRequest(context) {
           .from('pair_users').select('user_id').eq('pair_code', pair.code);
 
         // Удаляем соло-пары старше 5 дней
-        if ((!members || members.length < 2) && pair.created_at && pair.created_at < fiveDaysAgo) {
+                // FIX #15: если created_at отсутствует, считаем пару старой (удаляем)
+        const isOldEnough = !pair.created_at || pair.created_at < fiveDaysAgo;
+        if ((!members || members.length < 2) && isOldEnough) {
           await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
           await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
           await supabase.from('feedings').delete().eq('pair_code', pair.code);

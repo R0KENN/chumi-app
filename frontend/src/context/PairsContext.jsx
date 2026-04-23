@@ -11,31 +11,41 @@ export function usePairs() {
   return useContext(PairsContext);
 }
 
-// ─── DeviceStorage helpers (Bot API 9.0+) ───
+// ─── DeviceStorage helpers (Bot API 9.0+) с localStorage fallback ───
 const ds = window.Telegram?.WebApp?.DeviceStorage;
 
 async function dsGet(key) {
-  if (!ds) return null;
-  return new Promise((resolve) => {
+  // Попытка через DeviceStorage
+  if (ds) {
     try {
-      ds.getItem(key, (err, value) => {
-        if (err || !value) resolve(null);
-        else {
-          try { resolve(JSON.parse(value)); }
-          catch { resolve(null); }
-        }
+      const val = await new Promise((resolve) => {
+        ds.getItem(key, (err, value) => {
+          if (err || !value) resolve(null);
+          else {
+            try { resolve(JSON.parse(value)); }
+            catch { resolve(null); }
+          }
+        });
       });
-    } catch { resolve(null); }
-  });
+      if (val !== null) return val;
+    } catch {}
+  }
+  // FIX #11: localStorage fallback
+  try {
+    const stored = localStorage.getItem(`ds_${key}`);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  return null;
 }
 
 async function dsSet(key, value) {
-  if (!ds) return;
-  try {
-    ds.setItem(key, JSON.stringify(value), () => {});
-  } catch (e) {
-    // silent
+  const json = JSON.stringify(value);
+  // DeviceStorage
+  if (ds) {
+    try { ds.setItem(key, json, () => {}); } catch {}
   }
+  // FIX #11: localStorage fallback
+  try { localStorage.setItem(`ds_${key}`, json); } catch {}
 }
 
 export function PairsProvider({ children, telegramUserId, initData }) {

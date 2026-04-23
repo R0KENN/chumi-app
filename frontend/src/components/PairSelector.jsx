@@ -14,7 +14,8 @@ export default function PairSelector() {
   const [showJoin, setShowJoin] = useState(false);
 
   const tg = window.Telegram?.WebApp;
-  const userId = tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118';
+  // FIX #2: приведение userId к строке
+  const userId = String(tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118');
 
   useEffect(() => {
     if (tg?.BackButton) tg.BackButton.hide();
