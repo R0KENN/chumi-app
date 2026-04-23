@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { setInitDataGlobal } from './initDataStore';
 
 const API_URL = '/api';
 const PairsContext = createContext();
 
-// Global ref for initData so components can use it for API calls
-let _initData = '';
-export function getInitData() { return _initData; }
+// Реэкспорт для обратной совместимости
+export { getInitData } from './initDataStore';
 
 export function usePairs() {
   return useContext(PairsContext);
@@ -15,7 +15,6 @@ export function usePairs() {
 const ds = window.Telegram?.WebApp?.DeviceStorage;
 
 async function dsGet(key) {
-  // Попытка через DeviceStorage
   if (ds) {
     try {
       const val = await new Promise((resolve) => {
@@ -30,7 +29,6 @@ async function dsGet(key) {
       if (val !== null) return val;
     } catch {}
   }
-  // FIX #11: localStorage fallback
   try {
     const stored = localStorage.getItem(`ds_${key}`);
     if (stored) return JSON.parse(stored);
@@ -40,11 +38,9 @@ async function dsGet(key) {
 
 async function dsSet(key, value) {
   const json = JSON.stringify(value);
-  // DeviceStorage
   if (ds) {
     try { ds.setItem(key, json, () => {}); } catch {}
   }
-  // FIX #11: localStorage fallback
   try { localStorage.setItem(`ds_${key}`, json); } catch {}
 }
 
@@ -53,9 +49,9 @@ export function PairsProvider({ children, telegramUserId, initData }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Store initData globally
+  // Store initData globally — теперь через initDataStore
   useEffect(() => {
-    _initData = initData || '';
+    setInitDataGlobal(initData);
   }, [initData]);
 
   const fetchPairs = useCallback(async () => {
@@ -79,7 +75,6 @@ export function PairsProvider({ children, telegramUserId, initData }) {
 
   useEffect(() => {
     if (!telegramUserId) return;
-
     (async () => {
       const cached = await dsGet(`pairs_${telegramUserId}`);
       if (cached && Array.isArray(cached) && cached.length > 0) {

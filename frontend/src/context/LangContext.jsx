@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { getInitData } from './PairsContext';
+import { getInitData } from './initDataStore';  
 
 const strings = {
   en: {
