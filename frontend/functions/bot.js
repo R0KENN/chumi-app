@@ -303,6 +303,40 @@ export async function onRequestPost(context) {
       const payload = JSON.parse(payment.invoice_payload);
       if (payload.productId === 'extra_slot') {
               if (payload.type === 'skin' && payload.skinId) {
+                if (update.message?.successful_payment) {
+  const payment = update.message.successful_payment;
+  const userId = String(update.message.from.id);
+  const lang = await getUserLang(supabase, userId);
+  const payload = JSON.parse(payment.invoice_payload);
+
+  // ── Skin purchase ──
+  if (payload.type === 'skin' && payload.skinId) {
+    await supabase.from('user_skins').insert({
+      user_id: userId,
+      skin_id: payload.skinId,
+    }).catch(() => {});
+    const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
+    await sendMessage(env, update.message.chat.id,
+      lang === 'ru' ? `✅ Наряд *${skinName}* разблокирован! 🎨` : `✅ Outfit *${skinName}* unlocked! 🎨`,
+      webAppButton
+    );
+    return new Response('OK');
+  }
+
+  // ── Extra slot ──
+  if (payload.productId === 'extra_slot') {
+    const { data: existing } = await supabase.from('user_slots').select('extra_slots').eq('telegram_user_id', userId).single();
+    if (existing) {
+      await supabase.from('user_slots').update({ extra_slots: existing.extra_slots + 1 }).eq('telegram_user_id', userId);
+    } else {
+      await supabase.from('user_slots').insert({ telegram_user_id: userId, extra_slots: 1 });
+    }
+    await sendMessage(env, update.message.chat.id, T[lang].slotBought, webAppButton);
+  }
+
+  return new Response('OK');
+}
+
         await supabase.from('user_skins').insert({
           user_id: userId,
           skin_id: payload.skinId,
@@ -313,6 +347,7 @@ export async function onRequestPost(context) {
           webAppButton
         );
       }
+      
         const { data: existing } = await supabase.from('user_slots').select('extra_slots').eq('telegram_user_id', userId).single();
         if (existing) {
           await supabase.from('user_slots').update({ extra_slots: existing.extra_slots + 1 }).eq('telegram_user_id', userId);
@@ -436,7 +471,7 @@ export async function onRequestPost(context) {
             await supabase.from('user_referrals').insert({
               inviter_user_id: m.user_id,
               invited_user_id: userId,
-              pair_code: joinCode,
+              pair_code: code,
             }).catch(() => {}); // ignore duplicate
           }
         }

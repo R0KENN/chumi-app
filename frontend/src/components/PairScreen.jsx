@@ -927,7 +927,7 @@ const pIsEgg = plv.idx === 0;
             <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>⭐</div>
             <h3>{lang === 'ru' ? 'Chumi Premium' : 'Chumi Premium'}</h3>
             <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
-              {lang === 'ru' ? 'Эксклюзивные скины, безлимит пар и уникальные наряды' : 'Exclusive skins, unlimited pairs and unique outfits'}
+              {lang === 'ru' ? 'Эксклюзивные скины, безлимит пар' : 'Exclusive skins, unlimited pairs and unique outfits'}
             </p>
             <button onClick={handleSubscribe} className="sk-btn-primary" style={{ background: '#F5A623' }}>
               ⭐ 150 Stars / {lang === 'ru' ? 'месяц' : 'month'}
