@@ -254,6 +254,30 @@ export default function PairScreen() {
     });
   }, [pair?.members]);
 
+
+    useEffect(() => {
+    if (!pair?.members) return;
+    pair.members.forEach(async (m) => {
+      try {
+        const res = await fetch(`${API}/avatar/${m.user_id}`);
+        const data = await res.json();
+        if (data.avatar_url) setAvatars(prev => ({ ...prev, [m.user_id]: data.avatar_url }));
+      } catch (e) {}
+    });
+  }, [pair?.members]);
+
+  // ══════ Premium status ══════
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/premium/${userId}`);
+        const data = await res.json();
+        setPremiumActive(data.premium || false);
+        setPremiumExpires(data.expires_at || null);
+      } catch (e) {}
+    })();
+  }, [userId]);
+
   const loadRankingAvatars = useCallback((entries) => {
     const ids = new Set();
     entries.forEach(r => { if (r.members) r.members.forEach(m => ids.add(m.user_id)); });
@@ -485,17 +509,6 @@ export default function PairScreen() {
 
   const myPairsData = pairs || [];
   const canAddPair = isAdmin || myPairsData.length < maxPairs;
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${API}/premium/${userId}`);
-        const data = await res.json();
-        setPremiumActive(data.premium || false);
-        setPremiumExpires(data.expires_at || null);
-      } catch (e) {}
-    })();
-  }, [userId]);
 
 
   const handleAddPair = () => {

@@ -6,6 +6,39 @@ import PairSelector from './components/PairSelector';
 import PairScreen from './components/PairScreen';
 import './App.css';
 
+// ── Error Boundary для отлова crash'ей ──
+import React from 'react';
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error('ErrorBoundary caught:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>😿</div>
+          <h2 style={{ color: '#e53e3e' }}>App crashed</h2>
+          <pre style={{ fontSize: 12, color: '#666', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxWidth: 360, margin: '16px auto', textAlign: 'left', background: '#f5f5f5', padding: 12, borderRadius: 8 }}>
+            {this.state.error?.toString()}
+          </pre>
+          <button onClick={() => window.location.reload()} style={{ padding: '12px 24px', borderRadius: 12, border: 'none', background: '#9B72CF', color: '#fff', fontSize: 15, cursor: 'pointer' }}>
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function AppContent() {
   const { pairs, loading } = usePairs();
   const navigate = useNavigate();
@@ -70,13 +103,15 @@ function App() {
   if (!telegramUserId) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 
   return (
-    <BrowserRouter>
-      <LangProvider>
-        <PairsProvider telegramUserId={telegramUserId} initData={initData}>
-          <AppContent />
-        </PairsProvider>
-      </LangProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <LangProvider>
+          <PairsProvider telegramUserId={telegramUserId} initData={initData}>
+            <AppContent />
+          </PairsProvider>
+        </LangProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
