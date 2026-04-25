@@ -787,9 +787,12 @@ if (partnerDone) {
 
 const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 await supabase.from('pairs').update({
-  is_dead: true,
-  streak_days: 0,
-}).eq('code', pair.code);
+  is_dead: false,
+  streak_recoveries_used: used + 1,
+  last_recovery_month: currentMonth,
+  last_streak_date: yesterday,
+}).eq('code', code);
+
 
       return json({ success: true, remaining: 5 - (used + 1) });
     }
@@ -1114,8 +1117,9 @@ await supabase.from('pairs').update({
         // Если пара имеет серию и последний день серии был раньше вчерашнего — серия сломана
         if (pair.last_streak_date && pair.last_streak_date < yesterday) {
           await supabase.from('pairs').update({
-            is_dead: true,
-          }).eq('code', pair.code);
+  is_dead: true,
+  streak_days: 0,
+}).eq('code', pair.code);
           killed++;
 
           // Уведомить участников

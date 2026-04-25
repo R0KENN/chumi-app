@@ -631,20 +631,6 @@ export default function PairScreen() {
     { id: 'astronaut',  name: 'Astronaut',  nameRu: 'Астронавт',  price: 25, pet: 'axolotl_Astronaut',  petTap: 'axolotl_Astronaut_tap' },
   ];
 
-  // Скины полученные за уровни (level >= 1, т.к. у Egg нет скина)
-const LEVEL_SKINS = LEVELS
-  .filter(l => l.level >= 1 && l.pet)
-  .map(l => ({
-    id: `level_${l.level}`,
-    skinKey: null,           // null = дефолтный скин этого уровня
-    name: l.name,
-    nameRu: l.nameRu,
-    pet: l.pet,
-    petTap: l.petTap,
-    level: l.level,
-    unlocked: lv.idx >= l.level,  // разблокирован если текущий уровень >= уровня скина
-  }));
-
 
   const renderEgg = () => (
     <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
@@ -953,13 +939,12 @@ if (activeSkin && activeSkin.startsWith('level_')) {
         {LEVEL_SKINS.map(skin => {
           const isActive = (pair.active_skin === `level_${skin.level}`) ||
   (pair.active_skin === null && lv.idx === skin.level);
-          const isSelected = pair.active_skin === null && lv.pet === skin.pet;
           return (
             <div key={skin.id} onClick={() => {
-              if (!skin.unlocked) return;
-              handleSetSkin(null);  // null = дефолтный вид текущего уровня
-              // Для выбора конкретного уровневого скина — используем set-skin с level_skinKey
-            }} style={{
+  if (!skin.unlocked) return;
+  if (isActive) return;
+  handleSetSkin(skin.level === lv.idx ? null : `level_${skin.level}`);
+}} style={{
               minWidth: 90, textAlign: 'center', padding: '10px 6px',
               borderRadius: 14,
               border: isActive ? `2px solid ${accentColor}` : '2px solid transparent',
