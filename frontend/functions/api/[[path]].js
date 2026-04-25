@@ -39,6 +39,7 @@ function getTodayDate() {
   return new Date().toISOString().split('T')[0];
 }
 
+
 function getCurrentMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -613,43 +614,49 @@ export async function onRequest(context) {
           .eq('task_date', today)
           .maybeSingle();
 
-        if (partnerDone) {
-          const { data: pair } = await supabase
-            .from('pairs').select('growth_points, streak_days, last_streak_date, hatched')
-            .eq('code', code).single();
-          if (pair) {
-            const newPoints = (pair.growth_points || 0) + points;
-            const updates = { growth_points: newPoints };
+if (partnerDone) {
+  const { data: pair } = await supabase
+    .from('pairs')
+    .select('growth_points, streak_days, last_streak_date, hatched')
+    .eq('code', code).single();
 
-            if (taskKey === 'daily_open' && pair.last_streak_date !== today) {
-              if (pair.last_streak_date === null) {
-                updates.last_streak_date = today;
-              } else {
-                const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
-                const todayDate = new Date(today + 'T00:00:00Z');
-                const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+  if (pair) {
+    const newPoints = (pair.growth_points || 0) + points;
+    const updates = { growth_points: newPoints };
 
-                if (diffDays === 1) {
-                  const newStreak = (pair.streak_days || 0) + 1;
-                  updates.streak_days = newStreak;
-                  updates.last_streak_date = today;
+    if (taskKey === 'daily_open' && pair.last_streak_date !== today) {
+      if (pair.last_streak_date === null) {
+        // ═══ FIX: первый день серии = 1, а не 0 ═══
+        updates.streak_days = 1;
+        updates.last_streak_date = today;
+      } else {
+        const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
+        const todayDate = new Date(today + 'T00:00:00Z');
+        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
 
-                  if (!pair.hatched && newPoints >= 33) {
-                    updates.hatched = true;
-                  }
-                } else if (diffDays > 1) {
-                  updates.streak_days = 1;
-                  updates.last_streak_date = today;
-                } else {
-                  updates.last_streak_date = today;
-                }
-              }
-            }
-
-            await supabase.from('pairs').update(updates).eq('code', code);
-            pointsAdded = points;
-          }
+        if (diffDays === 1) {
+          // Следующий день подряд — увеличиваем серию
+          updates.streak_days = (pair.streak_days || 0) + 1;
+          updates.last_streak_date = today;
+        } else if (diffDays > 1) {
+          // Пропустили день(дни) — серия начинается заново
+          updates.streak_days = 1;
+          updates.last_streak_date = today;
         }
+        // diffDays <= 0: не должно произойти из-за проверки !== today
+      }
+
+      // Hatching check
+      if (!pair.hatched && newPoints >= 33) {
+        updates.hatched = true;
+      }
+    }
+
+    await supabase.from('pairs').update(updates).eq('code', code);
+    pointsAdded = points;
+  }
+}
+
       }
 
       return json({ success: true, points_added: pointsAdded });
@@ -777,11 +784,13 @@ export async function onRequest(context) {
       if (pair.last_recovery_month !== currentMonth) used = 0;
       if (used >= 5) return json({ error: 'Max 5 recoveries per month' }, 400);
 
-      await supabase.from('pairs').update({
-        is_dead: false,
-        streak_recoveries_used: used + 1,
-        last_recovery_month: currentMonth,
-      }).eq('code', code);
+const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+await supabase.from('pairs').update({
+  is_dead: false,
+  streak_recoveries_used: used + 1,
+  last_recovery_month: currentMonth,
+  last_streak_date: yesterday,
+}).eq('code', code);
 
       return json({ success: true, remaining: 5 - (used + 1) });
     }
@@ -1091,7 +1100,7 @@ export async function onRequest(context) {
     // POST /api/update-streaks  [FIX #3: НОВЫЙ ЭНДПОИНТ]
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/update-streaks') {
-      const today = getTodayDate();
+      const today = getTodayDate();  // ← теперь московское
       const todayDate = new Date(today + 'T00:00:00Z');
       const yesterdayDate = new Date(todayDate.getTime() - 86400000);
       const yesterday = yesterdayDate.toISOString().split('T')[0];
