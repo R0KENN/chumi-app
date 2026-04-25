@@ -1317,16 +1317,37 @@ await supabase.from('pairs').update({
         .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403);
 
-      // Если skinId не null, проверяем владение ИЛИ Premium
-      if (skinId) {
-        const premium = await isPremium(supabase, userId);
-        if (!premium) {
-          const { data: owned } = await supabase
-            .from('user_skins').select('id')
-            .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
-          if (!owned) return json({ error: 'Skin not owned' }, 403);
-        }
-      }
+// Если skinId не null, проверяем владение ИЛИ Premium ИЛИ уровневый скин
+if (skinId) {
+  // Уровневые скины: level_1, level_2 ... — проверяем что пара достигла этого уровня
+  const levelMatch = skinId.match(/^level_(\d+)$/);
+  if (levelMatch) {
+    const requiredLevel = parseInt(levelMatch[1]);
+    const { data: pairData } = await supabase
+      .from('pairs').select('growth_points').eq('code', pairCode).single();
+    if (!pairData) return json({ error: 'Pair not found' }, 404);
+
+    // Вычисляем текущий уровень пары
+    let acc = 0;
+    let currentLevel = 0;
+    const LEVELS_CHECK = [33, 45, 63, 90, 135, 200];
+    for (let i = 0; i < LEVELS_CHECK.length; i++) {
+      if ((pairData.growth_points || 0) < acc + LEVELS_CHECK[i]) break;
+      acc += LEVELS_CHECK[i];
+      currentLevel = i + 1;
+    }
+    if (currentLevel < requiredLevel) return json({ error: 'Level not reached' }, 403);
+  } else {
+    // Обычный скин — проверяем владение или Premium
+    const premium = await isPremium(supabase, userId);
+    if (!premium) {
+      const { data: owned } = await supabase
+        .from('user_skins').select('id')
+        .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
+      if (!owned) return json({ error: 'Skin not owned' }, 403);
+    }
+  }
+}
 
       await supabase.from('pairs')
         .update({ active_skin: skinId })

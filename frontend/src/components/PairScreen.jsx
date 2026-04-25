@@ -612,12 +612,39 @@ export default function PairScreen() {
     } catch (e) {}
   };
 
+  const LEVEL_SKINS = LEVELS
+  .filter(l => l.level >= 1 && l.pet)
+  .map(l => ({
+    id: `level_${l.level}`,
+    name: l.name,
+    nameRu: l.nameRu,
+    pet: l.pet,
+    petTap: l.petTap,
+    level: l.level,
+    unlocked: lv.idx >= l.level,
+  }));
+
   const SKINS = [
     { id: 'strawberry', name: 'Strawberry', nameRu: 'Клубничка', price: 25, pet: 'axolotl_Strawberry', petTap: 'axolotl_Strawberry_tap' },
     { id: 'bee',        name: 'Bee',        nameRu: 'Пчёлка',    price: 0,  pet: 'axolotl_Bee',        petTap: 'axolotl_Bee_tap', referralReward: true },
     { id: 'floral',     name: 'Floral',     nameRu: 'Цветочный',  price: 25, pet: 'axolotl_Floral',     petTap: 'axolotl_Floral_tap' },
     { id: 'astronaut',  name: 'Astronaut',  nameRu: 'Астронавт',  price: 25, pet: 'axolotl_Astronaut',  petTap: 'axolotl_Astronaut_tap' },
   ];
+
+  // Скины полученные за уровни (level >= 1, т.к. у Egg нет скина)
+const LEVEL_SKINS = LEVELS
+  .filter(l => l.level >= 1 && l.pet)
+  .map(l => ({
+    id: `level_${l.level}`,
+    skinKey: null,           // null = дефолтный скин этого уровня
+    name: l.name,
+    nameRu: l.nameRu,
+    pet: l.pet,
+    petTap: l.petTap,
+    level: l.level,
+    unlocked: lv.idx >= l.level,  // разблокирован если текущий уровень >= уровня скина
+  }));
+
 
   const renderEgg = () => (
     <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
@@ -627,10 +654,22 @@ export default function PairScreen() {
     </video>
   );
 
-  const activeSkin = pair?.active_skin;
-  const petSrc = activeSkin
-    ? { idle: `axolotl_${activeSkin.charAt(0).toUpperCase() + activeSkin.slice(1)}`, tap: `axolotl_${activeSkin.charAt(0).toUpperCase() + activeSkin.slice(1)}_tap` }
+const activeSkin = pair?.active_skin;
+let petSrc;
+if (activeSkin && activeSkin.startsWith('level_')) {
+  const lvNum = parseInt(activeSkin.split('_')[1]);
+  const lvData = LEVELS[lvNum];
+  petSrc = lvData && lvData.pet
+    ? { idle: lvData.pet, tap: lvData.petTap }
     : { idle: lv.pet, tap: lv.petTap };
+} else if (activeSkin) {
+  petSrc = {
+    idle: `axolotl_${activeSkin.charAt(0).toUpperCase() + activeSkin.slice(1)}`,
+    tap: `axolotl_${activeSkin.charAt(0).toUpperCase() + activeSkin.slice(1)}_tap`,
+  };
+} else {
+  petSrc = { idle: lv.pet, tap: lv.petTap };
+}
 
   const renderPet = () => (
     <>
@@ -898,80 +937,126 @@ export default function PairScreen() {
       )}
 
       {/* Outfits popup */}
-      {showOutfits && (
-        <div className="sk-overlay" onClick={() => setShowOutfits(false)}>
-          <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
-            <h3>👕 {lang === 'ru' ? 'Наряды' : 'Outfits'}</h3>
-            {skinsLoading ? (
-              <div style={{ textAlign: 'center', padding: 20 }}><div className="sk-spinner" /></div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {/* Default skin */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, background: !pair?.active_skin ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 12, background: accentColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🐾</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 15, color: '#1a1a1a' }}>{lang === 'ru' ? 'Стандартный' : 'Default'}</div>
-                    <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{lang === 'ru' ? 'Зависит от уровня' : 'Based on level'}</div>
-                  </div>
-                  {pair?.active_skin ? (
-                    <button onClick={() => handleSetSkin(null)} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: accentColor + '20', color: accentColor, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                      {lang === 'ru' ? 'Выбрать' : 'Select'}
-                    </button>
-                  ) : (
-                    <span style={{ fontSize: 12, color: '#4CAF50', fontWeight: 600 }}>✓ {lang === 'ru' ? 'Активен' : 'Active'}</span>
-                  )}
-                </div>
+{showOutfits && (
+  <div className="sk-overlay" onClick={() => setShowOutfits(false)}>
+    <div className="sk-popup sk-popup-tall" onClick={e => e.stopPropagation()}>
+      <div style={{ fontSize: 36, textAlign: 'center', marginBottom: 8 }}>👕</div>
+      <h3 style={{ textAlign: 'center', marginBottom: 16 }}>
+        {lang === 'ru' ? 'Наряды' : 'Outfits'}
+      </h3>
 
-                {SKINS.map(skin => {
-                  const owned = ownedSkins.includes(skin.id) || premiumActive;
-                  const isActive = pair?.active_skin === skin.id;
-                  const canClaimBee = skin.referralReward && referralCount >= 2 && !owned;
-
-                  return (
-                    <div key={skin.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, background: isActive ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
-                      <video autoPlay loop muted playsInline style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }}>
-                        <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
-                      </video>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 15, color: '#1a1a1a' }}>{lang === 'ru' ? skin.nameRu : skin.name}</div>
-                        {skin.referralReward ? (
-                          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
-                            {owned ? (lang === 'ru' ? 'Разблокировано' : 'Unlocked') : `${lang === 'ru' ? 'Пригласи 2 друга' : 'Invite 2 friends'} (${referralCount}/2)`}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
-                            {owned ? (lang === 'ru' ? 'Куплено' : 'Owned') : `⭐ ${skin.price} Stars`}
-                          </div>
-                        )}
-                      </div>
-                      {isActive ? (
-                        <span style={{ fontSize: 12, color: '#4CAF50', fontWeight: 600 }}>✓ {lang === 'ru' ? 'Активен' : 'Active'}</span>
-                      ) : owned ? (
-                        <button onClick={() => handleSetSkin(skin.id)} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: accentColor + '20', color: accentColor, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                          {lang === 'ru' ? 'Выбрать' : 'Select'}
-                        </button>
-                      ) : canClaimBee ? (
-                        <button onClick={handleClaimBee} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: '#4CAF50', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                          {lang === 'ru' ? 'Забрать' : 'Claim'}
-                        </button>
-                      ) : skin.referralReward ? (
-                        <button onClick={handleShareInvite} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: 'rgba(0,0,0,0.06)', color: '#888', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                          {lang === 'ru' ? 'Пригласить' : 'Invite'}
-                        </button>
-                      ) : (
-                        <button onClick={() => handleBuySkin(skin.id)} style={{ padding: '6px 14px', borderRadius: 10, border: 'none', background: '#F5A623', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                          ⭐ {skin.price}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+      {/* ── Секция 1: Скины за уровни ── */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 8, textTransform: 'uppercase' }}>
+        {lang === 'ru' ? '🎖 Получено за уровни' : '🎖 Level rewards'}
+      </div>
+      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 12, marginBottom: 16 }}>
+        {LEVEL_SKINS.map(skin => {
+          const isActive = (pair.active_skin === `level_${skin.level}`) ||
+  (pair.active_skin === null && lv.idx === skin.level);
+          const isSelected = pair.active_skin === null && lv.pet === skin.pet;
+          return (
+            <div key={skin.id} onClick={() => {
+              if (!skin.unlocked) return;
+              handleSetSkin(null);  // null = дефолтный вид текущего уровня
+              // Для выбора конкретного уровневого скина — используем set-skin с level_skinKey
+            }} style={{
+              minWidth: 90, textAlign: 'center', padding: '10px 6px',
+              borderRadius: 14,
+              border: isActive ? `2px solid ${accentColor}` : '2px solid transparent',
+              background: skin.unlocked ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.05)',
+              opacity: skin.unlocked ? 1 : 0.4,
+              cursor: skin.unlocked ? 'pointer' : 'default',
+              position: 'relative',
+            }}>
+              <video autoPlay loop muted playsInline style={{ width: 60, height: 78, objectFit: 'contain' }}>
+                <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
+              </video>
+              <div style={{ fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                {lang === 'ru' ? skin.nameRu : skin.name}
               </div>
-            )}
-            <button className="sk-popup-close" onClick={() => setShowOutfits(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
-          </div>
+              {!skin.unlocked && (
+                <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                  🔒 {lang === 'ru' ? `Ур. ${skin.level}` : `Lv. ${skin.level}`}
+                </div>
+              )}
+              {skin.unlocked && isActive && (
+                <div style={{ fontSize: 10, color: accentColor, fontWeight: 700, marginTop: 2 }}>
+                  ✓ {lang === 'ru' ? 'Сейчас' : 'Active'}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Секция 2: Магазин скинов ── */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 8, textTransform: 'uppercase' }}>
+        {lang === 'ru' ? '🛍 Магазин' : '🛍 Shop'}
+      </div>
+      {skinsLoading ? (
+        <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>Loading...</div>
+      ) : (
+        <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 12 }}>
+          {SKINS.map(skin => {
+            const owned = ownedSkins.includes(skin.id) || premiumActive;
+            const isActive = pair.active_skin === skin.id;
+            const canClaim = skin.referralReward && referralCount >= 2 && !ownedSkins.includes(skin.id);
+            return (
+              <div key={skin.id} style={{
+                minWidth: 90, textAlign: 'center', padding: '10px 6px',
+                borderRadius: 14,
+                border: isActive ? `2px solid ${accentColor}` : '2px solid transparent',
+                background: 'rgba(255,255,255,0.9)',
+                cursor: 'pointer',
+              }} onClick={() => {
+                if (isActive) { handleSetSkin(null); return; }
+                if (owned) { handleSetSkin(skin.id); return; }
+                if (canClaim) { handleClaimBee(); return; }
+                if (skin.price > 0) handleBuySkin(skin.id);
+              }}>
+                <video autoPlay loop muted playsInline style={{ width: 60, height: 78, objectFit: 'contain' }}>
+                  <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
+                </video>
+                <div style={{ fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                  {lang === 'ru' ? skin.nameRu : skin.name}
+                </div>
+                {isActive ? (
+                  <div style={{ fontSize: 10, color: accentColor, fontWeight: 700, marginTop: 2 }}>
+                    ✓ {lang === 'ru' ? 'Сейчас' : 'Active'}
+                  </div>
+                ) : owned ? (
+                  <div style={{ fontSize: 10, color: '#4CAF50', fontWeight: 600, marginTop: 2 }}>
+                    {lang === 'ru' ? 'Выбрать' : 'Select'}
+                  </div>
+                ) : canClaim ? (
+                  <div style={{ fontSize: 10, color: '#FF9800', fontWeight: 600, marginTop: 2 }}>
+                    {lang === 'ru' ? 'Забрать!' : 'Claim!'}
+                  </div>
+                ) : skin.referralReward ? (
+                  <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                    {referralCount}/2 {lang === 'ru' ? 'друзей' : 'refs'}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                    ⭐ {skin.price}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
+
+      <button onClick={() => setShowOutfits(false)} style={{
+        width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
+        background: accentColor, color: '#fff', fontSize: 15, fontWeight: 600,
+        cursor: 'pointer', marginTop: 16,
+      }}>
+        {lang === 'ru' ? 'Закрыть' : 'Close'}
+      </button>
+    </div>
+  </div>
+)}
 
       {/* Levels popup */}
       {showLevels && (
