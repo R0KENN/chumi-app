@@ -779,6 +779,7 @@ if (partnerDone) {
       const { data: pair } = await supabase
         .from('pairs').select('*').eq('code', code).single();
       if (!pair) return json({ error: 'Pair not found' }, 404);
+      if (!pair.is_dead) return json({ error: 'Pet is not dead' }, 400);
 
       let used = pair.streak_recoveries_used || 0;
       if (pair.last_recovery_month !== currentMonth) used = 0;
@@ -786,11 +787,9 @@ if (partnerDone) {
 
 const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 await supabase.from('pairs').update({
-  is_dead: false,
-  streak_recoveries_used: used + 1,
-  last_recovery_month: currentMonth,
-  last_streak_date: yesterday,
-}).eq('code', code);
+  is_dead: true,
+  streak_days: 0,
+}).eq('code', pair.code);
 
       return json({ success: true, remaining: 5 - (used + 1) });
     }
@@ -1100,7 +1099,7 @@ await supabase.from('pairs').update({
     // POST /api/update-streaks  [FIX #3: НОВЫЙ ЭНДПОИНТ]
     // ═══════════════════════════════════════
     if (request.method === 'POST' && path === '/api/update-streaks') {
-      const today = getTodayDate();  // ← теперь московское
+      const today = getTodayDate(); 
       const todayDate = new Date(today + 'T00:00:00Z');
       const yesterdayDate = new Date(todayDate.getTime() - 86400000);
       const yesterday = yesterdayDate.toISOString().split('T')[0];
