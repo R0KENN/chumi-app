@@ -973,43 +973,67 @@ await supabase.from('pairs').update({
     // ═══════════════════════════════════════
     // POST /api/prepare-share
     // ═══════════════════════════════════════
-    if (request.method === 'POST' && path === '/api/prepare-share') {
-      const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+if (request.method === 'POST' && path === '/api/prepare-share') {
+  const body = await request.json();
+  const userId = extractUserId(request, env, body.userId);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-      const pairCode = body.pairCode;
-      const messageText = body.text || '🐾 Присоединяйся к Chumi — растим питомца вместе!';
-      // FIX #9: используем env.BOT_USERNAME вместо хардкода
-      const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
+  const pairCode = body.pairCode;
+  const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
+  const joinLink = `https://t.me/${botUsername}?start=join_${pairCode}`;
 
-      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: parseInt(userId),
-          result: {
-            type: 'article',
-            id: 'share_' + pairCode + '_' + Date.now(),
-            title: 'Chumi — Вырасти питомца! 🐾',
-            input_message_content: {
-              message_text: messageText + `\n\nhttps://t.me/${botUsername}?start=join_${pairCode}`,
-            },
-            description: 'Нажми чтобы пригласить в пару 🐾',
-          },
-          allow_user_chats: true,
-          allow_bot_chats: false,
-          allow_group_chats: true,
-          allow_channel_chats: false,
-        }),
-      });
+  // Получаем данные пары для динамического текста
+  const { data: pair } = await supabase
+    .from('pairs').select('pet_name, streak_days, growth_points')
+    .eq('code', pairCode).single();
 
-      const data = await res.json();
-      if (data.ok && data.result?.id) {
-        return json({ prepared_message_id: data.result.id });
-      }
-      return json({ error: 'Failed to prepare message', details: data }, 500);
-    }
+  const streak = pair?.streak_days || 0;
+  const petName = pair?.pet_name || 'Chumi';
+
+  let messageText;
+  if (streak >= 30) {
+    messageText = `🔥 Серия ${streak} дней в Chumi!\n\n🐾 ${petName} растёт каждый день — присоединяйся!\n\n${joinLink}`;
+  } else if (streak >= 7) {
+    messageText = `🐾 Мы растим ${petName} уже ${streak} дней подряд в Chumi!\n\nПрисоединяйся 👇\n\n${joinLink}`;
+  } else if (streak >= 1) {
+    messageText = `🐾 Заведи питомца в Chumi и расти его вместе с другом!\n\nНаша серия: ${streak} дн. 🔥\n\n${joinLink}`;
+  } else {
+    messageText = `🐾 Chumi — заведи виртуального питомца и расти его вместе с другом!\n\nВыполняй задания каждый день и открывай новые образы.\n\n${joinLink}`;
+  }
+
+  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_id: parseInt(userId),
+      result: {
+        type: 'article',
+        id: 'share_' + pairCode + '_' + Date.now(),
+        title: 'Chumi — Вырасти питомца! 🐾',
+        input_message_content: {
+          message_text: messageText,
+        },
+        description: 'Нажми чтобы пригласить в пару 🐾',
+        reply_markup: {
+          inline_keyboard: [[{
+            text: '🐾 Chumi',
+            url: joinLink,
+          }]],
+        },
+      },
+      allow_user_chats: true,
+      allow_bot_chats: false,
+      allow_group_chats: true,
+      allow_channel_chats: true,
+    }),
+  });
+
+  const data = await res.json();
+  if (data.ok && data.result?.id) {
+    return json({ prepared_message_id: data.result.id });
+  }
+  return json({ error: 'Failed to prepare message', details: data }, 500);
+}
 
     // ═══════════════════════════════════════
     // GET /api/user-lang/:userId

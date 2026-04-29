@@ -531,14 +531,35 @@ export default function PairScreen() {
     }
   };
 
-  const handleShareInvite = () => {
-    const botLink = `https://t.me/${BOT_USERNAME}`;
-    const text = lang === 'ru'
-      ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые уровни.\n\nПопробуй 👇\n${botLink}`
-      : `🐾 Chumi — get a pet and grow it together with a friend!\n\nComplete tasks every day, keep your streak and unlock new levels.\n\nTry it 👇\n${botLink}`;
-    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
-    if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank');
-  };
+const handleShareInvite = () => {
+  const botLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
+  
+  // Копируем ссылку в буфер
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(botLink);
+    haptic('success');
+  }
+
+  // Открываем шаринг в группы/каналы
+  const streak = pair?.streak_days || 0;
+  const name = pair?.pet_name || 'Chumi';
+  const lvl = getLevel(pair?.growth_points || 0);
+
+  let text;
+  if (lang === 'ru') {
+    if (streak >= 7) text = `🐾 Мы растим ${name} уже ${streak} дней в Chumi!\n\n${botLink}`;
+    else if (streak >= 1) text = `🐾 Заведи питомца в Chumi! Серия: ${streak} дн. 🔥\n\n${botLink}`;
+    else text = `🐾 Chumi — заведи питомца и расти его с другом!\n\n${botLink}`;
+  } else {
+    if (streak >= 7) text = `🐾 Growing ${name} for ${streak} days in Chumi!\n\n${botLink}`;
+    else if (streak >= 1) text = `🐾 Get a pet in Chumi! ${streak} day streak 🔥\n\n${botLink}`;
+    else text = `🐾 Chumi — get a pet and grow it with a friend!\n\n${botLink}`;
+  }
+
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botLink)}&text=${encodeURIComponent(text)}`;
+  if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank');
+};
+
 
   // ══════ Premium подписка ══════
   const handleSubscribe = async () => {
