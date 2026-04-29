@@ -338,7 +338,7 @@ export async function onRequest(context) {
             .eq('user_id', tgUserId);
         }
 
-        if (wantProxy) {
+        if (wantProxy === '1') {
           const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
           const imgRes = await fetch(avatarUrl);
           if (!imgRes.ok) {
@@ -740,7 +740,24 @@ export async function onRequest(context) {
         .eq('telegram_user_id', targetUserId).maybeSingle();
       const tLang = ps?.lang || 'ru';
       const defaultMsg = tLang === 'ru' ? '🔔 Напоминание от Chumi' : '🔔 Reminder from Chumi';
+            // Rate-limit: не чаще 1 уведомления в час одному партнёру
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: recent } = await supabase
+        .from('notification_log')
+        .select('id')
+        .eq('sender_user_id', userId)
+        .eq('target_user_id', targetUserId)
+        .gte('sent_at', oneHourAgo)
+        .maybeSingle();
+      if (recent) {
+        return json({ error: 'Too many notifications', retryAfter: 3600 }, 429);
+      }
       await sendTelegramMessage(env, targetUserId, defaultMsg);
+            await supabase.from('notification_log').insert({
+        sender_user_id: userId,
+        target_user_id: targetUserId,
+        sent_at: new Date().toISOString(),
+      });
       return json({ success: true });
     }
 
@@ -770,17 +787,21 @@ export async function onRequest(context) {
       if (pair.last_recovery_month !== currentMonth) used = 0;
       if (used >= 5) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
 
-      await supabase.from('pairs').update({
+      const { data: updated } = await supabase.from('pairs').update({
         is_dead: false,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
         last_streak_date: yesterday,
-      }).eq('code', code);
+      }).eq('code', code).select().single();
 
       return json({
         success: true,
         remaining: 5 - (used + 1),
-        streak_days: pair.streak_days,
+        streak_days: updated?.streak_days ?? pair.streak_days,
+        is_dead: false,
+        last_streak_date: yesterday,
+        streak_recoveries_used: used + 1,
+        last_recovery_month: currentMonth,
       });
     }
 
@@ -1077,6 +1098,22 @@ export async function onRequest(context) {
         if (pair.last_streak_date && pair.last_streak_date < today) {
           await supabase.from('pairs').update({ is_dead: true }).eq('code', pair.code);
           killed++;
+
+                  // Уведомить обоих партнёров о смерти питомца
+        const { data: deadMembers } = await supabase
+          .from('pair_users').select('user_id').eq('pair_code', pair.code);
+        for (const dm of (deadMembers || [])) {
+          const { data: ps } = await supabase
+            .from('user_settings').select('lang')
+            .eq('telegram_user_id', dm.user_id).maybeSingle();
+          const dLang = ps?.lang || 'ru';
+          const petName = pair.pet_name || 'Chumi';
+          const msg = dLang === 'ru'
+            ? `💀 *${petName} умер!*\n\nВы пропустили день. Зайдите в приложение и нажмите «Воскресить» — серия сохранится.\nОсталось воскрешений в этом месяце: до 5.`
+            : `💀 *${petName} died!*\n\nYou missed a day. Open the app and tap "Revive" — your streak will be kept.\nUp to 5 revivals per month available.`;
+          await sendTelegramMessage(env, dm.user_id, msg);
+        }
+
 
           const { data: members } = await supabase
             .from('pair_users').select('user_id').eq('pair_code', pair.code);

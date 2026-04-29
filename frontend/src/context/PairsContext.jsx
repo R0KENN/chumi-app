@@ -85,6 +85,19 @@ export function PairsProvider({ children, telegramUserId, initData }) {
     })();
   }, [telegramUserId, fetchPairs]);
 
+    // Обновляем пары, когда пользователь возвращается в приложение
+  useEffect(() => {
+    if (!telegramUserId) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPairs();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [telegramUserId, fetchPairs]);
+
+
   const addPair = (newPair) => {
     setPairs(prev => [...(prev || []), newPair]);
   };

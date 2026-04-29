@@ -2,12 +2,12 @@
 // При изменении синхронизируй с frontend/src/components/PairScreen.jsx
 
 export const LEVELS = [
-  { level: 0, name: 'Egg',    nameRu: 'Яйцо',       maxPoints: 33  },
-  { level: 1, name: 'Baby',   nameRu: 'Малыш',      maxPoints: 45  },
-  { level: 2, name: 'Junior', nameRu: 'Подросток',  maxPoints: 63  },
-  { level: 3, name: 'Teen',   nameRu: 'Юный',       maxPoints: 90  },
-  { level: 4, name: 'Adult',  nameRu: 'Взрослый',   maxPoints: 135 },
-  { level: 5, name: 'Legend', nameRu: 'Легенда',    maxPoints: 200 },
+  { level: 0, name: 'Egg',    nameRu: 'Яйцо',       emoji: '🥚', maxPoints: 33  },
+  { level: 1, name: 'Baby',   nameRu: 'Малыш',      emoji: '🐣', maxPoints: 45  },
+  { level: 2, name: 'Junior', nameRu: 'Подросток',  emoji: '🐾', maxPoints: 63  },
+  { level: 3, name: 'Teen',   nameRu: 'Юный',       emoji: '💜', maxPoints: 90  },
+  { level: 4, name: 'Adult',  nameRu: 'Взрослый',   emoji: '💎', maxPoints: 135 },
+  { level: 5, name: 'Legend', nameRu: 'Легенда',    emoji: '👑', maxPoints: 200 },
 ];
 
 export function getLevel(totalPoints) {

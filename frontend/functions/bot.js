@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { LEVELS, getLevel } from './_levels.js';
 
 function getSupabase(env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
@@ -24,25 +25,6 @@ const MAX_PAIRS_BASE = 2;
 const WEBAPP_URL = 'https://chumi-app.pages.dev';
 const FIRE_EMOJI_ID = '5368324170671202286';
 
-const LEVELS = [
-  { name: 'Egg',    emoji: '🥚', maxPoints: 33 },
-  { name: 'Baby',   emoji: '🐣', maxPoints: 45 },
-  { name: 'Junior', emoji: '🐾', maxPoints: 63 },
-  { name: 'Teen',   emoji: '💜', maxPoints: 90 },
-  { name: 'Adult',  emoji: '💎', maxPoints: 135 },
-  { name: 'Legend', emoji: '👑', maxPoints: 200 },
-];
-
-function getLevel(totalPoints) {
-  let accumulated = 0;
-  for (let i = 0; i < LEVELS.length; i++) {
-    if (totalPoints < accumulated + LEVELS[i].maxPoints) {
-      return { ...LEVELS[i], level: i };
-    }
-    accumulated += LEVELS[i].maxPoints;
-  }
-  return { ...LEVELS[LEVELS.length - 1], level: LEVELS.length - 1 };
-}
 
 async function getMaxPairs(supabase, userId) {
   // Check premium
@@ -444,7 +426,7 @@ export async function onRequestPost(context) {
         .from('user_settings')
         .select('telegram_user_id')
         .eq('telegram_user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (!existingSettings) {
         // Первый раз — определяем язык из Telegram
