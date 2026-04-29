@@ -116,6 +116,9 @@ export default function PairScreen() {
   const [skinsLoading, setSkinsLoading] = useState(false);
   const [premiumActive, setPremiumActive] = useState(false);
   const [premiumExpires, setPremiumExpires] = useState(null);
+  const [reviving, setReviving] = useState(false);
+  const [reviveError, setReviveError] = useState('');
+  const [recoveriesLeft, setRecoveriesLeft] = useState(5);
   const idleVideoRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
@@ -256,18 +259,6 @@ export default function PairScreen() {
     });
   }, [pair?.members]);
 
-
-    useEffect(() => {
-    if (!pair?.members) return;
-    pair.members.forEach(async (m) => {
-      try {
-        const res = await fetch(`${API}/avatar/${m.user_id}`);
-        const data = await res.json();
-        if (data.avatar_url) setAvatars(prev => ({ ...prev, [m.user_id]: data.avatar_url }));
-      } catch (e) {}
-    });
-  }, [pair?.members]);
-
   // ══════ Premium status ══════
   useEffect(() => {
     (async () => {
@@ -322,6 +313,18 @@ export default function PairScreen() {
     } catch (e) {}
     finally { setDeleting(false); }
   };
+
+    // Recoveries left
+  useEffect(() => {
+    if (!pairId) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API}/recoveries-left/${pairId}`);
+        const data = await res.json();
+        if (typeof data.remaining === 'number') setRecoveriesLeft(data.remaining);
+      } catch (e) {}
+    })();
+  }, [pairId, pair?.is_dead, pair?.streak_recoveries_used, pair?.last_recovery_month]);
 
 
   // ══════ Share to Story ══════
@@ -564,6 +567,49 @@ const handleShareInvite = () => {
     } catch (e) {}
   };
 
+    // Воскрешение питомца
+  const handleRevive = async () => {
+    if (reviving) return;
+    setReviving(true);
+    setReviveError('');
+    try {
+      const res = await fetch(`${API}/recover-streak`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, pairCode: pairId }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setReviveError(
+          data.error === 'Max 5 recoveries per month'
+            ? (lang === 'ru' ? 'Воскрешения закончились в этом месяце 😢' : 'No more revives this month 😢')
+            : data.error
+        );
+      } else {
+        haptic('heavy');
+        if (typeof data.remaining === 'number') setRecoveriesLeft(data.remaining);
+        await load();
+      }
+    } catch (e) {
+      setReviveError(lang === 'ru' ? 'Ошибка сети' : 'Network error');
+    } finally {
+      setReviving(false);
+    }
+  };
+
+  // Создание нового яйца (когда воскрешения закончились)
+  const handleCreateNewEgg = async () => {
+    try {
+      await fetch(`${API}/create-egg`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, pairCode: pairId }),
+      });
+      haptic('success');
+      await load();
+    } catch (e) {}
+  };
+
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
   const eggVideoSrc = EGG_VIDEOS[eggDay];
 
@@ -745,6 +791,61 @@ if (displaySkin && displaySkin.startsWith('level_')) {
             <button className="sk-menu-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
               🗑️ {lang === 'ru' ? 'Удалить пару' : 'Delete pair'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {pair.is_dead && hasPartner && (
+        <div className="sk-overlay" style={{ zIndex: 200 }}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 64, textAlign: 'center', marginBottom: 12 }}>💀</div>
+            <h3 style={{ textAlign: 'center', color: '#e53e3e' }}>
+              {lang === 'ru' ? 'Питомец умер' : 'Your pet has died'}
+            </h3>
+            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 8, lineHeight: 1.5 }}>
+              {lang === 'ru'
+                ? `Вы пропустили день. Серия ${pair.streak_days || 0} дн. под угрозой!`
+                : `You missed a day. Streak ${pair.streak_days || 0} days is at risk!`}
+            </p>
+            <p style={{ fontSize: 13, color: '#888', textAlign: 'center', marginBottom: 16 }}>
+              {lang === 'ru'
+                ? `Доступно воскрешений в этом месяце: ${recoveriesLeft}/5`
+                : `Revives left this month: ${recoveriesLeft}/5`}
+            </p>
+
+            {reviveError && (
+              <p style={{ color: '#e53e3e', fontSize: 13, textAlign: 'center', marginBottom: 12 }}>
+                {reviveError}
+              </p>
+            )}
+
+            {recoveriesLeft > 0 ? (
+              <button
+                onClick={handleRevive}
+                disabled={reviving}
+                className="sk-btn-primary"
+                style={{ background: '#9B72CF', marginBottom: 8 }}
+              >
+                {reviving
+                  ? (lang === 'ru' ? 'Воскрешаем...' : 'Reviving...')
+                  : `✨ ${lang === 'ru' ? 'Воскресить' : 'Revive'} (${recoveriesLeft})`}
+              </button>
+            ) : (
+              <>
+                <p style={{ fontSize: 13, color: '#888', textAlign: 'center', marginBottom: 12 }}>
+                  {lang === 'ru'
+                    ? 'Воскрешения закончились. Можно начать заново с яйца — серия обнулится.'
+                    : 'No revives left. You can start over with a new egg — streak will reset.'}
+                </p>
+                <button
+                  onClick={handleCreateNewEgg}
+                  className="sk-btn-primary"
+                  style={{ background: '#F5A623' }}
+                >
+                  🥚 {lang === 'ru' ? 'Создать новое яйцо' : 'Create new egg'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

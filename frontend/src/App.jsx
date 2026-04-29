@@ -78,7 +78,7 @@ function App() {
         }
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        if (isMobile && tg.isVersionAtLeast?.('8.0')) {
+        if (isMobile && tg.isVersionAtLeast?.('8.0') && !tg.isFullscreen) {
           try { tg.requestFullscreen(); } catch (e) { /* ignore */ }
           tg.onEvent?.('fullscreenFailed', () => {});
         }
@@ -99,6 +99,30 @@ function App() {
     localStorage.setItem('chumi_test_uid', testId);
     setTelegramUserId(testId);
   }, []);
+
+    // Обновляем таймзону на сервере при каждом запуске (но не чаще раза в сутки)
+  useEffect(() => {
+    if (!telegramUserId) return;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!tz) return;
+      const lastSent = localStorage.getItem('chumi_tz_sent_at');
+      const lastTz = localStorage.getItem('chumi_tz_value');
+      const now = Date.now();
+      if (lastTz === tz && lastSent && (now - parseInt(lastSent, 10)) < 86400000) return;
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (initData) headers['X-Telegram-Init-Data'] = initData;
+      fetch('/api/update-timezone', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ userId: telegramUserId, timezone: tz }),
+      }).then(() => {
+        localStorage.setItem('chumi_tz_sent_at', String(now));
+        localStorage.setItem('chumi_tz_value', tz);
+      }).catch(() => {});
+    } catch (e) {}
+  }, [telegramUserId, initData]);
 
   if (!telegramUserId) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 

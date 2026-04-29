@@ -26,13 +26,23 @@ export default function JoinPairModal({ userId, onClose, onJoined }) {
     setLoading(true);
     setError('');
     try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const res = await fetch('/api/join', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ userId: String(userId), code: trimmed, displayName, username }),
+        body: JSON.stringify({ userId: String(userId), code: trimmed, displayName, username, timezone }),
       });
       const data = await res.json();
-      if (data.error) { setError(data.error); return; }
+      if (data.error) {
+        const map = {
+          'Pair not found': t('pairNotFound') || 'Pair not found',
+          'Already in pair': t('alreadyInPair') || 'Already in pair',
+          'Pair full': t('pairFull') || 'Pair is full',
+          'Unauthorized': t('unauthorized') || 'Unauthorized',
+        };
+        setError(map[data.error] || data.error);
+        return;
+      }
       await refreshPairs();
       if (onJoined) onJoined(data.code || trimmed);
     } catch (e) { setError(e.message); }

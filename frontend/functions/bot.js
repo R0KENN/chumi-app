@@ -60,10 +60,9 @@ async function getMaxPairs(supabase, userId) {
     .from('user_slots')
     .select('extra_slots')
     .eq('telegram_user_id', userId)
-    .single();
+    .maybeSingle();
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
-
 
 // ─── Получить язык пользователя из базы ───
 async function getUserLang(supabase, userId) {
@@ -71,29 +70,17 @@ async function getUserLang(supabase, userId) {
     .from('user_settings')
     .select('lang')
     .eq('telegram_user_id', userId)
-    .single();
+    .maybeSingle();
   return data?.lang || 'ru';
 }
 
-// ─── Сохранить язык пользователя в базу ───
 async function setUserLang(supabase, userId, lang) {
-  const { data: existing } = await supabase
-    .from('user_settings')
-    .select('telegram_user_id')
-    .eq('telegram_user_id', userId)
-    .single();
-
-  if (existing) {
-    await supabase
-      .from('user_settings')
-      .update({ lang, updated_at: new Date().toISOString() })
-      .eq('telegram_user_id', userId);
-  } else {
-    await supabase
-      .from('user_settings')
-      .insert({ telegram_user_id: userId, lang });
-  }
+  await supabase.from('user_settings').upsert(
+    { telegram_user_id: userId, lang, updated_at: new Date().toISOString() },
+    { onConflict: 'telegram_user_id' }
+  );
 }
+
 
 // ─── Определить язык из Telegram при первом запуске ───
 function detectLangFromTelegram(from) {
@@ -245,6 +232,14 @@ export async function onRequestPost(context) {
   const { env, request } = context;
   const BOT_TOKEN = env.BOT_TOKEN;
 
+  // Проверка секрета вебхука Telegram
+  if (env.TELEGRAM_WEBHOOK_SECRET) {
+    const got = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+    if (got !== env.TELEGRAM_WEBHOOK_SECRET) {
+      return new Response('Forbidden', { status: 403 });
+    }
+  }
+
   try {
     const update = await request.json();
     const supabase = getSupabase(env);
@@ -312,14 +307,40 @@ export async function onRequestPost(context) {
       const payment = update.message.successful_payment;
       const userId = String(update.message.from.id);
       const lang = await getUserLang(supabase, userId);
-      const payload = JSON.parse(payment.invoice_payload);
+      const chargeId = payment.telegram_payment_charge_id || null;
+
+      let payload;
+      try {
+        payload = JSON.parse(payment.invoice_payload);
+      } catch (e) {
+        console.error('Bad payment payload:', payment.invoice_payload);
+        return new Response('OK');
+      }
+
+      // Idempotency: если такой charge уже обработан — просто отвечаем OK
+      if (chargeId) {
+        const { data: dup } = await supabase
+          .from('user_subscriptions')
+          .select('id')
+          .eq('telegram_payment_charge_id', chargeId)
+          .maybeSingle();
+        if (dup) return new Response('OK');
+      }
 
       // ── Skin purchase ──
       if (payload.type === 'skin' && payload.skinId) {
-        await supabase.from('user_skins').insert({
-          user_id: userId,
-          skin_id: payload.skinId,
-        }).catch(() => {});
+        const { data: alreadyOwned } = await supabase
+          .from('user_skins')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('skin_id', payload.skinId)
+          .maybeSingle();
+        if (!alreadyOwned) {
+          await supabase.from('user_skins').insert({
+            user_id: userId,
+            skin_id: payload.skinId,
+          });
+        }
         const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
         await sendMessage(env, update.message.chat.id,
           lang === 'ru' ? `✅ Наряд *${skinName}* разблокирован! 🎨` : `✅ Outfit *${skinName}* unlocked! 🎨`,
@@ -330,11 +351,22 @@ export async function onRequestPost(context) {
 
       // ── Extra slot ──
       if (payload.productId === 'extra_slot') {
-        const { data: existing } = await supabase.from('user_slots').select('extra_slots').eq('telegram_user_id', userId).single();
+        // Атомарный upsert через RPC был бы лучше, но оставляем select+update/insert,
+        // защищая дубль через unique-индекс на telegram_user_id
+        const { data: existing } = await supabase
+          .from('user_slots')
+          .select('extra_slots')
+          .eq('telegram_user_id', userId)
+          .maybeSingle();
         if (existing) {
-          await supabase.from('user_slots').update({ extra_slots: existing.extra_slots + 1 }).eq('telegram_user_id', userId);
+          await supabase
+            .from('user_slots')
+            .update({ extra_slots: (existing.extra_slots || 0) + 1 })
+            .eq('telegram_user_id', userId);
         } else {
-          await supabase.from('user_slots').insert({ telegram_user_id: userId, extra_slots: 1 });
+          await supabase
+            .from('user_slots')
+            .insert({ telegram_user_id: userId, extra_slots: 1 });
         }
         await sendMessage(env, update.message.chat.id, T[lang].slotBought, webAppButton);
         return new Response('OK');
@@ -343,9 +375,23 @@ export async function onRequestPost(context) {
       // ── Premium monthly ──
       if (payload.productId === 'premium_monthly') {
         const now = new Date();
-        const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30 дней
 
-        // Деактивируем старые подписки
+        // Берём максимум(текущая_активная_подписка.expires_at, now) + 30 дней
+        const { data: currentSub } = await supabase
+          .from('user_subscriptions')
+          .select('expires_at')
+          .eq('telegram_user_id', userId)
+          .eq('status', 'active')
+          .order('expires_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const baseTs = (currentSub && new Date(currentSub.expires_at) > now)
+          ? new Date(currentSub.expires_at).getTime()
+          : now.getTime();
+        const expiresAt = new Date(baseTs + 30 * 24 * 60 * 60 * 1000);
+
+        // Деактивируем все старые активные
         await supabase
           .from('user_subscriptions')
           .update({ status: 'expired', updated_at: now.toISOString() })
@@ -357,7 +403,7 @@ export async function onRequestPost(context) {
           telegram_user_id: userId,
           plan: 'premium_monthly',
           status: 'active',
-          telegram_payment_charge_id: payment.telegram_payment_charge_id || null,
+          telegram_payment_charge_id: chargeId,
           starts_at: now.toISOString(),
           expires_at: expiresAt.toISOString(),
         });

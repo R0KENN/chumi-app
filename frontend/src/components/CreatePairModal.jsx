@@ -25,10 +25,11 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
     setLoading(true);
     setError('');
     try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const res = await fetch('/api/create', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ userId: String(userId), displayName, username }),
+        body: JSON.stringify({ userId: String(userId), displayName, username, timezone }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); return; }

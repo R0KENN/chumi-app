@@ -79,6 +79,10 @@ const strings = {
     shareCode: 'Send the code to your partner:',
     open: 'Open',
     createPairDesc: 'A code will be generated for your partner.',
+        pairNotFound: 'Pair not found',
+    alreadyInPair: 'You are already in this pair',
+    pairFull: 'Pair is full',
+    unauthorized: 'Unauthorized',
   },
   ru: {
     loading: 'Загрузка…',
@@ -157,6 +161,10 @@ const strings = {
     shareCode: 'Отправь код партнёру:',
     open: 'Открыть',
     createPairDesc: 'Будет сгенерирован код для партнёра.',
+        pairNotFound: 'Пара не найдена',
+    alreadyInPair: 'Ты уже в этой паре',
+    pairFull: 'В паре уже 2 участника',
+    unauthorized: 'Не авторизован',
   },
 };
 
