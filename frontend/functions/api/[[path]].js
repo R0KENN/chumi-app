@@ -978,28 +978,10 @@ if (request.method === 'POST' && path === '/api/prepare-share') {
   const userId = extractUserId(request, env, body.userId);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const pairCode = body.pairCode;
   const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
-  const joinLink = `https://t.me/${botUsername}?start=join_${pairCode}`;
+  const botLink = `https://t.me/${botUsername}`;
 
-  // Получаем данные пары для динамического текста
-  const { data: pair } = await supabase
-    .from('pairs').select('pet_name, streak_days, growth_points')
-    .eq('code', pairCode).single();
-
-  const streak = pair?.streak_days || 0;
-  const petName = pair?.pet_name || 'Chumi';
-
-  let messageText;
-  if (streak >= 30) {
-    messageText = `🔥 Серия ${streak} дней в Chumi!\n\n🐾 ${petName} растёт каждый день — присоединяйся!\n\n${joinLink}`;
-  } else if (streak >= 7) {
-    messageText = `🐾 Мы растим ${petName} уже ${streak} дней подряд в Chumi!\n\nПрисоединяйся 👇\n\n${joinLink}`;
-  } else if (streak >= 1) {
-    messageText = `🐾 Заведи питомца в Chumi и расти его вместе с другом!\n\nНаша серия: ${streak} дн. 🔥\n\n${joinLink}`;
-  } else {
-    messageText = `🐾 Chumi — заведи виртуального питомца и расти его вместе с другом!\n\nВыполняй задания каждый день и открывай новые образы.\n\n${joinLink}`;
-  }
+  const messageText = `🐾 Chumi — заведи виртуального питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые образы.\n\nПопробуй 👇`;
 
   const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
     method: 'POST',
@@ -1008,16 +990,16 @@ if (request.method === 'POST' && path === '/api/prepare-share') {
       user_id: parseInt(userId),
       result: {
         type: 'article',
-        id: 'share_' + pairCode + '_' + Date.now(),
+        id: 'share_app_' + Date.now(),
         title: 'Chumi — Вырасти питомца! 🐾',
         input_message_content: {
           message_text: messageText,
         },
-        description: 'Нажми чтобы пригласить в пару 🐾',
+        description: 'Заведи питомца и расти вместе с другом 🐾',
         reply_markup: {
           inline_keyboard: [[{
             text: '🐾 Chumi',
-            url: joinLink,
+            url: botLink,
           }]],
         },
       },
@@ -1034,6 +1016,7 @@ if (request.method === 'POST' && path === '/api/prepare-share') {
   }
   return json({ error: 'Failed to prepare message', details: data }, 500);
 }
+
 
     // ═══════════════════════════════════════
     // GET /api/user-lang/:userId

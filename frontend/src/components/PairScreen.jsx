@@ -337,30 +337,29 @@ export default function PairScreen() {
   };
 
   // ══════ Share Message (prepared inline) ══════
-  const handleShareMessage = async () => {
-    if (!tg?.shareMessage) {
-      handleShareInvite();
-      return;
-    }
-    try {
-      const res = await fetch(`${API}/prepare-share`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ pairCode: pairId, userId }),
+const handleShareMessage = async () => {
+  if (!tg?.shareMessage) {
+    handleShareInvite();
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/prepare-share`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ userId }),
+    });
+    const data = await res.json();
+    if (data.prepared_message_id) {
+      tg.shareMessage(data.prepared_message_id, (ok) => {
+        if (ok) haptic('success');
       });
-      const data = await res.json();
-      if (data.prepared_message_id) {
-        tg.shareMessage(data.prepared_message_id, (ok) => {
-          // FIX #8: используем notificationOccurred вместо impactOccurred
-          if (ok) haptic('success');
-        });
-      } else {
-        handleShareInvite();
-      }
-    } catch (e) {
+    } else {
       handleShareInvite();
     }
-  };
+  } catch (e) {
+    handleShareInvite();
+  }
+};
 
   if (loading) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 
@@ -532,29 +531,16 @@ export default function PairScreen() {
   };
 
 const handleShareInvite = () => {
-  const botLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-  
-  // Копируем ссылку в буфер
+  const botLink = `https://t.me/${BOT_USERNAME}`;
+
   if (navigator.clipboard) {
     navigator.clipboard.writeText(botLink);
     haptic('success');
   }
 
-  // Открываем шаринг в группы/каналы
-  const streak = pair?.streak_days || 0;
-  const name = pair?.pet_name || 'Chumi';
-  const lvl = getLevel(pair?.growth_points || 0);
-
-  let text;
-  if (lang === 'ru') {
-    if (streak >= 7) text = `🐾 Мы растим ${name} уже ${streak} дней в Chumi!\n\n${botLink}`;
-    else if (streak >= 1) text = `🐾 Заведи питомца в Chumi! Серия: ${streak} дн. 🔥\n\n${botLink}`;
-    else text = `🐾 Chumi — заведи питомца и расти его с другом!\n\n${botLink}`;
-  } else {
-    if (streak >= 7) text = `🐾 Growing ${name} for ${streak} days in Chumi!\n\n${botLink}`;
-    else if (streak >= 1) text = `🐾 Get a pet in Chumi! ${streak} day streak 🔥\n\n${botLink}`;
-    else text = `🐾 Chumi — get a pet and grow it with a friend!\n\n${botLink}`;
-  }
+  const text = lang === 'ru'
+    ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые образы.\n\nПопробуй 👇\n${botLink}`
+    : `🐾 Chumi — get a pet and grow it with a friend!\n\nComplete tasks daily, keep your streak and unlock new outfits.\n\nTry it 👇\n${botLink}`;
 
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botLink)}&text=${encodeURIComponent(text)}`;
   if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank');
