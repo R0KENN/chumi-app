@@ -927,112 +927,68 @@ if (activeSkin && activeSkin.startsWith('level_')) {
 
       {/* Outfits popup */}
 {showOutfits && (
-  <div className="sk-overlay" onClick={() => setShowOutfits(false)}>
-    <div className="sk-popup sk-popup-tall" onClick={e => e.stopPropagation()} style={{
-      display: 'flex', flexDirection: 'column', maxHeight: '92vh', padding: 0, overflow: 'hidden',
+  <div style={{
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000,
+    background: '#f5f5f5',
+    display: 'flex', flexDirection: 'column',
+    animation: 'slideUp 0.3s ease-out',
+  }}>
+
+    {/* ── Предпросмотр ── */}
+    <div style={{
+      background: `linear-gradient(180deg, ${bgColors[0]} 0%, ${bgColors[1]} 100%)`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '40px 0 20px', minHeight: 240, position: 'relative',
+      flexShrink: 0,
+    }}>
+      <button onClick={() => setShowOutfits(false)} style={{
+        position: 'absolute', top: 16, left: 16, background: 'rgba(0,0,0,0.15)',
+        border: 'none', borderRadius: '50%', width: 36, height: 36,
+        color: '#fff', fontSize: 20, cursor: 'pointer', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+      }}>‹</button>
+      <video autoPlay loop muted playsInline key={`preview-${previewSkin || 'default'}`} style={{
+        width: 200, height: 260, objectFit: 'contain',
+      }}>
+        <source src={`/pets/${(() => {
+          const ps = previewSkin;
+          if (!ps) return lv.pet;
+          if (ps.startsWith('level_')) {
+            const n = parseInt(ps.split('_')[1]);
+            return LEVELS[n]?.pet || lv.pet;
+          }
+          return `axolotl_${ps.charAt(0).toUpperCase() + ps.slice(1)}`;
+        })()}.webm`} type="video/webm" />
+      </video>
+    </div>
+
+    {/* ── Нижняя панель ── */}
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      borderRadius: '20px 20px 0 0', background: '#fff',
+      marginTop: -16, overflow: 'hidden',
     }}>
 
-      {/* ── Предпросмотр ── */}
+      {/* Табы */}
       <div style={{
-        background: `linear-gradient(180deg, ${bgColors[0]} 0%, ${bgColors[1]} 100%)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '24px 0 16px', minHeight: 220, position: 'relative',
-      }}>
-        <button onClick={() => setShowOutfits(false)} style={{
-          position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.15)',
-          border: 'none', borderRadius: '50%', width: 32, height: 32,
-          color: '#fff', fontSize: 18, cursor: 'pointer', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-        }}>✕</button>
-        <video autoPlay loop muted playsInline key={`preview-${previewSkin || 'default'}`} style={{
-          width: 200, height: 260, objectFit: 'contain',
-        }}>
-          <source src={`/pets/${(() => {
-            const ps = previewSkin;
-            if (!ps) return lv.pet;
-            if (ps.startsWith('level_')) {
-              const n = parseInt(ps.split('_')[1]);
-              return LEVELS[n]?.pet || lv.pet;
-            }
-            return `axolotl_${ps.charAt(0).toUpperCase() + ps.slice(1)}`;
-          })()}.webm`} type="video/webm" />
-        </video>
-      </div>
-
-      {/* ── Кнопка применить ── */}
-      {previewSkin !== undefined && previewSkin !== pair.active_skin && (() => {
-        const isLevelSkin = previewSkin && previewSkin.startsWith('level_');
-        const isDefaultCurrent = previewSkin === null && pair.active_skin !== null;
-        const canApply = isDefaultCurrent || isLevelSkin ||
-          (!isLevelSkin && previewSkin && (ownedSkins.includes(previewSkin) || premiumActive));
-        const isBee = previewSkin === 'bee' && !ownedSkins.includes('bee') && !premiumActive;
-
-        if (isBee) return (
-          <div style={{ padding: '8px 16px', display: 'flex', gap: 8 }}>
-            {referralCount >= 2 ? (
-              <button onClick={() => { handleClaimBee(); }} style={{
-                flex: 1, padding: '12px 0', borderRadius: 14, border: 'none',
-                background: '#FF9800', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>{lang === 'ru' ? 'Забрать!' : 'Claim!'}</button>
-            ) : (
-              <button onClick={handleShareInvite} style={{
-                flex: 1, padding: '12px 0', borderRadius: 14, border: 'none',
-                background: '#9B72CF', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>📨 {lang === 'ru' ? `Пригласить (${referralCount}/2)` : `Invite (${referralCount}/2)`}</button>
-            )}
-          </div>
-        );
-
-        if (!canApply && previewSkin) {
-          const skinData = SKINS.find(s => s.id === previewSkin);
-          if (skinData && skinData.price > 0) return (
-            <div style={{ padding: '8px 16px' }}>
-              <button onClick={() => handleBuySkin(previewSkin)} style={{
-                width: '100%', padding: '12px 0', borderRadius: 14, border: 'none',
-                background: accentColor, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>⭐ {skinData.price} Stars</button>
-            </div>
-          );
-        }
-
-        if (canApply) return (
-          <div style={{ padding: '8px 16px' }}>
-            <button onClick={() => {
-              const skinToSet = isDefaultCurrent ? null
-                : (isLevelSkin && parseInt(previewSkin.split('_')[1]) === lv.idx) ? null
-                : previewSkin;
-              handleSetSkin(skinToSet);
-              setShowOutfits(false);
-            }} style={{
-              width: '100%', padding: '12px 0', borderRadius: 14, border: 'none',
-              background: accentColor, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-            }}>{lang === 'ru' ? 'Применить' : 'Apply'}</button>
-          </div>
-        );
-
-        return null;
-      })()}
-
-      {/* ── Табы ── */}
-      <div style={{
-        display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.08)',
-        padding: '0 16px',
+        display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.06)',
+        padding: '0 16px', flexShrink: 0,
       }}>
         <button onClick={() => setOutfitTab('levels')} style={{
-          flex: 1, padding: '12px 0', border: 'none', background: 'none', cursor: 'pointer',
+          flex: 1, padding: '14px 0', border: 'none', background: 'none', cursor: 'pointer',
           fontSize: 13, fontWeight: 600,
-          color: outfitTab === 'levels' ? accentColor : '#999',
+          color: outfitTab === 'levels' ? accentColor : '#aaa',
           borderBottom: outfitTab === 'levels' ? `2px solid ${accentColor}` : '2px solid transparent',
         }}>🎖 {lang === 'ru' ? 'Уровни' : 'Levels'}</button>
         <button onClick={() => setOutfitTab('shop')} style={{
-          flex: 1, padding: '12px 0', border: 'none', background: 'none', cursor: 'pointer',
+          flex: 1, padding: '14px 0', border: 'none', background: 'none', cursor: 'pointer',
           fontSize: 13, fontWeight: 600,
-          color: outfitTab === 'shop' ? accentColor : '#999',
+          color: outfitTab === 'shop' ? accentColor : '#aaa',
           borderBottom: outfitTab === 'shop' ? `2px solid ${accentColor}` : '2px solid transparent',
         }}>🛍 {lang === 'ru' ? 'Магазин' : 'Shop'}</button>
       </div>
 
-      {/* ── Сетка скинов ── */}
+      {/* Сетка */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {outfitTab === 'levels' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
@@ -1046,9 +1002,9 @@ if (activeSkin && activeSkin.startsWith('level_')) {
                   if (!skin.unlocked) return;
                   setPreviewSkin(skin.level === lv.idx ? null : `level_${skin.level}`);
                 }} style={{
-                  textAlign: 'center', padding: 8, borderRadius: 14,
+                  textAlign: 'center', padding: 8, borderRadius: 16,
                   border: isPreviewing ? `2px solid ${accentColor}` : '2px solid transparent',
-                  background: skin.unlocked ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.04)',
+                  background: skin.unlocked ? '#f8f8fa' : 'rgba(0,0,0,0.03)',
                   opacity: skin.unlocked ? 1 : 0.4,
                   cursor: skin.unlocked ? 'pointer' : 'default',
                   position: 'relative',
@@ -1056,7 +1012,7 @@ if (activeSkin && activeSkin.startsWith('level_')) {
                   <video autoPlay loop muted playsInline style={{ width: '100%', height: 70, objectFit: 'contain' }}>
                     <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
                   </video>
-                  <div style={{ fontSize: 10, fontWeight: 600, marginTop: 4 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, marginTop: 4, color: '#333' }}>
                     {lang === 'ru' ? skin.nameRu : skin.name}
                   </div>
                   {!skin.unlocked && (
@@ -1086,25 +1042,21 @@ if (activeSkin && activeSkin.startsWith('level_')) {
                 const isPreviewing = previewSkin === skin.id;
                 return (
                   <div key={skin.id} onClick={() => setPreviewSkin(skin.id)} style={{
-                    textAlign: 'center', padding: 8, borderRadius: 14,
+                    textAlign: 'center', padding: 8, borderRadius: 16,
                     border: isPreviewing ? `2px solid ${accentColor}` : '2px solid transparent',
-                    background: 'rgba(255,255,255,0.9)',
+                    background: '#f8f8fa',
                     cursor: 'pointer', position: 'relative',
                   }}>
                     <video autoPlay loop muted playsInline style={{ width: '100%', height: 70, objectFit: 'contain' }}>
                       <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
                     </video>
-                    <div style={{ fontSize: 10, fontWeight: 600, marginTop: 4 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, marginTop: 4, color: '#333' }}>
                       {lang === 'ru' ? skin.nameRu : skin.name}
                     </div>
                     {owned ? (
-                      <div style={{ fontSize: 9, color: '#4CAF50', fontWeight: 600 }}>
-                        {lang === 'ru' ? 'Есть' : 'Owned'}
-                      </div>
+                      <div style={{ fontSize: 9, color: '#4CAF50', fontWeight: 600 }}>{lang === 'ru' ? 'Есть' : 'Owned'}</div>
                     ) : skin.referralReward ? (
-                      <div style={{ fontSize: 9, color: '#FF9800' }}>
-                        📨 {referralCount}/2
-                      </div>
+                      <div style={{ fontSize: 9, color: '#FF9800' }}>📨 {referralCount}/2</div>
                     ) : (
                       <div style={{ fontSize: 9, color: '#999' }}>⭐ {skin.price}</div>
                     )}
@@ -1121,6 +1073,64 @@ if (activeSkin && activeSkin.startsWith('level_')) {
             </div>
           )
         )}
+      </div>
+
+      {/* Кнопка действия */}
+      <div style={{ padding: '12px 16px 24px', flexShrink: 0 }}>
+        {(() => {
+          const isLevelSkin = previewSkin && previewSkin.startsWith('level_');
+          const isDefaultCurrent = previewSkin === null && pair.active_skin !== null;
+          const isSameAsCurrent = previewSkin === pair.active_skin ||
+            (previewSkin === null && pair.active_skin === null) ||
+            (isLevelSkin && parseInt(previewSkin.split('_')[1]) === lv.idx && pair.active_skin === null);
+          const canApply = isDefaultCurrent || isLevelSkin ||
+            (!isLevelSkin && previewSkin && (ownedSkins.includes(previewSkin) || premiumActive));
+          const isBee = previewSkin === 'bee' && !ownedSkins.includes('bee') && !premiumActive;
+
+          if (isSameAsCurrent) return (
+            <button disabled style={{
+              width: '100%', padding: '14px 0', borderRadius: 16, border: 'none',
+              background: '#e0e0e0', color: '#999', fontSize: 15, fontWeight: 600,
+            }}>{lang === 'ru' ? 'Уже надето' : 'Already wearing'}</button>
+          );
+
+          if (isBee) return referralCount >= 2 ? (
+            <button onClick={handleClaimBee} style={{
+              width: '100%', padding: '14px 0', borderRadius: 16, border: 'none',
+              background: '#FF9800', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+            }}>{lang === 'ru' ? 'Забрать!' : 'Claim!'}</button>
+          ) : (
+            <button onClick={handleShareInvite} style={{
+              width: '100%', padding: '14px 0', borderRadius: 16, border: 'none',
+              background: '#9B72CF', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+            }}>📨 {lang === 'ru' ? `Пригласить друзей (${referralCount}/2)` : `Invite friends (${referralCount}/2)`}</button>
+          );
+
+          if (!canApply && previewSkin) {
+            const skinData = SKINS.find(s => s.id === previewSkin);
+            if (skinData && skinData.price > 0) return (
+              <button onClick={() => handleBuySkin(previewSkin)} style={{
+                width: '100%', padding: '14px 0', borderRadius: 16, border: 'none',
+                background: accentColor, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+              }}>⭐ {lang === 'ru' ? `Купить за ${skinData.price} Stars` : `Buy for ${skinData.price} Stars`}</button>
+            );
+          }
+
+          if (canApply) return (
+            <button onClick={() => {
+              const skinToSet = isDefaultCurrent ? null
+                : (isLevelSkin && parseInt(previewSkin.split('_')[1]) === lv.idx) ? null
+                : previewSkin;
+              handleSetSkin(skinToSet);
+              setShowOutfits(false);
+            }} style={{
+              width: '100%', padding: '14px 0', borderRadius: 16, border: 'none',
+              background: accentColor, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+            }}>{lang === 'ru' ? 'Применить' : 'Apply'}</button>
+          );
+
+          return null;
+        })()}
       </div>
     </div>
   </div>
