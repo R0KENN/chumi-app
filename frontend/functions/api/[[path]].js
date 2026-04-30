@@ -735,12 +735,7 @@ export async function onRequest(context) {
       const isPartner = (targetPairs || []).some(p => callerCodes.has(p.pair_code));
       if (!isPartner) return json({ error: 'Can only notify your partner' }, 403);
 
-      const { data: ps } = await supabase
-        .from('user_settings').select('lang')
-        .eq('telegram_user_id', targetUserId).maybeSingle();
-      const tLang = ps?.lang || 'ru';
-      const defaultMsg = tLang === 'ru' ? '🔔 Напоминание от Chumi' : '🔔 Reminder from Chumi';
-            // Rate-limit: не чаще 1 уведомления в час одному партнёру
+      // Rate-limit: не чаще 1 уведомления в час одному партнёру
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { data: recent } = await supabase
         .from('notification_log')
@@ -752,8 +747,15 @@ export async function onRequest(context) {
       if (recent) {
         return json({ error: 'Too many notifications', retryAfter: 3600 }, 429);
       }
+
+      const { data: ps } = await supabase
+        .from('user_settings').select('lang')
+        .eq('telegram_user_id', targetUserId).maybeSingle();
+      const tLang = ps?.lang || 'ru';
+      const defaultMsg = tLang === 'ru' ? '🔔 Напоминание от Chumi' : '🔔 Reminder from Chumi';
+
       await sendTelegramMessage(env, targetUserId, defaultMsg);
-            await supabase.from('notification_log').insert({
+      await supabase.from('notification_log').insert({
         sender_user_id: userId,
         target_user_id: targetUserId,
         sent_at: new Date().toISOString(),
@@ -787,11 +789,12 @@ export async function onRequest(context) {
       if (pair.last_recovery_month !== currentMonth) used = 0;
       if (used >= 5) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
 
+      const today = getTodayDate(tz);
       const { data: updated } = await supabase.from('pairs').update({
         is_dead: false,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
-        last_streak_date: yesterday,
+        last_streak_date: today,
       }).eq('code', code).select().single();
 
       return json({
@@ -799,7 +802,7 @@ export async function onRequest(context) {
         remaining: 5 - (used + 1),
         streak_days: updated?.streak_days ?? pair.streak_days,
         is_dead: false,
-        last_streak_date: yesterday,
+        last_streak_date: today,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
       });
@@ -1099,34 +1102,19 @@ export async function onRequest(context) {
           await supabase.from('pairs').update({ is_dead: true }).eq('code', pair.code);
           killed++;
 
-                  // Уведомить обоих партнёров о смерти питомца
-        const { data: deadMembers } = await supabase
-          .from('pair_users').select('user_id').eq('pair_code', pair.code);
-        for (const dm of (deadMembers || [])) {
-          const { data: ps } = await supabase
-            .from('user_settings').select('lang')
-            .eq('telegram_user_id', dm.user_id).maybeSingle();
-          const dLang = ps?.lang || 'ru';
-          const petName = pair.pet_name || 'Chumi';
-          const msg = dLang === 'ru'
-            ? `💀 *${petName} умер!*\n\nВы пропустили день. Зайдите в приложение и нажмите «Воскресить» — серия сохранится.\nОсталось воскрешений в этом месяце: до 5.`
-            : `💀 *${petName} died!*\n\nYou missed a day. Open the app and tap "Revive" — your streak will be kept.\nUp to 5 revivals per month available.`;
-          await sendTelegramMessage(env, dm.user_id, msg);
-        }
-
-
-          const { data: members } = await supabase
+          // Уведомить обоих партнёров о смерти питомца
+          const { data: deadMembers } = await supabase
             .from('pair_users').select('user_id').eq('pair_code', pair.code);
-          for (const m of (members || [])) {
+          for (const dm of (deadMembers || [])) {
             const { data: ps } = await supabase
               .from('user_settings').select('lang')
-              .eq('telegram_user_id', m.user_id).maybeSingle();
-            const lng = ps?.lang || 'ru';
-            const petName = pair.pet_name || (lng === 'ru' ? 'Питомец' : 'Pet');
-            const text = lng === 'ru'
-              ? `💀 *${petName}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.`
-              : `💀 *${petName}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue your streak.`;
-            await sendTelegramMessage(env, m.user_id, text);
+              .eq('telegram_user_id', dm.user_id).maybeSingle();
+            const dLang = ps?.lang || 'ru';
+            const petName = pair.pet_name || (dLang === 'ru' ? 'Питомец' : 'Pet');
+            const text = dLang === 'ru'
+              ? `💀 *${petName}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.\nОсталось воскрешений в этом месяце: до 5.`
+              : `💀 *${petName}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue.\nUp to 5 revivals per month available.`;
+            await sendTelegramMessage(env, dm.user_id, text);
           }
         }
       }
@@ -1147,7 +1135,7 @@ export async function onRequest(context) {
         const { data: members } = await supabase
           .from('pair_users').select('user_id').eq('pair_code', pair.code);
 
-        const isOldEnough = !pair.created_at || pair.created_at < fiveDaysAgo;
+        const isOldEnough = pair.created_at && pair.created_at < fiveDaysAgo;
         if ((!members || members.length < 2) && isOldEnough) {
           await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
           await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
@@ -1298,20 +1286,15 @@ export async function onRequest(context) {
       if (skinId) {
         const levelMatch = skinId.match(/^level_(\d+)$/);
         if (levelMatch) {
+          // Уровневый скин — проверяем достигнут ли уровень
           const requiredLevel = parseInt(levelMatch[1]);
           const { data: pairData } = await supabase
             .from('pairs').select('growth_points').eq('code', pairCode).single();
           if (!pairData) return json({ error: 'Pair not found' }, 404);
-
-          let acc = 0;
-          let currentLevel = 0;
-          for (let i = 0; i < LEVELS.length; i++) {
-            if ((pairData.growth_points || 0) < acc + LEVELS[i].maxPoints) break;
-            acc += LEVELS[i].maxPoints;
-            currentLevel = i + 1;
-          }
+          const currentLevel = getLevel(pairData.growth_points || 0).level;
           if (currentLevel < requiredLevel) return json({ error: 'Level not reached' }, 403);
         } else {
+          // Обычный скин — проверяем владение или премиум
           const premium = await isPremium(supabase, userId);
           if (!premium) {
             const { data: owned } = await supabase
@@ -1368,7 +1351,10 @@ export async function onRequest(context) {
         ? body.timezone : null;
       if (!tz) return json({ error: 'Invalid timezone' }, 400);
 
-      await supabase.from('pair_users').update({ timezone: tz }).eq('user_id', userId);
+      await supabase.from('pair_users')
+        .update({ timezone: tz })
+        .eq('user_id', userId)
+        .neq('timezone', tz);
 
       const { data: myPairs } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);

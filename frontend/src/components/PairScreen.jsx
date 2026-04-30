@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
-import { usePairs } from '../context/PairsContext';
-import { getInitData } from '../context/PairsContext';
+import { usePairs, getInitData } from '../context/PairsContext';
+
 
 const API = '/api';
 const ADMIN_IDS = ['713156118'];
@@ -95,7 +95,6 @@ export default function PairScreen() {
   const [showLevels, setShowLevels] = useState(false);
   const [petAnim, setPetAnim] = useState(false);
   const [avatars, setAvatars] = useState({});
-  const [showSoon, setShowSoon] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [showMyPairs, setShowMyPairs] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
@@ -314,9 +313,10 @@ export default function PairScreen() {
     finally { setDeleting(false); }
   };
 
-    // Recoveries left
+  // Recoveries left
   useEffect(() => {
     if (!pairId) return;
+    setRecoveriesLeft(5); // сброс на дефолт при смене пары
     (async () => {
       try {
         const res = await fetch(`${API}/recoveries-left/${pairId}`);
@@ -412,6 +412,7 @@ const handleShareMessage = async () => {
 
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
+  const isDeadBlocked = pair.is_dead && hasPartner;
   if (!addToHomeDone) {
     allTasks.push({ key: 'add_to_home', points: 3, ru: 'Добавить на главный экран', en: 'Add to Home Screen', icon: '📌', action: 'add_home', completed: false, oneTime: true });
   }
@@ -420,7 +421,7 @@ const handleShareMessage = async () => {
 
   // ══════ handleTask ══════
   const handleTask = (task) => {
-    if (task.completed || completing) return;
+    if (task.completed || completing || isDeadBlocked) return;
     haptic('light');
     if (task.action === 'share') { handleShareTask(task); return; }
     if (task.action === 'add_home') {
@@ -476,7 +477,7 @@ const handleShareMessage = async () => {
 
 
   const handlePetClick = () => {
-    if (!hasPartner) return;
+    if (!hasPartner || isDeadBlocked) return;
     if (isEgg) {
       haptic('medium');
       setPetAnim(true);
@@ -497,7 +498,10 @@ const handleShareMessage = async () => {
       tapVideoRef.current.onended = () => { clearTimeout(fallbackTimer); setPetTapped(false); };
     }
     const petTask = mergedTasks.find(t => t.key === 'pet_touch');
-    if (petTask && !petTask.completed) handleTask(petTask);
+    if (petTask && !petTask.completed && !completing) {
+      setCompleting(true);
+      completeTask('pet_touch').then(() => load()).finally(() => setCompleting(false));
+    }
   };
 
   const handleRename = async () => {
