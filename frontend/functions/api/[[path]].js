@@ -170,16 +170,6 @@ function extractUserId(request, env, bodyUserId, opts = {}) {
 }
 
 
-function extractUserId(request, env, bodyUserId) {
-  const initData = request.headers.get('X-Telegram-Init-Data');
-  if (initData) {
-    const validated = validateInitData(initData, env.BOT_TOKEN);
-    if (validated) return validated.userId;
-  }
-  if (env.ALLOW_DEV_AUTH === '1' && bodyUserId) return String(bodyUserId);
-  return null;
-}
-
 function isCronAuthorized(request, env) {
   if (!env.CRON_SECRET) return false;
   const auth = request.headers.get('Authorization') || '';
@@ -877,7 +867,6 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === '/api/create-invoice') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
-      const userId = extractUserId(request, env, body.userId);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 
       const productId = body.productId;
@@ -1292,7 +1281,6 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === '/api/buy-skin') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
-      const userId = extractUserId(request, env, body.userId);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 
       const skinId = body.skinId;
