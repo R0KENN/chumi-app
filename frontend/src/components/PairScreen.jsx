@@ -16,9 +16,6 @@ const EGG_VIDEOS = {
   3: '/pets/egg_3.webm',
 };
 
-// LEVELS импортируется из общего модуля — не дублируем
-import { LEVELS, getLevel } from '../_levels-meta.js';
-
 
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
