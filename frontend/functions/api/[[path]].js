@@ -94,6 +94,9 @@ function json(data, status = 200, request = null) {
 }
 
 async function isPremium(supabase, userId) {
+  // Админам премиум выдаётся всегда
+  if (ADMIN_IDS.includes(String(userId))) return true;
+
   const { data } = await supabase
     .from('user_subscriptions')
     .select('id, expires_at')
@@ -645,6 +648,10 @@ export async function onRequest(context) {
 
       if (partnerIds.length > 0) {
         const partnerId = partnerIds[0];
+
+        // Проверяем, выполнил ли партнёр ту же задачу сегодня
+        // (после того как мы уже вставили свою запись — поэтому даже при
+        // одновременном заходе хотя бы один из двух запросов увидит обоих)
         const { data: partnerDone } = await supabase
           .from('daily_tasks').select('id')
           .eq('pair_code', code)
@@ -663,8 +670,7 @@ export async function onRequest(context) {
             const newPoints = (pair.growth_points || 0) + points;
             const updates = { growth_points: newPoints };
 
-            // streak_days растёт по «общему» полю last_pair_streak_date,
-            // которое отмечается ТОЛЬКО когда оба зашли в один день
+            // streak растёт ТОЛЬКО для daily_open и только один раз в день
             if (taskKey === 'daily_open' && pair.last_pair_streak_date !== today) {
               const prev = pair.last_pair_streak_date;
               if (!prev) {
@@ -677,10 +683,13 @@ export async function onRequest(context) {
                   updates.streak_days = (pair.streak_days || 0) + 1;
                 } else if (diffDays > 1) {
                   updates.streak_days = 1;
+                } else {
+                  // diffDays === 0 — этого не должно случиться (есть проверка !== today выше),
+                  // но на всякий случай не трогаем streak
+                  updates.streak_days = pair.streak_days || 0;
                 }
               }
               updates.last_pair_streak_date = today;
-              // дублируем в last_streak_date чтобы старая логика была согласована
               updates.last_streak_date = today;
 
               if (!pair.hatched && newPoints >= LEVELS[0].maxPoints) {
@@ -1373,6 +1382,12 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       const userId = path.split('/')[3];
       const premium = await isPremium(supabase, userId);
       let expiresAt = null;
+
+      // У админа премиум вечный — отдаём дату далеко в будущем
+      if (ADMIN_IDS.includes(String(userId))) {
+        return json({ premium: true, expires_at: '2099-12-31T23:59:59Z' });
+      }
+
       if (premium) {
         const { data } = await supabase
           .from('user_subscriptions')

@@ -239,6 +239,12 @@ export default function PairScreen() {
 
   // ══════ Premium status ══════
   useEffect(() => {
+    // Админ всегда премиум — не ждём ответа сервера
+    if (isAdmin) {
+      setPremiumActive(true);
+      setPremiumExpires('2099-12-31T23:59:59Z');
+      return;
+    }
     (async () => {
       try {
         const res = await fetch(`${API}/premium/${userId}`);
@@ -247,7 +253,7 @@ export default function PairScreen() {
         setPremiumExpires(data.expires_at || null);
       } catch (e) {}
     })();
-  }, [userId]);
+  }, [userId, isAdmin]);
 
   const loadRankingAvatars = useCallback((entries) => {
     const ids = new Set();
