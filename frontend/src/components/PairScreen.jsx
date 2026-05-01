@@ -449,48 +449,78 @@ const handleShareMessage = async () => {
   };
 
   // ══════ handleShareTask ══════
+  // send_msg     → открываем диалог отправки сообщения партнёру с готовым текстом
+  // send_sticker → открываем чат партнёра, чтобы пользователь сам отправил стикер
+  // send_media   → открываем чат партнёра, чтобы пользователь сам отправил фото/видео
+  // Задание засчитывается ТОЛЬКО когда Mini App теряет видимость (пользователь
+  // действительно ушёл выполнять задание), а не сразу по нажатию.
   const handleShareTask = async (task) => {
     if (task.completed || completing) return;
     haptic('light');
 
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
+    const partnerUsername = partner?.username;
 
-    // Все три задания (send_msg / send_sticker / send_media) теперь
-    // отправляются через бота и приходят партнёру с inline-кнопкой
-    // «🐾 Открыть Chumi». Старый t.me/share/url оставлен fallback'ом.
-    setCompleting(true);
-    try {
-      const res = await fetch(`${API}/send-partner-message`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ code: pairId, userId, text }),
-      });
-      const data = await res.json().catch(() => ({}));
+    // Готовим URL для каждого типа задания
+    let shareUrl = null;
 
-      if (data.error) {
-        // Fallback на стандартный шаринг, если бот не смог отправить
-        const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-        const fullText = `${text}\n\n${inviteLink}`;
-        const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-        if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-        else window.open(shareUrl, '_blank');
+    if (task.key === 'send_msg') {
+      // Системный диалог "Поделиться" с готовым текстом —
+      // пользователь выбирает кому отправить (партнёру)
+      shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
+    } else if (task.key === 'send_sticker' || task.key === 'send_media') {
+      // Открываем чат с партнёром напрямую, если знаем username
+      if (partnerUsername) {
+        shareUrl = `https://t.me/${partnerUsername}`;
+      } else {
+        // Fallback — общий выбор чата
+        shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
       }
 
-      await completeTask(task.key);
-      await load();
-    } catch (e) {
-      // последний fallback при сетевой ошибке
-      const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-      const fullText = `${text}\n\n${inviteLink}`;
-      const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-      try {
-        if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-        else window.open(shareUrl, '_blank');
-      } catch {}
-    } finally {
-      setCompleting(false);
+      // Подсказка пользователю что делать
+      const hint = task.key === 'send_sticker'
+        ? (lang === 'ru'
+            ? `Отправь любой стикер партнёру 🎨\n\nЗадание засчитается, когда вернёшься.`
+            : `Send any sticker to your partner 🎨\n\nTask will count when you return.`)
+        : (lang === 'ru'
+            ? `Отправь фото или видео партнёру 📸\n\nЗадание засчитается, когда вернёшься.`
+            : `Send a photo or video to your partner 📸\n\nTask will count when you return.`);
+
+      if (tg?.showAlert) {
+        await new Promise(resolve => tg.showAlert(hint, resolve));
+      } else {
+        alert(hint);
+      }
     }
+
+    // Открываем нужный чат / выбор чата
+    try {
+      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+      else window.open(shareUrl, '_blank');
+    } catch (e) {}
+
+    // Ждём, пока Mini App станет невидимым (пользователь ушёл) — тогда засчитываем.
+    // Это надёжнее, чем мгновенно ставить галочку.
+    let counted = false;
+    const onHide = () => {
+      if (counted) return;
+      counted = true;
+      document.removeEventListener('visibilitychange', onHide);
+      try { tg?.offEvent?.('viewportChanged', onHide); } catch (e) {}
+      setCompleting(true);
+      completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
+    };
+    document.addEventListener('visibilitychange', onHide);
+    try { tg?.onEvent?.('viewportChanged', onHide); } catch (e) {}
+
+    // Защита от зависания: через 60 секунд снимаем подписку даже если задание не засчиталось
+    setTimeout(() => {
+      if (!counted) {
+        document.removeEventListener('visibilitychange', onHide);
+        try { tg?.offEvent?.('viewportChanged', onHide); } catch (e) {}
+      }
+    }, 60000);
   };
 
 
@@ -922,9 +952,30 @@ if (displaySkin && displaySkin.startsWith('level_')) {
           <button
             className="sk-waiting-btn"
             style={{ background: '#9B72CF', marginTop: 16, width: '100%', maxWidth: 280 }}
-            onClick={() => {
+            onClick={async () => {
+              haptic('light');
               const botUsername = BOT_USERNAME;
               const inviteLink = `https://t.me/${botUsername}?start=join_${pairId}`;
+
+              // Пытаемся отправить через prepared inline message — это даёт inline-кнопку
+              if (tg?.shareMessage) {
+                try {
+                  const res = await fetch(`${API}/prepare-invite`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ userId, pairCode: pairId }),
+                  });
+                  const data = await res.json();
+                  if (data.prepared_message_id) {
+                    tg.shareMessage(data.prepared_message_id, (ok) => {
+                      if (ok) haptic('success');
+                    });
+                    return;
+                  }
+                } catch (e) {}
+              }
+
+              // Fallback: системный диалог "Поделиться" (без inline-кнопки)
               const shareText = lang === 'ru'
                 ? `Присоединяйся к моей паре в Chumi! 🐾\nКод: ${pairId}`
                 : `Join my pair in Chumi! 🐾\nCode: ${pairId}`;

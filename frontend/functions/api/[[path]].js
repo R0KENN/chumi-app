@@ -1117,6 +1117,70 @@ export async function onRequest(context) {
       return json({ error: 'Failed to prepare message', details: data }, 500);
     }
 
+        // ── POST /api/prepare-invite ──
+    // Готовит inline-сообщение для приглашения в конкретную пару (с кодом)
+    if (request.method === 'POST' && path === '/api/prepare-invite') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const pairCode = (body.pairCode || '').toUpperCase();
+      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+
+      // Проверяем, что вызывающий — участник этой пары
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
+      // Получаем язык пользователя
+      const { data: ps } = await supabase
+        .from('user_settings').select('lang')
+        .eq('telegram_user_id', userId).maybeSingle();
+      const userLang = ps?.lang || 'ru';
+
+      const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
+      const inviteLink = `https://t.me/${botUsername}?start=join_${pairCode}`;
+
+      const messageText = userLang === 'ru'
+        ? `🐾 *Присоединяйся к моей паре в Chumi!*\n\nКод пары: \`${pairCode}\`\n\nРастим питомца вместе — выполняй задания, поддерживай серию и открывай новые наряды 🐣`
+        : `🐾 *Join my pair in Chumi!*\n\nPair code: \`${pairCode}\`\n\nLet's grow a pet together — complete tasks, keep the streak, unlock outfits 🐣`;
+
+      const btnText = userLang === 'ru' ? '🐾 Присоединиться' : '🐾 Join pair';
+
+      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: parseInt(userId),
+          result: {
+            type: 'article',
+            id: 'invite_' + pairCode + '_' + Date.now(),
+            title: userLang === 'ru'
+              ? `Приглашение в Chumi: ${pairCode}`
+              : `Chumi invite: ${pairCode}`,
+            input_message_content: {
+              message_text: messageText,
+              parse_mode: 'Markdown',
+            },
+            description: userLang === 'ru'
+              ? 'Растите питомца вместе 🐾'
+              : 'Grow a pet together 🐾',
+            reply_markup: {
+              inline_keyboard: [[{ text: btnText, url: inviteLink }]],
+            },
+          },
+          allow_user_chats: true,
+          allow_bot_chats: false,
+          allow_group_chats: true,
+          allow_channel_chats: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id });
+      return json({ error: 'Failed to prepare message', details: data }, 500);
+    }
+
     // ── GET /api/user-lang/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/user-lang\/[^/]+$/)) {
       const userId = path.split('/')[3];
