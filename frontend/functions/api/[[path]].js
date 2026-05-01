@@ -838,7 +838,6 @@ export async function onRequest(context) {
 
       const tz = pair.timezone || 'UTC';
       const currentMonth = getCurrentMonth(tz);
-      const yesterday = getYesterdayDate(tz);
 
       let used = pair.streak_recoveries_used || 0;
       if (pair.last_recovery_month !== currentMonth) used = 0;
@@ -1410,10 +1409,10 @@ export async function onRequest(context) {
         ? body.timezone : null;
       if (!tz) return json({ error: 'Invalid timezone' }, 400);
 
-      await supabase.from('pair_users')
-        .update({ timezone: tz })
-        .eq('user_id', userId)
-        .neq('timezone', tz);
+await supabase.from('pair_users')
+  .update({ timezone: tz })
+  .eq('user_id', userId);
+
 
       const { data: myPairs } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);

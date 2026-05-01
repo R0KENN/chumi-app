@@ -12,6 +12,17 @@ function generateCode() {
   return code;
 }
 
+async function generateUniqueCode(supabase) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateCode();
+    const { data } = await supabase
+      .from('pairs').select('code').eq('code', code).maybeSingle();
+    if (!data) return code;
+  }
+  throw new Error('Could not generate unique pair code');
+}
+
+
 async function sendMessage(env, chatId, text, extra = {}) {
   await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     method: 'POST',
@@ -27,6 +38,7 @@ const FIRE_EMOJI_ID = '5368324170671202286';
 
 
 async function getMaxPairs(supabase, userId) {
+  if (ADMIN_IDS.includes(userId)) return 999;
   // Check premium
   const { data: sub } = await supabase
     .from('user_subscriptions')
