@@ -667,6 +667,43 @@ const handleShareInvite = () => {
     } catch (e) {}
   };
 
+    const handleGiftSkin = async (skinId) => {
+    if (!hasPartner) {
+      // нет партнёра — нечего дарить
+      haptic('warning');
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/buy-skin-gift`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ userId, skinId, pairCode: pairId }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        // Партнёр уже владеет этим скином
+        haptic('error');
+        alert(
+          data.error === 'Partner already owns this skin'
+            ? (lang === 'ru' ? 'У партнёра уже есть этот скин 🎁' : 'Partner already owns this skin 🎁')
+            : (lang === 'ru' ? 'Не удалось создать подарок' : 'Failed to create gift')
+        );
+        return;
+      }
+      if (data.invoiceUrl && tg?.openInvoice) {
+        tg.openInvoice(data.invoiceUrl, (st) => {
+          if (st === 'paid') {
+            haptic('heavy');
+            // У партнёра прибавился скин — обновим, чтобы у админа/премиума всё корректно отобразилось
+            loadSkins();
+            load();
+          }
+        });
+      } else if (data.invoiceUrl) {
+        window.open(data.invoiceUrl, '_blank');
+      }
+    } catch (e) {}
+  };
+
   const handleClaimBee = async () => {
     try {
       const res = await fetch(`${API}/claim-bee-skin`, {
@@ -1042,8 +1079,8 @@ if (displaySkin && displaySkin.startsWith('level_')) {
                       })()}
                     </div>
                     <span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>
+                      {r.members?.some(m => m.is_premium) && <span style={{ marginRight: 4, fontSize: 11 }}>⭐</span>}
                       {r.pet_name || '—'}
-                      {r.members?.some(m => m.is_premium) && <span style={{ marginLeft: 4, fontSize: 11 }}>⭐</span>}
                     </span>
                     <span className="sk-ranking-stats">
                       ⭐ {r.growth_points} | 🔥 {r.streak_days}
@@ -1216,10 +1253,22 @@ if (displaySkin && displaySkin.startsWith('level_')) {
           if (!canApply && previewSkin) {
             const sd = SKINS.find(s => s.id === previewSkin);
             if (sd?.price > 0) return (
-              <button onClick={() => handleBuySkin(previewSkin)} style={{
-                width: '100%', padding: '14px 0', borderRadius: 16, border: 'none',
-                background: accentColor, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
-              }}>⭐ {sd.price} Stars</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => handleBuySkin(previewSkin)} style={{
+                  flex: 1, padding: '14px 0', borderRadius: 16, border: 'none',
+                  background: accentColor, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                }}>
+                  ⭐ {sd.price} {lang === 'ru' ? 'Купить' : 'Buy'}
+                </button>
+                {hasPartner && (
+                  <button onClick={() => handleGiftSkin(previewSkin)} style={{
+                    flex: 1, padding: '14px 0', borderRadius: 16, border: `2px solid ${accentColor}`,
+                    background: '#fff', color: accentColor, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  }}>
+                    🎁 {lang === 'ru' ? 'Подарить' : 'Gift'}
+                  </button>
+                )}
+              </div>
             );
           }
           if (canApply) return (

@@ -1389,6 +1389,61 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       return json({ invoiceUrl });
     }
 
+        // ── POST /api/buy-skin-gift ──
+    // Купить скин и подарить партнёру по паре
+    if (request.method === 'POST' && path === '/api/buy-skin-gift') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const skinId = body.skinId;
+      const pairCode = body.pairCode;
+      if (!skinId) return json({ error: 'skinId required' }, 400);
+      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+
+      const SKIN_PRICES = { strawberry: 25, floral: 25, astronaut: 25 };
+      const price = SKIN_PRICES[skinId];
+      if (price === undefined) return json({ error: 'Invalid skin' }, 400);
+
+      // Проверяем, что отправитель — участник пары
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
+      // Находим партнёра
+      const { data: members } = await supabase
+        .from('pair_users').select('user_id').eq('pair_code', pairCode);
+      const partner = (members || []).find(m => m.user_id !== userId);
+      if (!partner) return json({ error: 'No partner in pair' }, 400);
+
+      // Проверяем, что у партнёра ещё нет такого скина
+      const { data: alreadyOwned } = await supabase
+        .from('user_skins').select('id')
+        .eq('user_id', partner.user_id).eq('skin_id', skinId).maybeSingle();
+      if (alreadyOwned) return json({ error: 'Partner already owns this skin' }, 400);
+
+      // Создаём инвойс с типом "gift" и id получателя
+      const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
+        title: `Подарок: ${skinId}`,
+        description: `Подарок другу — наряд ${skinId}!`,
+        payload: JSON.stringify({
+          type: 'skin_gift',
+          skinId,
+          userId,
+          recipientId: partner.user_id,
+          pairCode,
+          timestamp: Date.now(),
+        }),
+        provider_token: '',
+        currency: 'XTR',
+        prices: [{ amount: price, label: `Skin gift: ${skinId}` }],
+      });
+
+      if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
+      return json({ invoiceUrl });
+    }
+
     // ── POST /api/claim-bee-skin ──
     if (request.method === 'POST' && path === '/api/claim-bee-skin') {
       const body = await request.json();

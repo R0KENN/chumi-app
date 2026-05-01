@@ -322,8 +322,12 @@ export async function onRequestPost(context) {
         extra_slot: 50,
         premium_monthly: 150,
         skin: 25,
+        skin_gift: 25,
       };
-      const productKey = payload.type === 'skin' ? 'skin' : payload.productId;
+      let productKey;
+      if (payload.type === 'skin') productKey = 'skin';
+      else if (payload.type === 'skin_gift') productKey = 'skin_gift';
+      else productKey = payload.productId;
       const expected = EXPECTED_AMOUNT[productKey];
       if (expected !== undefined && payment.total_amount !== expected) {
         console.error(`Payment amount mismatch: got ${payment.total_amount}, expected ${expected}`);
@@ -358,6 +362,45 @@ export async function onRequestPost(context) {
         const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
         await sendMessage(env, update.message.chat.id,
           lang === 'ru' ? `✅ Наряд *${skinName}* разблокирован! 🎨` : `✅ Outfit *${skinName}* unlocked! 🎨`,
+          webAppButton
+        );
+        return new Response('OK');
+      }
+
+            // ── Skin GIFT (подарок партнёру) ──
+      if (payload.type === 'skin_gift' && payload.skinId && payload.recipientId) {
+        const recipientId = String(payload.recipientId);
+        const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
+
+        // Проверяем, не владеет ли получатель уже этим скином
+        const { data: alreadyOwned } = await supabase
+          .from('user_skins')
+          .select('id')
+          .eq('user_id', recipientId)
+          .eq('skin_id', payload.skinId)
+          .maybeSingle();
+        if (!alreadyOwned) {
+          await supabase.from('user_skins').insert({
+            user_id: recipientId,
+            skin_id: payload.skinId,
+          });
+        }
+
+        // Сообщение дарителю
+        await sendMessage(env, update.message.chat.id,
+          lang === 'ru'
+            ? `🎁 Подарок отправлен партнёру!\nНаряд *${skinName}* теперь у него 🎨`
+            : `🎁 Gift sent to your partner!\nThey now own outfit *${skinName}* 🎨`,
+          webAppButton
+        );
+
+        // Сообщение получателю на его языке
+        const recipientLang = await getUserLang(supabase, recipientId);
+        const giverName = update.message?.from?.first_name || (recipientLang === 'ru' ? 'Партнёр' : 'Partner');
+        await sendMessage(env, recipientId,
+          recipientLang === 'ru'
+            ? `🎁 *${giverName}* подарил тебе наряд *${skinName}*! 🎨\nОткрой Chumi и примерь его 🐾`
+            : `🎁 *${giverName}* gifted you outfit *${skinName}*! 🎨\nOpen Chumi and try it on 🐾`,
           webAppButton
         );
         return new Response('OK');
