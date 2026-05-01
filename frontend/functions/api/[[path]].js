@@ -847,27 +847,44 @@ export async function onRequest(context) {
 
       const tz = pair.timezone || 'UTC';
       const currentMonth = getCurrentMonth(tz);
+      const today = getTodayDate(tz);
 
       let used = pair.streak_recoveries_used || 0;
       if (pair.last_recovery_month !== currentMonth) used = 0;
       if (used >= 5) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
 
-      const today = getTodayDate(tz);
+      // Если с последней активности прошло больше 1 пропущенного дня — серия обнуляется.
+      // Питомец считается умершим за один день. Если игрок зашёл воскрешать в день смерти
+      // или на следующий день — серия сохраняется. Если позже — обнуляется в 0.
+      let newStreak = pair.streak_days || 0;
+      if (pair.last_streak_date) {
+        const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
+        const todayDate = new Date(today + 'T00:00:00Z');
+        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+        // diffDays >= 2 означает: пропущен хотя бы 1 полный день → серия обнуляется
+        if (diffDays >= 2) {
+          newStreak = 0;
+        }
+      }
+
       const { data: updated } = await supabase.from('pairs').update({
         is_dead: false,
+        streak_days: newStreak,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
         last_streak_date: today,
+        last_pair_streak_date: today,
       }).eq('code', code).select().single();
 
       return json({
         success: true,
         remaining: 5 - (used + 1),
-        streak_days: updated?.streak_days ?? pair.streak_days,
+        streak_days: updated?.streak_days ?? newStreak,
         is_dead: false,
         last_streak_date: today,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
+        streak_reset: newStreak === 0,
       });
     }
 
@@ -978,6 +995,8 @@ export async function onRequest(context) {
         .eq('status', 'active')
         .gt('expires_at', nowIso);
       const premiumSet = new Set((activeSubs || []).map(s => String(s.telegram_user_id)));
+      // Админы всегда считаются премиумом
+      ADMIN_IDS.forEach(id => premiumSet.add(String(id)));
 
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
@@ -1003,10 +1022,19 @@ export async function onRequest(context) {
 
     // ── GET /api/ranking-random ──
     if (request.method === 'GET' && path === '/api/ranking-random') {
+      // Активные = заходили в последние 2 дня (вчера или сегодня)
+      // Используем UTC как точку отсчёта, чтобы покрыть все таймзоны
+      const todayUtc = new Date().toISOString().split('T')[0];
+      const dUtc = new Date(todayUtc + 'T00:00:00Z');
+      dUtc.setUTCDate(dUtc.getUTCDate() - 2);
+      const twoDaysAgoUtc = dUtc.toISOString().split('T')[0];
+
       const { data: allPairs } = await supabase
         .from('pairs')
-        .select('code, pet_name, growth_points, streak_days')
-        .not('pet_name', 'is', null);
+        .select('code, pet_name, growth_points, streak_days, last_streak_date, is_dead')
+        .not('pet_name', 'is', null)
+        .eq('is_dead', false)
+        .gte('last_streak_date', twoDaysAgoUtc);
 
       const named = (allPairs || []).filter(p => p.pet_name && p.pet_name.trim() !== '');
       if (named.length === 0) return json({ ranking: [] });
@@ -1030,6 +1058,8 @@ export async function onRequest(context) {
         .eq('status', 'active')
         .gt('expires_at', nowIso);
       const premiumSet = new Set((activeSubs || []).map(s => String(s.telegram_user_id)));
+      // Админы всегда считаются премиумом
+      ADMIN_IDS.forEach(id => premiumSet.add(String(id)));
 
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
@@ -1189,30 +1219,72 @@ export async function onRequest(context) {
     }
 
     // ── POST /api/cleanup-empty-pairs (cron) ──
+    // Удаляет: 1) пустые пары (< 2 участников) старше 5 дней;
+    //          2) активные пары, в которые никто не заходил 5+ дней
     if (request.method === 'POST' && path === '/api/cleanup-empty-pairs') {
       if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
 
       const { data: allPairs } = await supabase
-        .from('pairs').select('code, created_at');
+        .from('pairs').select('code, created_at, last_streak_date, timezone');
 
       const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString();
       let cleaned = 0;
+      let cleanedInactive = 0;
 
       for (const pair of (allPairs || [])) {
         const { data: members } = await supabase
           .from('pair_users').select('user_id').eq('pair_code', pair.code);
 
         const isOldEnough = pair.created_at && pair.created_at < fiveDaysAgo;
-        if ((!members || members.length < 2) && isOldEnough) {
+        const isEmpty = !members || members.length < 2;
+
+        // 1) Пустая пара старше 5 дней — удалить
+        if (isEmpty && isOldEnough) {
           await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
           await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
           await supabase.from('feedings').delete().eq('pair_code', pair.code);
           await supabase.from('pair_users').delete().eq('pair_code', pair.code);
           await supabase.from('pairs').delete().eq('code', pair.code);
           cleaned++;
+          continue;
+        }
+
+        // 2) Активная пара, неактивная 5+ дней — удалить
+        if (!isEmpty) {
+          const tz = pair.timezone || 'UTC';
+          const today = getTodayDate(tz);
+          // Вычисляем "5 дней назад" в YYYY-MM-DD
+          const todayD = new Date(today + 'T00:00:00Z');
+          todayD.setUTCDate(todayD.getUTCDate() - 5);
+          const fiveDaysAgoDate = todayD.toISOString().split('T')[0];
+
+          // Если last_streak_date пуст — берём дату создания
+          const lastActivity = pair.last_streak_date
+            || (pair.created_at ? pair.created_at.split('T')[0] : null);
+
+          if (lastActivity && lastActivity < fiveDaysAgoDate) {
+            // Уведомить участников перед удалением
+            for (const m of members) {
+              const { data: ps } = await supabase
+                .from('user_settings').select('lang')
+                .eq('telegram_user_id', m.user_id).maybeSingle();
+              const pLang = ps?.lang || 'ru';
+              const msg = pLang === 'ru'
+                ? `⏳ Пара \`${pair.code}\` удалена из-за неактивности (5+ дней без заходов).`
+                : `⏳ Pair \`${pair.code}\` was deleted due to inactivity (5+ days without logins).`;
+              await sendTelegramMessage(env, m.user_id, msg);
+            }
+
+            await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
+            await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
+            await supabase.from('feedings').delete().eq('pair_code', pair.code);
+            await supabase.from('pair_users').delete().eq('pair_code', pair.code);
+            await supabase.from('pairs').delete().eq('code', pair.code);
+            cleanedInactive++;
+          }
         }
       }
-      return json({ success: true, cleaned });
+      return json({ success: true, cleaned, cleanedInactive });
     }
 
     // ── POST /api/send-partner-message ──
