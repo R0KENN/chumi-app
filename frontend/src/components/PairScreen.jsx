@@ -366,9 +366,22 @@ const handleShareMessage = async () => {
   if (!pair) return <div className="sk-loading">{lang === 'ru' ? 'Не найдено' : 'Not found'}</div>;
 
   const lv = getLevel(pair.growth_points || 0);
-  const pct = Math.min(100, (lv.current / lv.needed) * 100);
   const isEgg = lv.idx === 0;
   const eggDay = Math.min((pair?.streak_days || 0) + 1, 3);
+
+  // Накопительные XP: показываем общее количество очков и порог следующего уровня
+  // Уровень 0 (Egg):    0  →  33
+  // Уровень 1 (Baby):  33  →  78    (33+45)
+  // Уровень 2 (Junior): 78 → 141    (33+45+63)
+  // и т.д.
+  const totalPointsDisplay = pair.growth_points || 0;
+  let prevLevelTotal = 0;
+  for (let i = 0; i < lv.idx; i++) prevLevelTotal += LEVELS[i].maxPoints;
+  const nextLevelTotal = prevLevelTotal + LEVELS[lv.idx].maxPoints;
+
+  // Прогресс-бар считаем по «текущие XP внутри уровня» / «порог уровня»
+  const pct = Math.min(100, ((totalPointsDisplay - prevLevelTotal) / LEVELS[lv.idx].maxPoints) * 100);
+
 
   const TASKS = [
     { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
@@ -437,32 +450,41 @@ const handleShareMessage = async () => {
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
 
-    if (task.key === 'send_msg') {
-      setCompleting(true);
-      try {
-        await fetch(`${API}/send-partner-message`, {
-          method: 'POST',
-          headers: authHeaders(),
-          body: JSON.stringify({ code: pairId, userId, text }),
-        });
-        await completeTask(task.key);
-        await load();
-      } catch (e) {}
-      finally { setCompleting(false); }
-      return;
-    }
-
-    const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
-    const fullText = `${text}\n\n${inviteLink}`;
-    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
-    try {
-      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-      else window.open(shareUrl, '_blank');
-    } catch (e) {}
+    // Все три задания (send_msg / send_sticker / send_media) теперь
+    // отправляются через бота и приходят партнёру с inline-кнопкой
+    // «🐾 Открыть Chumi». Старый t.me/share/url оставлен fallback'ом.
     setCompleting(true);
-    await completeTask(task.key);
-    await load();
-    setCompleting(false);
+    try {
+      const res = await fetch(`${API}/send-partner-message`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ code: pairId, userId, text }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (data.error) {
+        // Fallback на стандартный шаринг, если бот не смог отправить
+        const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
+        const fullText = `${text}\n\n${inviteLink}`;
+        const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
+        if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+        else window.open(shareUrl, '_blank');
+      }
+
+      await completeTask(task.key);
+      await load();
+    } catch (e) {
+      // последний fallback при сетевой ошибке
+      const inviteLink = `https://t.me/${BOT_USERNAME}?start=join_${pairId}`;
+      const fullText = `${text}\n\n${inviteLink}`;
+      const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(fullText)}`;
+      try {
+        if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+        else window.open(shareUrl, '_blank');
+      } catch {}
+    } finally {
+      setCompleting(false);
+    }
   };
 
 
@@ -894,7 +916,7 @@ if (displaySkin && displaySkin.startsWith('level_')) {
           <div className="sk-progress-wrap" onClick={() => setShowLevels(true)}>
             <div className="sk-progress glass-bar">
               <div className="sk-progress-fill" style={{ width: `${pct}%`, background: accentColor }} />
-              <span className="sk-progress-text">{lv.current}/{lv.needed}</span>
+              <span className="sk-progress-text">{totalPointsDisplay}/{nextLevelTotal}</span>
             </div>
             {isMaxLevel && <div className="sk-progress-hint" style={isDark ? { color: 'rgba(255,255,255,0.5)' } : {}}>{lang === 'ru' ? 'Скоро появится больше образов' : 'More outfits coming soon'} ›</div>}
           </div>
@@ -1222,11 +1244,13 @@ if (displaySkin && displaySkin.startsWith('level_')) {
             {LEVELS.map((l, i) => {
               const isCurrent = lv.idx === i;
               return (
-                <div key={i} className={`sk-lvl-row ${isCurrent ? 'sk-lvl-active' : ''}`}>
-                  <div className="sk-lvl-badge" style={{ background: l.accent + '20', color: l.accent }}>{i + 1}</div>
-                  <span className="sk-lvl-name">{lang === 'ru' ? l.nameRu : l.name}</span>
-                  <span className="sk-lvl-pts">{l.maxPoints} XP</span>
-                </div>
+              <div className={`sk-lvl-row ${isCurrent ? 'sk-lvl-active' : ''}`} key={i}>
+                <div className="sk-lvl-badge" style={{ background: l.accent + '20', color: l.accent }}>{i + 1}</div>
+                <span className="sk-lvl-name">{lang === 'ru' ? l.nameRu : l.name}</span>
+                <span className="sk-lvl-pts">
+                  {LEVELS.slice(0, i + 1).reduce((sum, x) => sum + x.maxPoints, 0)} XP
+                </span>
+              </div>
               );
             })}
             <button className="sk-popup-close" onClick={() => setShowLevels(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>

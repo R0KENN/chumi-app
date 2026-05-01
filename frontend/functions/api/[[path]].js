@@ -1247,16 +1247,17 @@ export async function onRequest(context) {
         const pool = targetLang === 'ru' ? RU : EN;
         const text = pool[Math.floor(Math.random() * pool.length)];
 
-        await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: m.user_id,
-            text,
-            parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: [[{ text: '🐾 Chumi', web_app: { url: WEBAPP_URL } }]] },
-          }),
-        });
+const btnText = targetLang === 'ru' ? '🐾Chumi' : '🐾Chumi';
+await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    chat_id: m.user_id,
+    text,
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: [[{ text: btnText, web_app: { url: WEBAPP_URL } }]] },
+  }),
+});
       }
       return json({ success: true });
     }
