@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
 import { usePairs, getInitData } from '../context/PairsContext';
+import { LEVELS, getLevel } from '../_levels-meta.js';
 
 
 const API = '/api';
@@ -15,28 +16,9 @@ const EGG_VIDEOS = {
   3: '/pets/egg_3.webm',
 };
 
-// ── LEVELS: при изменении порогов синхронизируй с [[path]].js и bot.js ──
-const LEVELS = [
-  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 33,  bg: ['#F5F0FF','#E8E0F0'], accent: '#B39DDB', check: '#B39DDB', pet: null,             petTap: null,                 emojiId: null },
-  { level: 1, name: 'Baby',   nameRu: 'Малыш',      maxPoints: 45,  bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF', pet: 'axolotl_idle',   petTap: 'axolotl_tap',        emojiId: null },
-  { level: 2, name: 'Junior', nameRu: 'Подросток',   maxPoints: 63,  bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A', pet: 'axolotl_peach',  petTap: 'axolotl_peach_tap',  emojiId: null },
-  { level: 3, name: 'Teen',   nameRu: 'Юный',        maxPoints: 90,  bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A', pet: 'axolotl_pink',   petTap: 'axolotl_pink_tap',   emojiId: null },
-  { level: 4, name: 'Adult',  nameRu: 'Взрослый',    maxPoints: 135, bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4', pet: 'axolotl_blue',   petTap: 'axolotl_blue_tap',   emojiId: null },
-  { level: 5, name: 'Legend', nameRu: 'Легенда',     maxPoints: 200, bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560', pet: 'axolotl_black',  petTap: 'axolotl_black_tap',  emojiId: null },
-];
+// LEVELS импортируется из общего модуля — не дублируем
+import { LEVELS, getLevel } from '../_levels-meta.js';
 
-
-function getLevel(totalPoints) {
-  let acc = 0;
-  for (let i = 0; i < LEVELS.length; i++) {
-    if (totalPoints < acc + LEVELS[i].maxPoints) {
-      return { ...LEVELS[i], current: totalPoints - acc, needed: LEVELS[i].maxPoints, remaining: acc + LEVELS[i].maxPoints - totalPoints, idx: i };
-    }
-    acc += LEVELS[i].maxPoints;
-  }
-  const last = LEVELS[LEVELS.length - 1];
-  return { ...last, current: last.maxPoints, needed: last.maxPoints, remaining: 0, idx: LEVELS.length - 1 };
-}
 
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
@@ -425,11 +407,22 @@ const handleShareMessage = async () => {
     haptic('light');
     if (task.action === 'share') { handleShareTask(task); return; }
     if (task.action === 'add_home') {
-      if (tg?.addToHomeScreen) tg.addToHomeScreen();
-      setCompleting(true);
-      completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
+      if (!tg?.addToHomeScreen) return;
+      // Слушаем результат: засчитываем XP только при реальном добавлении
+      const onAdded = () => {
+        try { tg.offEvent?.('homeScreenAdded', onAdded); } catch (e) {}
+        setCompleting(true);
+        completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
+      };
+      try { tg.onEvent?.('homeScreenAdded', onAdded); } catch (e) {}
+      tg.addToHomeScreen();
+      // Fallback: если события нет (старые версии), засчитываем через таймаут как раньше
+      setTimeout(() => {
+        try { tg.offEvent?.('homeScreenAdded', onAdded); } catch (e) {}
+      }, 30000);
       return;
     }
+
     if (task.action === 'pet') {
       haptic('medium');
       setPetAnim(true);

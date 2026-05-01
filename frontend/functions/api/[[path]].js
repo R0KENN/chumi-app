@@ -27,6 +27,17 @@ function generateCode() {
   return code;
 }
 
+async function generateUniqueCode(supabase) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateCode();
+    const { data } = await supabase
+      .from('pairs').select('code').eq('code', code).maybeSingle();
+    if (!data) return code;
+  }
+  // Крайне маловероятно, но fail-safe
+  throw new Error('Could not generate unique pair code');
+}
+
 // Дата YYYY-MM-DD в указанной таймзоне (UTC по умолчанию)
 function getTodayDate(tz) {
   const date = new Date();
@@ -54,14 +65,30 @@ function getCurrentMonth(tz) {
   return getTodayDate(tz).slice(0, 7);
 }
 
-function json(data, status = 200) {
+const ALLOWED_ORIGINS = [
+  'https://chumi-app.pages.dev',
+  'https://web.telegram.org',
+  'https://webk.telegram.org',
+  'https://webz.telegram.org',
+];
+
+function corsHeaders(request) {
+  const origin = request?.headers?.get?.('Origin') || '';
+  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type,X-Telegram-Init-Data',
+    'Vary': 'Origin',
+  };
+}
+
+function json(data, status = 200, request = null) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type,X-Telegram-Init-Data',
+      ...corsHeaders(request),
     },
   });
 }
@@ -104,7 +131,7 @@ async function sendTelegramMessage(env, chatId, text) {
 }
 
 // ────────── Telegram initData validation ──────────
-function validateInitData(initDataRaw, botToken) {
+function validateInitData(initDataRaw, botToken, maxAgeSec = 86400) {
   if (!initDataRaw || !botToken) return null;
   try {
     const params = new URLSearchParams(initDataRaw);
@@ -121,7 +148,7 @@ function validateInitData(initDataRaw, botToken) {
     if (computedHash !== hash) return null;
 
     const authDate = parseInt(params.get('auth_date') || '0', 10);
-    if (!authDate || (Date.now() / 1000) - authDate > 86400) return null;
+    if (!authDate || (Date.now() / 1000) - authDate > maxAgeSec) return null;
 
     const userStr = params.get('user');
     if (!userStr) return null;
@@ -131,6 +158,17 @@ function validateInitData(initDataRaw, botToken) {
     return null;
   }
 }
+
+function extractUserId(request, env, bodyUserId, opts = {}) {
+  const initData = request.headers.get('X-Telegram-Init-Data');
+  if (initData) {
+    const validated = validateInitData(initData, env.BOT_TOKEN, opts.maxAgeSec);
+    if (validated) return validated.userId;
+  }
+  if (env.ALLOW_DEV_AUTH === '1' && bodyUserId) return String(bodyUserId);
+  return null;
+}
+
 
 function extractUserId(request, env, bodyUserId) {
   const initData = request.headers.get('X-Telegram-Init-Data');
@@ -217,14 +255,9 @@ export async function onRequest(context) {
   const { request, env } = context;
 
   if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Telegram-Init-Data',
-      },
-    });
+    return new Response(null, { headers: corsHeaders(request) });
   }
+
 
   try {
     const url = new URL(request.url);
@@ -304,6 +337,19 @@ export async function onRequest(context) {
       const tgUserId = path.split('/')[3];
       const BOT_TOKEN = env.BOT_TOKEN;
       const wantProxy = url.searchParams.get('proxy');
+
+            // Только аватары пользователей, которые состоят в паре, доступны.
+      // Это предотвращает утечку аватара любого Telegram-пользователя.
+      const { data: targetPairUser } = await supabase
+        .from('pair_users')
+        .select('user_id')
+        .eq('user_id', tgUserId)
+        .limit(1)
+        .maybeSingle();
+      if (!targetPairUser) {
+        return json({ avatar_url: null });
+      }
+
 
       try {
         const { data: cached } = await supabase
@@ -415,7 +461,7 @@ export async function onRequest(context) {
         return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
       }
 
-      const code = generateCode();
+      const code = await generateUniqueCode(supabase);
 
       await supabase.from('pairs').insert({
         code,
@@ -590,6 +636,21 @@ export async function onRequest(context) {
         .map(m => String(m.user_id))
         .filter(id => id !== String(userId));
 
+      // ── Обновляем last_streak_date ВСЕГДА, когда кто-то открыл приложение ──
+      // Это «отметка жизни» — питомец не умирает, пока хоть кто-то заходит.
+      // streak_days растёт, только когда оба зашли в один день (см. ниже).
+      if (taskKey === 'daily_open') {
+        const { data: pairForLife } = await supabase
+          .from('pairs')
+          .select('last_streak_date')
+          .eq('code', code).single();
+        if (pairForLife && pairForLife.last_streak_date !== today) {
+          await supabase.from('pairs')
+            .update({ last_streak_date: today })
+            .eq('code', code);
+        }
+      }
+
       let pointsAdded = 0;
 
       if (partnerIds.length > 0) {
@@ -605,29 +666,32 @@ export async function onRequest(context) {
         if (partnerDone) {
           const { data: pair } = await supabase
             .from('pairs')
-            .select('growth_points, streak_days, last_streak_date, hatched')
+            .select('growth_points, streak_days, last_streak_date, last_pair_streak_date, hatched')
             .eq('code', code).single();
 
           if (pair) {
             const newPoints = (pair.growth_points || 0) + points;
             const updates = { growth_points: newPoints };
 
-            if (taskKey === 'daily_open' && pair.last_streak_date !== today) {
-              if (pair.last_streak_date === null) {
+            // streak_days растёт по «общему» полю last_pair_streak_date,
+            // которое отмечается ТОЛЬКО когда оба зашли в один день
+            if (taskKey === 'daily_open' && pair.last_pair_streak_date !== today) {
+              const prev = pair.last_pair_streak_date;
+              if (!prev) {
                 updates.streak_days = 1;
-                updates.last_streak_date = today;
               } else {
-                const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
+                const lastDate = new Date(prev + 'T00:00:00Z');
                 const todayDate = new Date(today + 'T00:00:00Z');
                 const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
                 if (diffDays === 1) {
                   updates.streak_days = (pair.streak_days || 0) + 1;
-                  updates.last_streak_date = today;
                 } else if (diffDays > 1) {
                   updates.streak_days = 1;
-                  updates.last_streak_date = today;
                 }
               }
+              updates.last_pair_streak_date = today;
+              // дублируем в last_streak_date чтобы старая логика была согласована
+              updates.last_streak_date = today;
 
               if (!pair.hatched && newPoints >= LEVELS[0].maxPoints) {
                 updates.hatched = true;
@@ -642,6 +706,7 @@ export async function onRequest(context) {
 
       return json({ success: true, points_added: pointsAdded });
     }
+
 
     // ── POST /api/rename ──
     if (request.method === 'POST' && path === '/api/rename') {
@@ -743,8 +808,8 @@ export async function onRequest(context) {
         .eq('sender_user_id', userId)
         .eq('target_user_id', targetUserId)
         .gte('sent_at', oneHourAgo)
-        .maybeSingle();
-      if (recent) {
+        .limit(1);
+      if (recent && recent.length > 0) {
         return json({ error: 'Too many notifications', retryAfter: 3600 }, 429);
       }
 
@@ -811,6 +876,7 @@ export async function onRequest(context) {
     // ── POST /api/create-invoice ──
     if (request.method === 'POST' && path === '/api/create-invoice') {
       const body = await request.json();
+      const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
       const userId = extractUserId(request, env, body.userId);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 
@@ -1098,7 +1164,11 @@ export async function onRequest(context) {
         const tz = pair.timezone || 'UTC';
         const today = getTodayDate(tz);
 
-        if (pair.last_streak_date && pair.last_streak_date < today) {
+        // Питомец умирает только если ПОЛНЫЙ день пропущен.
+        // Т.е. last_streak_date должен быть как минимум "позавчера".
+        // Если last_streak_date == вчера — даём ещё день, чтобы успели зайти.
+        const yesterday = getYesterdayDate(tz);
+        if (pair.last_streak_date && pair.last_streak_date < yesterday) {
           await supabase.from('pairs').update({ is_dead: true }).eq('code', pair.code);
           killed++;
 
@@ -1221,6 +1291,7 @@ export async function onRequest(context) {
     // ── POST /api/buy-skin ──
     if (request.method === 'POST' && path === '/api/buy-skin') {
       const body = await request.json();
+      const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
       const userId = extractUserId(request, env, body.userId);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 

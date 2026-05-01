@@ -299,6 +299,26 @@ export async function onRequestPost(context) {
         return new Response('OK');
       }
 
+            // ── Sanity-check: payload должен относиться к этому же userId ──
+      if (payload.userId && String(payload.userId) !== userId) {
+        console.error('Payment payload userId mismatch:', payload.userId, 'vs', userId);
+        return new Response('OK');
+      }
+
+      // ── Sanity-check: проверяем что заплатили правильную сумму ──
+      const EXPECTED_AMOUNT = {
+        extra_slot: 50,
+        premium_monthly: 150,
+        skin: 25,
+      };
+      const productKey = payload.type === 'skin' ? 'skin' : payload.productId;
+      const expected = EXPECTED_AMOUNT[productKey];
+      if (expected !== undefined && payment.total_amount !== expected) {
+        console.error(`Payment amount mismatch: got ${payment.total_amount}, expected ${expected}`);
+        return new Response('OK');
+      }
+
+
       // Idempotency: если такой charge уже обработан — просто отвечаем OK
       if (chargeId) {
         const { data: dup } = await supabase
@@ -445,7 +465,7 @@ export async function onRequestPost(context) {
         const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', joinCode);
         if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
         if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
-        await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username });
+        await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username, timezone: 'UTC' });
                 // Track referral — the existing member invited this user
         for (const m of members || []) {
           if (m.user_id !== userId) {
@@ -488,9 +508,29 @@ export async function onRequestPost(context) {
       const isAdmin = ADMIN_IDS.includes(userId);
       const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
       if (!isAdmin && existing && existing.length >= maxPairs) { await sendMessage(env, chatId, T[lang].maxPairs(existing.length, maxPairs), webAppButton); return new Response('OK'); }
-      const code = generateCode();
-      await supabase.from('pairs').insert({ code, pet_type: 'spark', streak_days: 0, growth_points: 0, hatched: false, bg_id: 'room', pet_name: null, streak_recoveries_used: 0, is_dead: false });
-      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
+      const code = await generateUniqueCode(supabase);
+      await supabase.from('pairs').insert({
+        code,
+        pet_type: 'spark',
+        streak_days: 0,
+        growth_points: 0,
+        hatched: false,
+        bg_id: 'room',
+        pet_name: null,
+        streak_recoveries_used: 0,
+        is_dead: false,
+        timezone: 'UTC',
+        last_streak_date: null,
+        last_pair_streak_date: null,
+      });
+      await supabase.from('pair_users').insert({
+        pair_code: code,
+        user_id: userId,
+        display_name: firstName,
+        username,
+        timezone: 'UTC',
+      });
+
       const botUser = env.BOT_USERNAME || 'ChumiPetBot';
       await sendMessage(env, chatId, T[lang].pairCreated(code), inviteButton(code, lang, botUser));
       return new Response('OK');
@@ -509,7 +549,7 @@ export async function onRequestPost(context) {
       const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', code);
       if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
       if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
-      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username });
+      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username, timezone: 'UTC' });
               // Track referral — the existing member invited this user
         for (const m of members || []) {
           if (m.user_id !== userId) {
