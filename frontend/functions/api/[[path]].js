@@ -1181,6 +1181,74 @@ export async function onRequest(context) {
       return json({ error: 'Failed to prepare message', details: data }, 500);
     }
 
+        // ── POST /api/prepare-task-message ──
+    // Готовит inline-сообщение для заданий send_msg / send_sticker / send_media.
+    // У получателя в чате появится текстовое сообщение с inline-кнопкой
+    // «🐾 Открыть Chumi», которая открывает Mini App.
+    if (request.method === 'POST' && path === '/api/prepare-task-message') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const pairCode = (body.pairCode || '').toUpperCase();
+      const taskKey = body.taskKey || 'send_msg';
+      const text = (body.text || '').toString().slice(0, 800);
+      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+      if (!text) return json({ error: 'text required' }, 400);
+      if (!['send_msg', 'send_sticker', 'send_media'].includes(taskKey)) {
+        return json({ error: 'invalid taskKey' }, 400);
+      }
+
+      // Проверяем участие в паре
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
+      // Получаем язык отправителя для подписи кнопки
+      const { data: ps } = await supabase
+        .from('user_settings').select('lang')
+        .eq('telegram_user_id', userId).maybeSingle();
+      const userLang = ps?.lang || 'ru';
+      const btnText = userLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+
+      const titleByTask = {
+        send_msg:     userLang === 'ru' ? 'Сообщение Chumi 🐾'   : 'Chumi message 🐾',
+        send_sticker: userLang === 'ru' ? 'Стикер от Chumi 🎨'   : 'Sticker from Chumi 🎨',
+        send_media:   userLang === 'ru' ? 'Фото-привет Chumi 📸' : 'Photo from Chumi 📸',
+      };
+
+      const WEBAPP_URL = 'https://chumi-app.pages.dev';
+
+      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: parseInt(userId),
+          result: {
+            type: 'article',
+            id: 'task_' + taskKey + '_' + pairCode + '_' + Date.now(),
+            title: titleByTask[taskKey],
+            input_message_content: {
+              message_text: text,
+              parse_mode: 'Markdown',
+            },
+            description: text.slice(0, 80),
+            reply_markup: {
+              inline_keyboard: [[{ text: btnText, url: `https://t.me/${env.BOT_USERNAME || 'ChumiPetBot'}` }]],
+            },
+          },
+          allow_user_chats: true,
+          allow_bot_chats: false,
+          allow_group_chats: true,
+          allow_channel_chats: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id });
+      return json({ error: 'Failed to prepare message', details: data }, 500);
+    }
+
     // ── GET /api/user-lang/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/user-lang\/[^/]+$/)) {
       const userId = path.split('/')[3];

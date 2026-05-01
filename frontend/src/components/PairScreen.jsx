@@ -449,44 +449,33 @@ const handleShareMessage = async () => {
   };
 
   // ══════ handleShareTask ══════
-  // send_msg     → открываем диалог отправки сообщения партнёру с готовым текстом
-  // send_sticker → открываем чат партнёра, чтобы пользователь сам отправил стикер
-  // send_media   → открываем чат партнёра, чтобы пользователь сам отправил фото/видео
-  // Задание засчитывается ТОЛЬКО когда Mini App теряет видимость (пользователь
-  // действительно ушёл выполнять задание), а не сразу по нажатию.
+  // Все три задания (send_msg / send_sticker / send_media) теперь работают одинаково:
+  // 1) бэк готовит inline-сообщение с текстом и кнопкой «🐾 Открыть Chumi»;
+  // 2) фронт открывает системный выбор чата (tg.shareMessage);
+  // 3) в выбранном чате появляется красивое сообщение с inline-кнопкой;
+  // 4) задание засчитывается, когда callback shareMessage вернул ok:true
+  //    (или когда пользователь покинул Mini App — fallback).
   const handleShareTask = async (task) => {
     if (task.completed || completing) return;
     haptic('light');
 
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
-    const partnerUsername = partner?.username;
 
-    // Готовим URL для каждого типа задания
-    let shareUrl = null;
+    // Подсказка для стикера/медиа: после отправки сообщения нужно прислать
+    // ещё стикер/медиа партнёру вручную — Telegram не позволяет прикрепить
+    // их к подготовленному сообщению.
+    const hint = task.key === 'send_sticker'
+      ? (lang === 'ru'
+          ? 'После отправки сообщения отправь партнёру любой стикер 🎨'
+          : 'After sending the message, send any sticker to your partner 🎨')
+      : task.key === 'send_media'
+      ? (lang === 'ru'
+          ? 'После отправки сообщения отправь партнёру фото или видео 📸'
+          : 'After sending the message, send a photo or video to your partner 📸')
+      : null;
 
-    if (task.key === 'send_msg') {
-      // Системный диалог "Поделиться" с готовым текстом —
-      // пользователь выбирает кому отправить (партнёру)
-      shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
-    } else if (task.key === 'send_sticker' || task.key === 'send_media') {
-      // Открываем чат с партнёром напрямую, если знаем username
-      if (partnerUsername) {
-        shareUrl = `https://t.me/${partnerUsername}`;
-      } else {
-        // Fallback — общий выбор чата
-        shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
-      }
-
-      // Подсказка пользователю что делать
-      const hint = task.key === 'send_sticker'
-        ? (lang === 'ru'
-            ? `Отправь любой стикер партнёру 🎨\n\nЗадание засчитается, когда вернёшься.`
-            : `Send any sticker to your partner 🎨\n\nTask will count when you return.`)
-        : (lang === 'ru'
-            ? `Отправь фото или видео партнёру 📸\n\nЗадание засчитается, когда вернёшься.`
-            : `Send a photo or video to your partner 📸\n\nTask will count when you return.`);
-
+    if (hint) {
       if (tg?.showAlert) {
         await new Promise(resolve => tg.showAlert(hint, resolve));
       } else {
@@ -494,14 +483,38 @@ const handleShareMessage = async () => {
       }
     }
 
-    // Открываем нужный чат / выбор чата
+    // Готовим inline-сообщение на бэке
+    let preparedId = null;
+    try {
+      const res = await fetch(`${API}/prepare-task-message`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, pairCode: pairId, taskKey: task.key, text }),
+      });
+      const data = await res.json();
+      if (data.prepared_message_id) preparedId = data.prepared_message_id;
+    } catch (e) {}
+
+    // Если получили prepared_message_id и SDK поддерживает shareMessage — используем его
+    if (preparedId && tg?.shareMessage) {
+      tg.shareMessage(preparedId, (ok) => {
+        if (ok) {
+          haptic('success');
+          setCompleting(true);
+          completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
+        }
+        // если ok=false — пользователь отменил, задание не засчитываем
+      });
+      return;
+    }
+
+    // Fallback: системный t.me/share/url + засчёт по visibilitychange
+    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
     try {
       if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
       else window.open(shareUrl, '_blank');
     } catch (e) {}
 
-    // Ждём, пока Mini App станет невидимым (пользователь ушёл) — тогда засчитываем.
-    // Это надёжнее, чем мгновенно ставить галочку.
     let counted = false;
     const onHide = () => {
       if (counted) return;
@@ -513,8 +526,6 @@ const handleShareMessage = async () => {
     };
     document.addEventListener('visibilitychange', onHide);
     try { tg?.onEvent?.('viewportChanged', onHide); } catch (e) {}
-
-    // Защита от зависания: через 60 секунд снимаем подписку даже если задание не засчиталось
     setTimeout(() => {
       if (!counted) {
         document.removeEventListener('visibilitychange', onHide);
