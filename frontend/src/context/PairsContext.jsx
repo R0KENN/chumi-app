@@ -56,10 +56,14 @@ export function PairsProvider({ children, telegramUserId, initData }) {
 
   const fetchPairs = useCallback(async () => {
     if (!telegramUserId) return;
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 15000);
     try {
       const res = await fetch(`${API_URL}/pairs/${telegramUserId}`, {
         headers: initData ? { 'X-Telegram-Init-Data': initData } : {},
+        signal: ctrl.signal,
       });
+      clearTimeout(timeoutId);
       const data = await res.json();
       const freshPairs = data.pairs || [];
       setPairs(freshPairs);
@@ -67,7 +71,12 @@ export function PairsProvider({ children, telegramUserId, initData }) {
       dsSet(`pairs_${telegramUserId}`, freshPairs);
       dsSet(`pairs_ts_${telegramUserId}`, Date.now());
     } catch (e) {
-      setError(e.message);
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        setError('Сеть слишком медленная. Проверь прокси или интернет.');
+      } else {
+        setError(e.message);
+      }
     } finally {
       setLoading(false);
     }
