@@ -1466,6 +1466,101 @@ export async function onRequest(context) {
       return json({ success: true, cleaned, cleanedInactive });
     }
 
+        // ── POST /api/admin-daily-summary (cron) ──
+    // Ежедневная сводка для админа
+    if (request.method === 'POST' && path === '/api/admin-daily-summary') {
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+
+      const now = new Date();
+      const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      const last24h = (col) => supabase.from('pairs').select(col, { count: 'exact', head: true });
+
+      // ── Общие счётчики ──
+      const { count: totalUsers } = await supabase
+        .from('user_settings').select('telegram_user_id', { count: 'exact', head: true });
+      const { count: totalPairs } = await supabase
+        .from('pairs').select('code', { count: 'exact', head: true });
+      const { count: alivePairs } = await supabase
+        .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', false);
+      const { count: deadPairs } = await supabase
+        .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', true);
+      const { count: activeSubs } = await supabase
+        .from('user_subscriptions').select('id', { count: 'exact', head: true })
+        .eq('status', 'active').gt('expires_at', now.toISOString());
+      const { count: totalSkinsOwned } = await supabase
+        .from('user_skins').select('id', { count: 'exact', head: true });
+
+      // ── За последние 24 часа ──
+      const { count: newPairs24h } = await supabase
+        .from('pairs').select('code', { count: 'exact', head: true })
+        .gte('created_at', yesterdayIso);
+      const { count: newSubs24h } = await supabase
+        .from('user_subscriptions').select('id', { count: 'exact', head: true })
+        .gte('starts_at', yesterdayIso);
+      const { count: newSkins24h } = await supabase
+        .from('user_skins').select('id', { count: 'exact', head: true })
+        .gte('created_at', yesterdayIso);
+
+      // ── Активные сегодня (заходили в daily_open) ──
+      const todayUtc = now.toISOString().split('T')[0];
+      const { data: activeToday } = await supabase
+        .from('daily_tasks')
+        .select('user_id')
+        .eq('task_key', 'daily_open')
+        .eq('task_date', todayUtc);
+      const activeUsersToday = new Set((activeToday || []).map(t => t.user_id)).size;
+
+      // ── Топ-3 пар по серии ──
+      const { data: topStreaks } = await supabase
+        .from('pairs')
+        .select('code, pet_name, streak_days')
+        .eq('is_dead', false)
+        .order('streak_days', { ascending: false })
+        .limit(3);
+
+      let topStreaksText = '—';
+      if (topStreaks && topStreaks.length > 0) {
+        topStreaksText = topStreaks
+          .map((p, i) => `${i + 1}. ${p.pet_name || '—'} (${p.streak_days} дн.)`)
+          .join('\n');
+      }
+
+      const summary =
+        `📊 *Chumi — ежедневная сводка*\n` +
+        `_${now.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}_\n\n` +
+        `👥 *Всего пользователей:* ${totalUsers ?? 0}\n` +
+        `🟢 *Активные сегодня:* ${activeUsersToday}\n\n` +
+        `🐾 *Пары:* ${totalPairs ?? 0}\n` +
+        `   ❤️ Живые: ${alivePairs ?? 0}\n` +
+        `   💀 Мёртвые: ${deadPairs ?? 0}\n\n` +
+        `*За последние 24 часа:*\n` +
+        `   🆕 Новых пар: ${newPairs24h ?? 0}\n` +
+        `   ⭐ Новых Premium: ${newSubs24h ?? 0}\n` +
+        `   🎨 Куплено скинов: ${newSkins24h ?? 0}\n\n` +
+        `💎 *Активных Premium:* ${activeSubs ?? 0}\n` +
+        `🎨 *Скинов в собственности:* ${totalSkinsOwned ?? 0}\n\n` +
+        `🏆 *Топ-3 серии:*\n${topStreaksText}`;
+
+      // Шлём админам
+      let sent = 0;
+      for (const adminId of ADMIN_IDS) {
+        try {
+          await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: adminId,
+              text: summary,
+              parse_mode: 'Markdown',
+            }),
+          });
+          sent++;
+        } catch (e) {}
+      }
+
+      return json({ success: true, sent });
+    }
+
     // ── POST /api/send-partner-message ──
     if (request.method === 'POST' && path === '/api/send-partner-message') {
       const body = await request.json();

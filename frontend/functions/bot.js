@@ -31,10 +31,70 @@ async function sendMessage(env, chatId, text, extra = {}) {
   });
 }
 
+// Отправляет уведомление всем админам
+async function notifyAdmins(env, text) {
+  for (const adminId of ADMIN_IDS) {
+    try {
+      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: adminId,
+          text,
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true,
+        }),
+      });
+    } catch (e) {}
+  }
+}
+
 const ADMIN_IDS = ['713156118'];
 const MAX_PAIRS_BASE = 2;
 const WEBAPP_URL = 'https://chumi-app.pages.dev';
 const FIRE_EMOJI_ID = '5368324170671202286';
+
+// Команды для обычных пользователей
+const PUBLIC_COMMANDS = [
+  { command: 'start', description: 'Начать работу с ботом' },
+  { command: 'create', description: 'Создать новую пару' },
+  { command: 'join', description: 'Вступить в пару (нужен код)' },
+  { command: 'mypairs', description: 'Мои питомцы' },
+  { command: 'status', description: 'Подробный статус пар' },
+  { command: 'lang', description: 'Сменить язык' },
+  { command: 'help', description: 'Справка по командам' },
+  { command: 'paysupport', description: 'Поддержка по оплатам' },
+];
+
+// Дополнительные команды для админа
+const ADMIN_COMMANDS = [
+  ...PUBLIC_COMMANDS,
+  { command: 'stats', description: '📊 Статистика приложения' },
+  { command: 'users', description: '👥 Последние пользователи' },
+  { command: 'summary', description: '📅 Ежедневная сводка' },
+  { command: 'setcommands', description: '🔧 Обновить список команд' },
+];
+
+async function setBotCommands(env) {
+  // Глобальный список — для всех пользователей
+  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setMyCommands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commands: PUBLIC_COMMANDS }),
+  });
+
+  // Расширенный список — только в личных чатах с админами
+  for (const adminId of ADMIN_IDS) {
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setMyCommands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: ADMIN_COMMANDS,
+        scope: { type: 'chat', chat_id: parseInt(adminId) },
+      }),
+    });
+  }
+}
 
 
 async function getMaxPairs(supabase, userId) {
@@ -364,6 +424,18 @@ export async function onRequestPost(context) {
           lang === 'ru' ? `✅ Наряд *${skinName}* разблокирован! 🎨` : `✅ Outfit *${skinName}* unlocked! 🎨`,
           webAppButton
         );
+
+        // Уведомление админу
+        const buyerName = update.message.from.first_name || 'User';
+        const buyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
+        await notifyAdmins(env,
+          `💰 *Покупка скина*\n\n` +
+          `Пользователь: ${buyerName} (${buyerUser})\n` +
+          `ID: \`${userId}\`\n` +
+          `Скин: *${skinName}*\n` +
+          `Сумма: ⭐ ${payment.total_amount} Stars\n` +
+          `Charge: \`${chargeId || '—'}\``
+        );
         return new Response('OK');
       }
 
@@ -403,6 +475,18 @@ export async function onRequestPost(context) {
             : `🎁 *${giverName}* gifted you outfit *${skinName}*! 🎨\nOpen Chumi and try it on 🐾`,
           webAppButton
         );
+                // Уведомление админу о подарке
+        const giverName = update.message.from.first_name || 'User';
+        const giverUser = update.message.from.username ? '@' + update.message.from.username : '—';
+        await notifyAdmins(env,
+          `🎁 *Подарок скина*\n\n` +
+          `Даритель: ${giverName} (${giverUser})\n` +
+          `ID: \`${userId}\`\n` +
+          `Получатель ID: \`${recipientId}\`\n` +
+          `Скин: *${skinName}*\n` +
+          `Сумма: ⭐ ${payment.total_amount} Stars\n` +
+          `Charge: \`${chargeId || '—'}\``
+        );
         return new Response('OK');
       }
 
@@ -426,6 +510,16 @@ export async function onRequestPost(context) {
             .insert({ telegram_user_id: userId, extra_slots: 1 });
         }
         await sendMessage(env, update.message.chat.id, T[lang].slotBought, webAppButton);
+                // Уведомление админу
+        const slotBuyer = update.message.from.first_name || 'User';
+        const slotBuyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
+        await notifyAdmins(env,
+          `💰 *Покупка дополнительного слота*\n\n` +
+          `Пользователь: ${slotBuyer} (${slotBuyerUser})\n` +
+          `ID: \`${userId}\`\n` +
+          `Сумма: ⭐ ${payment.total_amount} Stars\n` +
+          `Charge: \`${chargeId || '—'}\``
+        );
         return new Response('OK');
       }
 
@@ -470,6 +564,17 @@ export async function onRequestPost(context) {
             ? `⭐ *Chumi Premium активирован!*\n\nТеперь у тебя:\n• Безлимит пар\n• Все наряды открыты\n• Премиум-бейдж в рейтинге\n\nДействует до ${expiresAt.toLocaleDateString('ru-RU')}`
             : `⭐ *Chumi Premium activated!*\n\nYou now have:\n• Unlimited pairs\n• All outfits unlocked\n• Premium badge in ranking\n\nValid until ${expiresAt.toLocaleDateString('en-US')}`,
           webAppButton
+        );
+                // Уведомление админу
+        const premBuyer = update.message.from.first_name || 'User';
+        const premBuyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
+        await notifyAdmins(env,
+          `⭐ *Покупка Premium*\n\n` +
+          `Пользователь: ${premBuyer} (${premBuyerUser})\n` +
+          `ID: \`${userId}\`\n` +
+          `Сумма: ⭐ ${payment.total_amount} Stars\n` +
+          `Действует до: ${expiresAt.toLocaleDateString('ru-RU')}\n` +
+          `Charge: \`${chargeId || '—'}\``
         );
         return new Response('OK');
       }
@@ -732,6 +837,37 @@ export async function onRequestPost(context) {
         msg += `• ${u.display_name || '—'} (${u.username ? '@' + u.username : 'no username'}) \`${u.user_id}\`\n`;
       }
       await sendMessage(env, chatId, msg.slice(0, 4000));
+      return new Response('OK');
+    }
+        // /summary — ручной запуск ежедневной сводки (только для админа)
+    if (text === '/summary') {
+      if (!ADMIN_IDS.includes(userId)) return new Response('OK');
+
+      // Зовём эндпоинт с CRON_SECRET в заголовке
+      const r = await fetch(`https://chumi-app.pages.dev/api/admin-daily-summary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${env.CRON_SECRET || ''}`,
+        },
+      });
+      if (!r.ok) {
+        await sendMessage(env, chatId, `❌ Ошибка: ${r.status}`);
+      } else {
+        await sendMessage(env, chatId, '✅ Сводка отправлена.');
+      }
+      return new Response('OK');
+    }
+
+        // /setcommands — только для админа, обновляет список команд бота
+    if (text === '/setcommands') {
+      if (!ADMIN_IDS.includes(userId)) return new Response('OK');
+      try {
+        await setBotCommands(env);
+        await sendMessage(env, chatId, '✅ Список команд обновлён.\nВ чате с ботом нажми кнопку «Меню» рядом с полем ввода.');
+      } catch (e) {
+        await sendMessage(env, chatId, `❌ Ошибка: ${e?.message || e}`);
+      }
       return new Response('OK');
     }
 
