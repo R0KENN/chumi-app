@@ -439,56 +439,59 @@ export async function onRequestPost(context) {
         return new Response('OK');
       }
 
-            // ── Skin GIFT (подарок партнёру) ──
-      if (payload.type === 'skin_gift' && payload.skinId && payload.recipientId) {
-        const recipientId = String(payload.recipientId);
-        const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
+// ── Skin GIFT (подарок партнёру) ──
+if (payload.type === 'skin_gift' && payload.skinId && payload.recipientId) {
+  const recipientId = String(payload.recipientId);
+  const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
 
-        // Проверяем, не владеет ли получатель уже этим скином
-        const { data: alreadyOwned } = await supabase
-          .from('user_skins')
-          .select('id')
-          .eq('user_id', recipientId)
-          .eq('skin_id', payload.skinId)
-          .maybeSingle();
-        if (!alreadyOwned) {
-          await supabase.from('user_skins').insert({
-            user_id: recipientId,
-            skin_id: payload.skinId,
-          });
-        }
+  // Проверяем, не владеет ли получатель уже этим скином
+  const { data: alreadyOwned } = await supabase
+    .from('user_skins')
+    .select('id')
+    .eq('user_id', recipientId)
+    .eq('skin_id', payload.skinId)
+    .maybeSingle();
+  if (!alreadyOwned) {
+    await supabase.from('user_skins').insert({
+      user_id: recipientId,
+      skin_id: payload.skinId,
+    });
+  }
 
-        // Сообщение дарителю
-        await sendMessage(env, update.message.chat.id,
-          lang === 'ru'
-            ? `🎁 Подарок отправлен партнёру!\nНаряд *${skinName}* теперь у него 🎨`
-            : `🎁 Gift sent to your partner!\nThey now own outfit *${skinName}* 🎨`,
-          webAppButton
-        );
+  // Имя дарителя — объявляем ОДИН раз
+  const giverName = update.message?.from?.first_name || 'User';
+  const giverUser = update.message?.from?.username ? '@' + update.message.from.username : '—';
 
-        // Сообщение получателю на его языке
-        const recipientLang = await getUserLang(supabase, recipientId);
-        const giverName = update.message?.from?.first_name || (recipientLang === 'ru' ? 'Партнёр' : 'Partner');
-        await sendMessage(env, recipientId,
-          recipientLang === 'ru'
-            ? `🎁 *${giverName}* подарил тебе наряд *${skinName}*! 🎨\nОткрой Chumi и примерь его 🐾`
-            : `🎁 *${giverName}* gifted you outfit *${skinName}*! 🎨\nOpen Chumi and try it on 🐾`,
-          webAppButton
-        );
-                // Уведомление админу о подарке
-        const giverName = update.message.from.first_name || 'User';
-        const giverUser = update.message.from.username ? '@' + update.message.from.username : '—';
-        await notifyAdmins(env,
-          `🎁 *Подарок скина*\n\n` +
-          `Даритель: ${giverName} (${giverUser})\n` +
-          `ID: \`${userId}\`\n` +
-          `Получатель ID: \`${recipientId}\`\n` +
-          `Скин: *${skinName}*\n` +
-          `Сумма: ⭐ ${payment.total_amount} Stars\n` +
-          `Charge: \`${chargeId || '—'}\``
-        );
-        return new Response('OK');
-      }
+  // Сообщение дарителю
+  await sendMessage(env, update.message.chat.id,
+    lang === 'ru'
+      ? `🎁 Подарок отправлен партнёру!\nНаряд *${skinName}* теперь у него 🎨`
+      : `🎁 Gift sent to your partner!\nThey now own outfit *${skinName}* 🎨`,
+    webAppButton
+  );
+
+  // Сообщение получателю на его языке
+  const recipientLang = await getUserLang(supabase, recipientId);
+  const giverDisplay = update.message?.from?.first_name || (recipientLang === 'ru' ? 'Партнёр' : 'Partner');
+  await sendMessage(env, recipientId,
+    recipientLang === 'ru'
+      ? `🎁 *${giverDisplay}* подарил тебе наряд *${skinName}*! 🎨\nОткрой Chumi и примерь его 🐾`
+      : `🎁 *${giverDisplay}* gifted you outfit *${skinName}*! 🎨\nOpen Chumi and try it on 🐾`,
+    webAppButton
+  );
+
+  // Уведомление админу о подарке
+  await notifyAdmins(env,
+    `🎁 *Подарок скина*\n\n` +
+    `Даритель: ${giverName} (${giverUser})\n` +
+    `ID: \`${userId}\`\n` +
+    `Получатель ID: \`${recipientId}\`\n` +
+    `Скин: *${skinName}*\n` +
+    `Сумма: ⭐ ${payment.total_amount} Stars\n` +
+    `Charge: \`${chargeId || '—'}\``
+  );
+  return new Response('OK');
+}
 
       // ── Extra slot ──
       if (payload.productId === 'extra_slot') {
