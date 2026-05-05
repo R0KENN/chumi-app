@@ -121,17 +121,35 @@ async function getMaxPairs(supabase, userId) {
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
 
-async function sendTelegramMessage(env, chatId, text) {
+async function sendTelegramMessage(env, chatId, text, extra = {}) {
   try {
     await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', ...extra }),
     });
   } catch (e) {
     console.error('Telegram send error:', e);
   }
 }
+
+// ────────── Admin notifications ──────────
+async function notifyAdmins(env, text) {
+  for (const adminId of ADMIN_IDS) {
+    try {
+      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: adminId,
+          text: '🛠 ' + text,
+          parse_mode: 'Markdown',
+        }),
+      });
+    } catch (e) {}
+  }
+}
+
 
 // ────────── Telegram initData validation ──────────
 function validateInitData(initDataRaw, botToken, maxAgeSec = 86400) {
@@ -562,8 +580,34 @@ export async function onRequest(context) {
       if (points === undefined) return json({ error: 'Invalid task' }, 400);
 
       const { data: pairCheck } = await supabase
-        .from('pairs').select('is_dead, timezone').eq('code', code).maybeSingle();
+        .from('pairs').select('is_dead, timezone, last_streak_date, streak_days, growth_points').eq('code', code).maybeSingle();
       if (!pairCheck) return json({ error: 'Pair not found' }, 404);
+
+      // Если питомец мёртв больше 3 дней без воскрешения — серия и XP обнуляются
+      // и питомец «начинается с нуля». Это срабатывает при первой попытке что-то сделать.
+      if (pairCheck.is_dead && pairCheck.last_streak_date) {
+        const tzCheck = pairCheck.timezone || 'UTC';
+        const todayCheck = getTodayDate(tzCheck);
+        const lastDate = new Date(pairCheck.last_streak_date + 'T00:00:00Z');
+        const todayDate = new Date(todayCheck + 'T00:00:00Z');
+        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 3) {
+          await supabase.from('pairs').update({
+            is_dead: false,
+            streak_days: 0,
+            growth_points: 0,
+            hatched: false,
+            active_skin: null,
+            last_streak_date: todayCheck,
+            last_pair_streak_date: todayCheck,
+          }).eq('code', code);
+          await supabase.from('one_time_tasks').delete().eq('pair_code', code);
+          await supabase.from('daily_tasks').delete().eq('pair_code', code);
+          await supabase.from('feedings').delete().eq('pair_code', code);
+          return json({ error: 'Pet was reset due to long inactivity', reset: true }, 400);
+        }
+      }
+
       if (pairCheck.is_dead) return json({ error: 'Pet is dead' }, 400);
 
       const today = getTodayDate(pairCheck.timezone || 'UTC');
@@ -828,6 +872,8 @@ export async function onRequest(context) {
     }
 
     // ── POST /api/recover-streak ──
+    // При воскрешении серия и XP СОХРАНЯЮТСЯ.
+    // Питомец оживает в том же состоянии, в котором был перед смертью.
     if (request.method === 'POST' && path === '/api/recover-streak') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
@@ -840,8 +886,7 @@ export async function onRequest(context) {
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403);
 
-      const { data: pair } = await supabase
-        .from('pairs').select('*').eq('code', code).single();
+      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).single();
       if (!pair) return json({ error: 'Pair not found' }, 404);
       if (!pair.is_dead) return json({ error: 'Pet is not dead' }, 400);
 
@@ -853,23 +898,9 @@ export async function onRequest(context) {
       if (pair.last_recovery_month !== currentMonth) used = 0;
       if (used >= 5) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
 
-      // Если с последней активности прошло больше 1 пропущенного дня — серия обнуляется.
-      // Питомец считается умершим за один день. Если игрок зашёл воскрешать в день смерти
-      // или на следующий день — серия сохраняется. Если позже — обнуляется в 0.
-      let newStreak = pair.streak_days || 0;
-      if (pair.last_streak_date) {
-        const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
-        const todayDate = new Date(today + 'T00:00:00Z');
-        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
-        // diffDays >= 2 означает: пропущен хотя бы 1 полный день → серия обнуляется
-        if (diffDays >= 2) {
-          newStreak = 0;
-        }
-      }
-
+      // При воскрешении серия и XP сохраняются. Только оживаем и обновляем дату.
       const { data: updated } = await supabase.from('pairs').update({
         is_dead: false,
-        streak_days: newStreak,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
         last_streak_date: today,
@@ -879,12 +910,12 @@ export async function onRequest(context) {
       return json({
         success: true,
         remaining: 5 - (used + 1),
-        streak_days: updated?.streak_days ?? newStreak,
+        streak_days: updated?.streak_days ?? pair.streak_days,
+        growth_points: updated?.growth_points ?? pair.growth_points,
         is_dead: false,
         last_streak_date: today,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
-        streak_reset: newStreak === 0,
       });
     }
 
@@ -975,6 +1006,7 @@ export async function onRequest(context) {
       const { data: allPairs } = await supabase
         .from('pairs')
         .select('code, pet_name, growth_points, streak_days')
+        .order('streak_days', { ascending: false })
         .order('growth_points', { ascending: false })
         .limit(100);
 
@@ -1299,9 +1331,19 @@ export async function onRequest(context) {
 
           if (!opened) {
             const petName = pair.pet_name || 'Chumi';
-            await sendTelegramMessage(env, member.user_id,
-              `🔔 *${petName}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
-            );
+            const { data: ms } = await supabase
+              .from('user_settings').select('lang')
+              .eq('telegram_user_id', member.user_id).maybeSingle();
+            const mLang = ms?.lang || 'ru';
+            const reminderText = mLang === 'ru'
+              ? `🔔 *${petName}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
+              : `🔔 *${petName}* is waiting! Streak: ${pair.streak_days} days 🔥\nDon't forget to come today!`;
+            const btnText = mLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+            await sendTelegramMessage(env, member.user_id, reminderText, {
+              reply_markup: {
+                inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi-app.pages.dev' } }]],
+              },
+            });
             sent++;
           }
         }
@@ -1343,7 +1385,12 @@ export async function onRequest(context) {
             const text = dLang === 'ru'
               ? `💀 *${petName}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.\nОсталось воскрешений в этом месяце: до 5.`
               : `💀 *${petName}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue.\nUp to 5 revivals per month available.`;
-            await sendTelegramMessage(env, dm.user_id, text);
+            const dBtnText = dLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+            await sendTelegramMessage(env, dm.user_id, text, {
+              reply_markup: {
+                inline_keyboard: [[{ text: dBtnText, web_app: { url: 'https://chumi-app.pages.dev' } }]],
+              },
+            });
           }
         }
       }
@@ -1707,6 +1754,7 @@ await supabase.from('pair_users')
 
   } catch (err) {
     console.error('API Error:', err);
+    await notifyAdmins(env, `*API Error:*\n\`\`\`\n${(err?.stack || err?.message || String(err)).slice(0, 1500)}\n\`\`\``);
     return json({ error: 'Internal server error' }, 500);
   }
 }

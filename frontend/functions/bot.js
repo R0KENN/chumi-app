@@ -507,6 +507,26 @@ export async function onRequestPost(context) {
         // Первый раз — определяем язык из Telegram
         lang = detectLangFromTelegram(message.from);
         await setUserLang(supabase, userId, lang);
+
+        // Уведомление админа о новом пользователе
+        for (const adminId of ADMIN_IDS) {
+          if (adminId === userId) continue;
+          try {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: adminId,
+                text: `👤 *Новый пользователь!*\n\n` +
+                      `Имя: ${firstName}\n` +
+                      `Username: ${username ? '@' + username : '—'}\n` +
+                      `ID: \`${userId}\`\n` +
+                      `Язык: ${lang}`,
+                parse_mode: 'Markdown',
+              }),
+            });
+          } catch (e) {}
+        }
       }
 
       if (startParam.startsWith('join_')) {
@@ -663,6 +683,58 @@ export async function onRequestPost(context) {
       return new Response('OK');
     }
 
+        // /stats — только для админа
+    if (text === '/stats') {
+      if (!ADMIN_IDS.includes(userId)) return new Response('OK');
+
+      const { count: totalUsers } = await supabase
+        .from('user_settings').select('telegram_user_id', { count: 'exact', head: true });
+      const { count: totalPairs } = await supabase
+        .from('pairs').select('code', { count: 'exact', head: true });
+      const { count: alivePairs } = await supabase
+        .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', false);
+      const { count: deadPairs } = await supabase
+        .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', true);
+      const { count: activeSubs } = await supabase
+        .from('user_subscriptions').select('id', { count: 'exact', head: true })
+        .eq('status', 'active').gt('expires_at', new Date().toISOString());
+      const { count: totalSkins } = await supabase
+        .from('user_skins').select('id', { count: 'exact', head: true });
+
+      const msg = `📊 *Chumi stats*\n\n` +
+        `👥 Users: *${totalUsers ?? 0}*\n` +
+        `🐾 Pairs: *${totalPairs ?? 0}* (alive: ${alivePairs ?? 0}, dead: ${deadPairs ?? 0})\n` +
+        `⭐ Premium subs: *${activeSubs ?? 0}*\n` +
+        `🎨 Skins owned: *${totalSkins ?? 0}*`;
+      await sendMessage(env, chatId, msg, webAppButton);
+      return new Response('OK');
+    }
+
+    // /users — список последних пользователей (только для админа)
+    if (text === '/users') {
+      if (!ADMIN_IDS.includes(userId)) return new Response('OK');
+
+      const { data: users } = await supabase
+        .from('pair_users')
+        .select('user_id, display_name, username')
+        .order('user_id', { ascending: false })
+        .limit(50);
+
+      const seen = new Set();
+      const unique = (users || []).filter(u => {
+        if (seen.has(u.user_id)) return false;
+        seen.add(u.user_id);
+        return true;
+      });
+
+      let msg = `👥 *Последние пользователи (${unique.length}):*\n\n`;
+      for (const u of unique) {
+        msg += `• ${u.display_name || '—'} (${u.username ? '@' + u.username : 'no username'}) \`${u.user_id}\`\n`;
+      }
+      await sendMessage(env, chatId, msg.slice(0, 4000));
+      return new Response('OK');
+    }
+
     // /paysupport
     if (text === '/paysupport') {
       await sendMessage(env, chatId, T[lang].paySupport);
@@ -671,6 +743,20 @@ export async function onRequestPost(context) {
 
   } catch (e) {
     console.error('Bot error:', e);
+    // Уведомить админов об ошибке
+    for (const adminId of ADMIN_IDS) {
+      try {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: adminId,
+            text: `🛠 *Bot error:*\n\`\`\`\n${(e?.stack || e?.message || String(e)).slice(0, 1500)}\n\`\`\``,
+            parse_mode: 'Markdown',
+          }),
+        });
+      } catch (err) {}
+    }
   }
   return new Response('OK');
 }

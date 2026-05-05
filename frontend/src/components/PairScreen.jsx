@@ -103,6 +103,7 @@ export default function PairScreen() {
   const rankingAvatarsRef = useRef({});
   const prevLevelRef = useRef(null);
   const [previewSkin, setPreviewSkin] = useState(undefined);
+  const [levelUpData, setLevelUpData] = useState(null); // { level, name, skinName, petPreview }
   const [outfitTab, setOutfitTab] = useState('levels');
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
@@ -141,19 +142,26 @@ export default function PairScreen() {
     try { tg.setBottomBarColor?.(isDark ? bgColors[1] : '#f5f5f5'); } catch (e) {}
   }, [tg, pair]);
 
-  // ══════ Emoji Status при повышении уровня ══════
+  // ══════ Уведомление + Emoji Status при повышении уровня ══════
   useEffect(() => {
-    if (!tg || !pair) return;
+    if (!pair) return;
     const lv = getLevel(pair.growth_points || 0);
-    if (prevLevelRef.current !== null && lv.idx > prevLevelRef.current && lv.emojiId) {
-      if (tg.setEmojiStatus) {
-        tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, (ok) => {
-          if (ok) console.log('Emoji status set!');
-        });
+    if (prevLevelRef.current !== null && lv.idx > prevLevelRef.current) {
+      // Эмодзи-статус (Telegram)
+      if (tg?.setEmojiStatus && lv.emojiId) {
+        tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, () => {});
       }
+      // Уведомление о новом уровне
+      haptic('success');
+      setLevelUpData({
+        level: lv.idx,
+        name: lang === 'ru' ? lv.nameRu : lv.name,
+        pet: lv.pet,
+      });
     }
     prevLevelRef.current = lv.idx;
-  }, [tg, pair]);
+  }, [tg, pair, lang]);
+
 
   // ══════ BottomButton — скрываем ══════
   useEffect(() => {
@@ -184,9 +192,15 @@ export default function PairScreen() {
         body: JSON.stringify({ code: pairId, userId, taskKey }),
       });
       const data = await res.json();
+      // Если бэк сбросил пару из-за долгой неактивности — перезагружаем данные
+      if (data.reset) {
+        await new Promise(r => setTimeout(r, 100));
+        return false;
+      }
       return !data.error;
     } catch (e) { return false; }
   }, [pairId, userId]);
+
 
   const load = useCallback(async () => {
     try {
@@ -400,13 +414,37 @@ const handleShareMessage = async () => {
       icon: '👆', action: 'pet' },
   ];
 
+    const SKINS = [
+    { id: 'strawberry', name: 'Strawberry', nameRu: 'Клубничка', price: 25,
+      pet: 'axolotl_Strawberry', petTap: 'axolotl_Strawberry_tap',
+      bg: ['#FFE5EC', '#FFB3C6'], accent: '#E63946' },
+    { id: 'bee',        name: 'Bee',        nameRu: 'Пчёлка',    price: 0,
+      pet: 'axolotl_Bee',        petTap: 'axolotl_Bee_tap', referralReward: true,
+      bg: ['#FFF8DC', '#FFE066'], accent: '#F4A300' },
+    { id: 'floral',     name: 'Floral',     nameRu: 'Цветочный',  price: 25,
+      pet: 'axolotl_Floral',     petTap: 'axolotl_Floral_tap',
+      bg: ['#F0FFF4', '#C8F0D4'], accent: '#52B788' },
+    { id: 'astronaut',  name: 'Astronaut',  nameRu: 'Астронавт',  price: 25,
+      pet: 'axolotl_Astronaut',  petTap: 'axolotl_Astronaut_tap',
+      bg: ['#0B1A3A', '#1F3A6E'], accent: '#7B9CFF' },
+  ];
+
+
   const partner = pair.members?.find(m => m.user_id !== userId);
   const isMaxLevel = lv.idx === LEVELS.length - 1 && lv.remaining === 0;
   const isDark = !isEgg && lv.idx === 5;
 
-  const bgColors = lv.bg;
-  const accentColor = lv.accent;
-  const checkColor = lv.check;
+  // Если активен покупной скин с собственным фоном — используем его, иначе цвета уровня
+  const activeSkinData = (showOutfits && previewSkin !== undefined && previewSkin !== null && !String(previewSkin).startsWith('level_'))
+    ? SKINS.find(s => s.id === previewSkin)
+    : (pair.active_skin && !pair.active_skin.startsWith('level_'))
+      ? SKINS.find(s => s.id === pair.active_skin)
+      : null;
+
+  const bgColors = activeSkinData?.bg || lv.bg;
+  const accentColor = activeSkinData?.accent || lv.accent;
+  const checkColor = activeSkinData?.accent || lv.check;
+
 
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
@@ -462,28 +500,49 @@ const handleShareMessage = async () => {
     const msgs = getShareMessages(petName, pair.streak_days || 0, pairId, lang);
     const text = pickRandom(msgs[task.key] || msgs.send_msg);
 
-    // Подсказка для стикера/медиа: после отправки сообщения нужно прислать
-    // ещё стикер/медиа партнёру вручную — Telegram не позволяет прикрепить
-    // их к подготовленному сообщению.
+    // ─── send_msg: бот сам отправляет сообщение партнёру ───
+    if (task.key === 'send_msg') {
+      setCompleting(true);
+      try {
+        const res = await fetch(`${API}/send-partner-message`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ code: pairId, userId, text }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!data.error) {
+          haptic('success');
+          await completeTask(task.key);
+          await load();
+        } else {
+          haptic('error');
+          if (tg?.showAlert) {
+            tg.showAlert(lang === 'ru' ? 'Не удалось отправить сообщение' : 'Failed to send message');
+          }
+        }
+      } catch (e) {
+        haptic('error');
+      } finally {
+        setCompleting(false);
+      }
+      return;
+    }
+
+    // ─── send_sticker / send_media: prepared inline через выбор чата ───
     const hint = task.key === 'send_sticker'
       ? (lang === 'ru'
           ? 'После отправки сообщения отправь партнёру любой стикер 🎨'
           : 'After sending the message, send any sticker to your partner 🎨')
-      : task.key === 'send_media'
-      ? (lang === 'ru'
+      : (lang === 'ru'
           ? 'После отправки сообщения отправь партнёру фото или видео 📸'
-          : 'After sending the message, send a photo or video to your partner 📸')
-      : null;
+          : 'After sending the message, send a photo or video to your partner 📸');
 
-    if (hint) {
-      if (tg?.showAlert) {
-        await new Promise(resolve => tg.showAlert(hint, resolve));
-      } else {
-        alert(hint);
-      }
+    if (tg?.showAlert) {
+      await new Promise(resolve => tg.showAlert(hint, resolve));
+    } else {
+      alert(hint);
     }
 
-    // Готовим inline-сообщение на бэке
     let preparedId = null;
     try {
       const res = await fetch(`${API}/prepare-task-message`, {
@@ -495,7 +554,6 @@ const handleShareMessage = async () => {
       if (data.prepared_message_id) preparedId = data.prepared_message_id;
     } catch (e) {}
 
-    // Если получили prepared_message_id и SDK поддерживает shareMessage — используем его
     if (preparedId && tg?.shareMessage) {
       tg.shareMessage(preparedId, (ok) => {
         if (ok) {
@@ -503,12 +561,11 @@ const handleShareMessage = async () => {
           setCompleting(true);
           completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
         }
-        // если ok=false — пользователь отменил, задание не засчитываем
       });
       return;
     }
 
-    // Fallback: системный t.me/share/url + засчёт по visibilitychange
+    // Fallback
     const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
     try {
       if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
@@ -778,13 +835,6 @@ const handleShareInvite = () => {
     level: l.level,
     unlocked: lv.idx >= l.level,
   }));
-
-  const SKINS = [
-    { id: 'strawberry', name: 'Strawberry', nameRu: 'Клубничка', price: 25, pet: 'axolotl_Strawberry', petTap: 'axolotl_Strawberry_tap' },
-    { id: 'bee',        name: 'Bee',        nameRu: 'Пчёлка',    price: 0,  pet: 'axolotl_Bee',        petTap: 'axolotl_Bee_tap', referralReward: true },
-    { id: 'floral',     name: 'Floral',     nameRu: 'Цветочный',  price: 25, pet: 'axolotl_Floral',     petTap: 'axolotl_Floral_tap' },
-    { id: 'astronaut',  name: 'Astronaut',  nameRu: 'Астронавт',  price: 25, pet: 'axolotl_Astronaut',  petTap: 'axolotl_Astronaut_tap' },
-  ];
 
 
   const renderEgg = () => (
@@ -1371,6 +1421,48 @@ if (displaySkin && displaySkin.startsWith('level_')) {
               );
             })}
             <button className="sk-popup-close" onClick={() => setShowLevels(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Level-up popup */}
+      {levelUpData && (
+        <div className="sk-overlay" onClick={() => setLevelUpData(null)}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 56, textAlign: 'center', marginBottom: 8 }}>🎉</div>
+            <h3 style={{ textAlign: 'center', color: accentColor }}>
+              {lang === 'ru' ? 'Новый уровень!' : 'Level up!'}
+            </h3>
+            <p style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 12, color: '#1a1a1a' }}>
+              {levelUpData.name}
+            </p>
+            {levelUpData.pet && (
+              <video autoPlay loop muted playsInline
+                style={{ width: 140, height: 140, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }}>
+                <source src={`/pets/${levelUpData.pet}.webm`} type="video/webm" />
+              </video>
+            )}
+            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
+              {lang === 'ru'
+                ? `Разблокирован новый наряд «${levelUpData.name}»! Открой «Наряды», чтобы примерить его.`
+                : `New outfit "${levelUpData.name}" unlocked! Open "Outfits" to try it on.`}
+            </p>
+            <button
+              onClick={() => {
+                setLevelUpData(null);
+                loadSkins();
+                setPreviewSkin(`level_${levelUpData.level}`);
+                setOutfitTab('levels');
+                setShowOutfits(true);
+              }}
+              className="sk-btn-primary"
+              style={{ background: accentColor }}
+            >
+              👕 {lang === 'ru' ? 'Примерить' : 'Try on'}
+            </button>
+            <button className="sk-popup-close" onClick={() => setLevelUpData(null)}>
+              {lang === 'ru' ? 'Позже' : 'Later'}
+            </button>
           </div>
         </div>
       )}
