@@ -426,7 +426,7 @@ const handleShareMessage = async () => {
       bg: ['#F0FFF4', '#C8F0D4'], accent: '#52B788' },
     { id: 'astronaut',  name: 'Astronaut',  nameRu: 'Астронавт',  price: 25,
       pet: 'axolotl_Astronaut',  petTap: 'axolotl_Astronaut_tap',
-      bg: ['#0B1A3A', '#1F3A6E'], accent: '#7B9CFF' },
+      bg: ['#E8F0FF', '#B8D0F4'], accent: '#4A7BD4' },
   ];
 
 
