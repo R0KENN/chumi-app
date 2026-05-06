@@ -1307,6 +1307,9 @@ export async function onRequest(context) {
     // ── POST /api/send-reminders (cron) ──
     if (request.method === 'POST' && path === '/api/send-reminders') {
       if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+      // Защита от частых вызовов: не чаще 1 раза в 20 часов на пользователя
+// Используем notification_log как лог отправок
+const userIdKey = String(member.user_id);
 
       const { data: allPairs } = await supabase
         .from('pairs')
@@ -1329,23 +1332,45 @@ export async function onRequest(context) {
             .eq('task_date', today)
             .maybeSingle();
 
-          if (!opened) {
-            const petName = pair.pet_name || 'Chumi';
-            const { data: ms } = await supabase
-              .from('user_settings').select('lang')
-              .eq('telegram_user_id', member.user_id).maybeSingle();
-            const mLang = ms?.lang || 'ru';
-            const reminderText = mLang === 'ru'
-              ? `🔔 *${petName}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
-              : `🔔 *${petName}* is waiting! Streak: ${pair.streak_days} days 🔥\nDon't forget to come today!`;
-            const btnText = mLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
-            await sendTelegramMessage(env, member.user_id, reminderText, {
-              reply_markup: {
-                inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi-app.pages.dev' } }]],
-              },
-            });
-            sent++;
-          }
+if (!opened) {
+  // Проверяем: отправляли ли уже сегодня напоминание этому пользователю
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const { data: alreadySent } = await supabase
+    .from('notification_log')
+    .select('id')
+    .eq('sender_user_id', 'system_reminder')
+    .eq('target_user_id', member.user_id)
+    .gte('sent_at', todayStart.toISOString())
+    .limit(1)
+    .maybeSingle();
+
+  if (alreadySent) continue;
+
+  const petName = pair.pet_name || 'Chumi';
+  const { data: ms } = await supabase
+    .from('user_settings').select('lang')
+    .eq('telegram_user_id', member.user_id).maybeSingle();
+  const mLang = ms?.lang || 'ru';
+  const reminderText = mLang === 'ru'
+    ? `🔔 *${petName}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
+    : `🔔 *${petName}* is waiting! Streak: ${pair.streak_days} days 🔥\nDon't forget to come today!`;
+  const btnText = mLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+  await sendTelegramMessage(env, member.user_id, reminderText, {
+    reply_markup: {
+      inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi-app.pages.dev' } }]],
+    },
+  });
+
+  // Записываем факт отправки
+  await supabase.from('notification_log').insert({
+    sender_user_id: 'system_reminder',
+    target_user_id: member.user_id,
+    sent_at: new Date().toISOString(),
+  });
+
+  sent++;
+}
         }
       }
       return json({ success: true, sent });

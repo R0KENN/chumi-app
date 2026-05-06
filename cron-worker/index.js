@@ -4,27 +4,31 @@ export default {
     const headers = { 'Content-Type': 'application/json' };
     if (env.CRON_SECRET) headers['Authorization'] = `Bearer ${env.CRON_SECRET}`;
 
-    // 1. Обновление серий (каждый запуск)
+    const now = new Date();
+    const hour = now.getUTCHours();
+
+    // 1. Серии — каждый запуск
     try {
       const r1 = await fetch(`${baseUrl}/api/update-streaks`, { method: 'POST', headers });
       console.log('Streaks:', await r1.json());
     } catch (e) { console.error('Streak error:', e); }
 
-    // 2. Напоминания (каждый запуск)
-    try {
-      const r2 = await fetch(`${baseUrl}/api/send-reminders`, { method: 'POST', headers });
-      console.log('Reminders:', await r2.json());
-    } catch (e) { console.error('Reminder error:', e); }
-
-    // 3. Очистка пустых/неактивных пар (каждый запуск)
+    // 2. Очистка — каждый запуск
     try {
       const r3 = await fetch(`${baseUrl}/api/cleanup-empty-pairs`, { method: 'POST', headers });
       console.log('Cleanup:', await r3.json());
     } catch (e) { console.error('Cleanup error:', e); }
 
-    // 4. Ежедневная сводка админу — только в 09:xx UTC (12:xx МСК)
-    const now = new Date();
-    if (now.getUTCHours() === 9) {
+    // 3. Напоминания — ТОЛЬКО в 18:00 UTC (21:00 МСК)
+    if (hour === 18) {
+      try {
+        const r2 = await fetch(`${baseUrl}/api/send-reminders`, { method: 'POST', headers });
+        console.log('Reminders:', await r2.json());
+      } catch (e) { console.error('Reminder error:', e); }
+    }
+
+    // 4. Ежедневная сводка админу — в 9:00 UTC (12:00 МСК)
+    if (hour === 9) {
       try {
         const r4 = await fetch(`${baseUrl}/api/admin-daily-summary`, { method: 'POST', headers });
         console.log('Daily summary:', await r4.json());
@@ -33,7 +37,6 @@ export default {
   },
 
   async fetch(request, env) {
-    // Запуск вручную допустим только при наличии правильного секрета
     if (request.method === 'POST') {
       const auth = request.headers.get('Authorization') || '';
       if (!env.CRON_SECRET || auth !== `Bearer ${env.CRON_SECRET}`) {
