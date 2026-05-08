@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Alpha test</title></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="background:red;margin:0;padding:20px;font-family:sans-serif">
-  <h2 style="color:white">Если фон красный сквозь видео — альфа РАБОТАЕТ</h2>
-  <video autoplay loop muted playsinline width="300">
-    <source src="/pets/axolotl_idle.webm" type="video/webm">
-  </video>
-  <video autoplay loop muted playsinline width="300">
-    <source src="/pets/axolotl_Astronaut.webm" type="video/webm">
+  <h1 style="color:white">Если красный фон просвечивает — alpha работает</h1>
+  <video autoplay loop muted playsinline width="400">
+    <source src="/pets/axolotl_idle_ios.mov" type='video/mp4; codecs="hvc1"' />
+    <source src="/pets/axolotl_idle.webm" type="video/webm" />
   </video>
 </body>
 </html>
