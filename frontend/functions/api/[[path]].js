@@ -1744,21 +1744,21 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       if (alreadyOwned) return json({ error: 'Partner already owns this skin' }, 400);
 
       // Создаём инвойс с типом "gift" и id получателя
+      // ВАЖНО: payload в Telegram имеет лимит 128 байт, поэтому используем короткие ключи
       const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
         title: `Подарок: ${skinId}`,
         description: `Подарок другу — наряд ${skinId}!`,
         payload: JSON.stringify({
-          type: 'skin_gift',
-          skinId,
-          userId,
-          recipientId: partner.user_id,
-          pairCode,
-          timestamp: Date.now(),
+          t: 'skin_gift',
+          s: skinId,
+          u: userId,
+          r: partner.user_id,
         }),
         provider_token: '',
         currency: 'XTR',
         prices: [{ amount: price, label: `Skin gift: ${skinId}` }],
       });
+
 
       if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
       return json({ invoiceUrl });
