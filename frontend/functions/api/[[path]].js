@@ -1734,7 +1734,7 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       // Находим партнёра
       const { data: members } = await supabase
         .from('pair_users').select('user_id').eq('pair_code', pairCode);
-      const partner = (members || []).find(m => m.user_id !== userId);
+      const partner = (members || []).find(m => String(m.user_id) !== String(userId));
       if (!partner) return json({ error: 'No partner in pair' }, 400);
 
       // Проверяем, что у партнёра ещё нет такого скина

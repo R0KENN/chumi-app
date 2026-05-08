@@ -780,42 +780,44 @@ const handleShareInvite = () => {
     } catch (e) {}
   };
 
-    const handleGiftSkin = async (skinId) => {
-    if (!hasPartner) {
-      // нет партнёра — нечего дарить
-      haptic('warning');
+const handleGiftSkin = async (skinId) => {
+  if (!hasPartner) {
+    haptic('warning');
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/buy-skin-gift`, {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ userId, skinId, pairCode: pairId }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      haptic('error');
+      const errorMessages = {
+        'Partner already owns this skin': lang === 'ru' ? 'У партнёра уже есть этот скин 🎁' : 'Partner already owns this skin 🎁',
+        'No partner in pair': lang === 'ru' ? 'В паре нет партнёра' : 'No partner in pair',
+        'Not a member': lang === 'ru' ? 'Вы не участник этой пары' : 'Not a member of this pair',
+        'Invalid skin': lang === 'ru' ? 'Этот скин нельзя подарить' : 'This skin cannot be gifted',
+        'Invoice creation failed': lang === 'ru' ? 'Не удалось создать счёт. Попробуйте позже.' : 'Failed to create invoice. Try later.',
+        'Unauthorized': lang === 'ru' ? 'Сессия истекла, перезайдите' : 'Session expired, please reopen',
+      };
+      const msg = errorMessages[data.error] || `${lang === 'ru' ? 'Ошибка' : 'Error'}: ${data.error}`;
+      if (tg?.showAlert) tg.showAlert(msg);
+      else alert(msg);
       return;
     }
-    try {
-      const res = await fetch(`${API}/buy-skin-gift`, {
-        method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ userId, skinId, pairCode: pairId }),
+    if (data.invoiceUrl && tg?.openInvoice) {
+      tg.openInvoice(data.invoiceUrl, (st) => {
+        if (st === 'paid') { haptic('heavy'); loadSkins(); load(); }
       });
-      const data = await res.json();
-      if (data.error) {
-        // Партнёр уже владеет этим скином
-        haptic('error');
-        alert(
-          data.error === 'Partner already owns this skin'
-            ? (lang === 'ru' ? 'У партнёра уже есть этот скин 🎁' : 'Partner already owns this skin 🎁')
-            : (lang === 'ru' ? 'Не удалось создать подарок' : 'Failed to create gift')
-        );
-        return;
-      }
-      if (data.invoiceUrl && tg?.openInvoice) {
-        tg.openInvoice(data.invoiceUrl, (st) => {
-          if (st === 'paid') {
-            haptic('heavy');
-            // У партнёра прибавился скин — обновим, чтобы у админа/премиума всё корректно отобразилось
-            loadSkins();
-            load();
-          }
-        });
-      } else if (data.invoiceUrl) {
-        window.open(data.invoiceUrl, '_blank');
-      }
-    } catch (e) {}
-  };
+    } else if (data.invoiceUrl) {
+      window.open(data.invoiceUrl, '_blank');
+    }
+  } catch (e) {
+    haptic('error');
+    if (tg?.showAlert) tg.showAlert(lang === 'ru' ? `Ошибка сети: ${e.message}` : `Network error: ${e.message}`);
+  }
+};
 
   const handleClaimBee = async () => {
     try {
