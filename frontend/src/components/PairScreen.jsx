@@ -101,7 +101,6 @@ export default function PairScreen() {
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
   const rankingAvatarsRef = useRef({});
-  const prevLevelRef = useRef(null);
   const [previewSkin, setPreviewSkin] = useState(undefined);
   const [levelUpData, setLevelUpData] = useState(null); // { level, name, skinName, petPreview }
   const [outfitTab, setOutfitTab] = useState('levels');
@@ -142,25 +141,36 @@ export default function PairScreen() {
     try { tg.setBottomBarColor?.(isDark ? bgColors[1] : '#f5f5f5'); } catch (e) {}
   }, [tg, pair]);
 
-  // ══════ Уведомление + Emoji Status при повышении уровня ══════
-  useEffect(() => {
-    if (!pair) return;
-    const lv = getLevel(pair.growth_points || 0);
-    if (prevLevelRef.current !== null && lv.idx > prevLevelRef.current) {
-      // Эмодзи-статус (Telegram)
-      if (tg?.setEmojiStatus && lv.emojiId) {
-        tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, () => {});
-      }
-      // Уведомление о новом уровне
-      haptic('success');
-      setLevelUpData({
-        level: lv.idx,
-        name: lang === 'ru' ? lv.nameRu : lv.name,
-        pet: lv.pet,
-      });
+// ══════ Уведомление + Emoji Status при повышении уровня ══════
+useEffect(() => {
+  if (!pair) return;
+  const lv = getLevel(pair.growth_points || 0);
+  const storageKey = `chumi_last_level_${pairId}_${userId}`;
+  const lastShownLevel = parseInt(localStorage.getItem(storageKey) || '-1', 10);
+
+  // Первый запуск для этой пары — просто запоминаем уровень, popup не показываем
+  if (lastShownLevel === -1) {
+    localStorage.setItem(storageKey, String(lv.idx));
+    return;
+  }
+
+  // Уровень действительно вырос с прошлого показа
+  if (lv.idx > lastShownLevel) {
+    if (tg?.setEmojiStatus && lv.emojiId) {
+      tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, () => {});
     }
-    prevLevelRef.current = lv.idx;
-  }, [tg, pair, lang]);
+    haptic('success');
+    setLevelUpData({
+      level: lv.idx,
+      name: lang === 'ru' ? lv.nameRu : lv.name,
+      pet: lv.pet,
+    });
+    localStorage.setItem(storageKey, String(lv.idx));
+  } else if (lv.idx < lastShownLevel) {
+    // Питомец перезапущен (сброс) — обновляем без popup
+    localStorage.setItem(storageKey, String(lv.idx));
+  }
+}, [tg, pair, lang, pairId, userId]);
 
 
   // ══════ BottomButton — скрываем ══════
@@ -449,9 +459,13 @@ const handleShareMessage = async () => {
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
   const isDeadBlocked = pair.is_dead && hasPartner;
-  if (!addToHomeDone) {
-    allTasks.push({ key: 'add_to_home', points: 3, ru: 'Добавить на главный экран', en: 'Add to Home Screen', icon: '📌', action: 'add_home', completed: false, oneTime: true });
-  }
+const platform = tg?.platform || '';
+const isIOS = platform === 'ios';
+const supportsAddToHome = !!tg?.addToHomeScreen && !isIOS;
+
+if (!addToHomeDone && supportsAddToHome) {
+  allTasks.push({ key: 'add_to_home', points: 3, ru: 'Добавить на главный экран', en: 'Add to Home Screen', icon: '📌', action: 'add_home', completed: false, oneTime: true });
+}
   const doneCount = allTasks.filter(t => t.completed).length;
   const totalCount = allTasks.length;
 
@@ -840,8 +854,10 @@ const handleShareInvite = () => {
   const renderEgg = () => (
     <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-      style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none' }}>
+      style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', background: 'transparent',
+  mixBlendMode: 'multiply' }}>
       <source src={eggVideoSrc} type="video/webm" />
+      <source src={eggVideoSrc} type='video/mp4; codecs="hvc1"' />
     </video>
   );
 
@@ -868,13 +884,16 @@ if (displaySkin && displaySkin.startsWith('level_')) {
     <>
       <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${petSrc.idle}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'none' : 'block' }}>
-        <source src={`/pets/${petSrc.idle}.webm`} type="video/webm" />
+        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'none' : 'block', background: 'transparent',
+  mixBlendMode: 'multiply' }}>
+        <source src={`/pets/${petSrc.idle}.mov`} type='video/mp4; codecs="hvc1"' />
+<source src={`/pets/${petSrc.idle}.webm`} type="video/webm" />
       </video>
       <video ref={tapVideoRef} muted playsInline key={`tap-${petSrc.tap}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
         style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'block' : 'none' }}>
         <source src={`/pets/${petSrc.tap}.webm`} type="video/webm" />
+        <source src={`/pets/${petSrc.tap}.webm`} type='video/mp4; codecs="hvc1"' />
       </video>
     </>
   );
