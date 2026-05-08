@@ -1286,9 +1286,10 @@ const renderPet = () => (
                   cursor: skin.unlocked ? 'pointer' : 'default',
                   position: 'relative',
                 }}>
-                  <video autoPlay loop muted playsInline style={{ width: '100%', height: 60, objectFit: 'contain' }}>
-                    <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
-                  </video>
+<video autoPlay loop muted playsInline style={{ width: '100%', height: 60, objectFit: 'contain', background: 'transparent' }}>
+  <source src={`/pets/${skin.pet}_ios.mov`} type='video/mp4; codecs="hvc1"' />
+  <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
+</video>
                   <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: '#333' }}>
                     {lang === 'ru' ? skin.nameRu : skin.name}
                   </div>
@@ -1324,9 +1325,10 @@ const renderPet = () => (
                     background: '#f5f5f7',
                     cursor: 'pointer', position: 'relative',
                   }}>
-                    <video autoPlay loop muted playsInline style={{ width: '100%', height: 60, objectFit: 'contain' }}>
-                      <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
-                    </video>
+<video autoPlay loop muted playsInline style={{ width: '100%', height: 60, objectFit: 'contain', background: 'transparent' }}>
+  <source src={`/pets/${skin.pet}_ios.mov`} type='video/mp4; codecs="hvc1"' />
+  <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
+</video>
                     <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: '#333' }}>
                       {lang === 'ru' ? skin.nameRu : skin.name}
                     </div>
@@ -1455,12 +1457,13 @@ const renderPet = () => (
             <p style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 12, color: '#1a1a1a' }}>
               {levelUpData.name}
             </p>
-            {levelUpData.pet && (
-              <video autoPlay loop muted playsInline
-                style={{ width: 140, height: 140, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }}>
-                <source src={`/pets/${levelUpData.pet}.webm`} type="video/webm" />
-              </video>
-            )}
+{levelUpData.pet && (
+  <video autoPlay loop muted playsInline
+    style={{ width: 140, height: 140, objectFit: 'contain', display: 'block', margin: '0 auto 12px', background: 'transparent' }}>
+    <source src={`/pets/${levelUpData.pet}_ios.mov`} type='video/mp4; codecs="hvc1"' />
+    <source src={`/pets/${levelUpData.pet}.webm`} type="video/webm" />
+  </video>
+)}
             <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
               {lang === 'ru'
                 ? `Разблокирован новый наряд «${levelUpData.name}»! Открой «Наряды», чтобы примерить его.`
