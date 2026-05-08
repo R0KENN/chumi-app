@@ -72,6 +72,7 @@ const ADMIN_COMMANDS = [
   { command: 'stats', description: '📊 Статистика приложения' },
   { command: 'users', description: '👥 Последние пользователи' },
   { command: 'summary', description: '📅 Ежедневная сводка' },
+  { command: 'summary', description: '📅 Ежедневная сводка' },
   { command: 'setcommands', description: '🔧 Обновить список команд' },
 ];
 
@@ -920,6 +921,58 @@ if (startParam.startsWith('ref_')) {
       } catch (e) {
         await sendMessage(env, chatId, `❌ Ошибка: ${e?.message || e}`);
       }
+      return new Response('OK');
+    }
+
+        // /grantbee USER_ID — только для админа, выдаёт скин "Пчёлка" и уведомляет
+    if (text.startsWith('/grantbee')) {
+      if (!ADMIN_IDS.includes(userId)) return new Response('OK');
+
+      const parts = text.split(/\s+/);
+      const targetId = (parts[1] || '').trim();
+      if (!targetId || !/^\d+$/.test(targetId)) {
+        await sendMessage(env, chatId, '⚠️ Использование: `/grantbee USER_ID`');
+        return new Response('OK');
+      }
+
+      // Проверяем, нет ли уже у пользователя этого скина
+      const { data: already } = await supabase
+        .from('user_skins')
+        .select('id')
+        .eq('user_id', targetId)
+        .eq('skin_id', 'bee')
+        .maybeSingle();
+
+      if (already) {
+        await sendMessage(env, chatId, `ℹ️ У пользователя \`${targetId}\` уже есть наряд *Пчёлка*.`);
+        return new Response('OK');
+      }
+
+      // Выдаём скин
+      const { error: insErr } = await supabase
+        .from('user_skins')
+        .insert({ user_id: targetId, skin_id: 'bee' });
+
+      if (insErr) {
+        await sendMessage(env, chatId, `❌ Ошибка: \`${insErr.message}\``);
+        return new Response('OK');
+      }
+
+      // Уведомляем получателя на его языке
+      const targetLang = await getUserLang(supabase, targetId);
+      const notifyText = targetLang === 'ru'
+        ? `🎁 Тебе подарили наряд *Пчёлка* 🐝!\n\nОткрой Chumi → *Наряды* → *Магазин* — он уже у тебя.`
+        : `🎁 You've been gifted the *Bee* outfit 🐝!\n\nOpen Chumi → *Outfits* → *Shop* — it's yours.`;
+
+      try {
+        await sendMessage(env, targetId, notifyText, webAppButton);
+      } catch (e) {
+        await sendMessage(env, chatId, `⚠️ Скин выдан, но не удалось отправить уведомление: \`${e.message}\``);
+        return new Response('OK');
+      }
+
+      await sendMessage(env, chatId,
+        `✅ Наряд *Пчёлка* выдан пользователю \`${targetId}\` и отправлено уведомление.`);
       return new Response('OK');
     }
 

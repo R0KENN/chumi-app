@@ -952,7 +952,11 @@ const renderPet = () => (
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { handleShareToStory(); setShowMenu(false); }}>📸 {lang === 'ru' ? 'В сторис' : 'Share Story'}</button>
             <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
-            <button onClick={() => { if (tg?.addToHomeScreen) { tg.addToHomeScreen(); haptic('light'); } setShowMenu(false); }}>📌 {lang === 'ru' ? 'На главный экран' : 'Home Screen'}</button>
+{tg?.addToHomeScreen && tg?.platform !== 'ios' && (
+  <button onClick={() => { tg.addToHomeScreen(); haptic('light'); setShowMenu(false); }}>
+    📌 {lang === 'ru' ? 'На главный экран' : 'Home Screen'}
+  </button>
+)}
             <button onClick={() => { setShowPremium(true); setShowMenu(false); }}>⭐ {lang === 'ru' ? 'Премиум' : 'Premium'}</button>
             <button onClick={() => { const newLang = lang === 'ru' ? 'en' : 'ru'; setLang(newLang); setShowMenu(false); haptic('light'); }}>
               🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
