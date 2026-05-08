@@ -667,22 +667,23 @@ if (!addToHomeDone && supportsAddToHome) {
     }
   };
 
+
 const handleShareInvite = () => {
-  const botLink = `https://t.me/${BOT_USERNAME}`;
+  const refLink = `https://t.me/${BOT_USERNAME}?start=ref_${userId}`;
 
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(botLink);
+    navigator.clipboard.writeText(refLink);
     haptic('success');
   }
 
   const text = lang === 'ru'
-    ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые образы.\n\nПопробуй 👇\n${botLink}`
-    : `🐾 Chumi — get a pet and grow it with a friend!\n\nComplete tasks daily, keep your streak and unlock new outfits.\n\nTry it 👇\n${botLink}`;
+    ? `🐾 Chumi — заведи питомца и расти его вместе с другом!\n\nПрисоединяйся по моей ссылке 👇\n${refLink}`
+    : `🐾 Chumi — get a pet and grow it with a friend!\n\nJoin via my link 👇\n${refLink}`;
 
-  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botLink)}&text=${encodeURIComponent(text)}`;
-  if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl); else window.open(shareUrl, '_blank');
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent(text)}`;
+  if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+  else window.open(shareUrl, '_blank');
 };
-
 
   // ══════ Premium подписка ══════
   const handleSubscribe = async () => {

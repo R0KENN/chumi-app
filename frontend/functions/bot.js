@@ -170,7 +170,7 @@ const T = {
       return msg + '\n';
     },
     slotBought: '✅ *Слот куплен!*\nТеперь у тебя на 1 место для пары больше.',
-    paySupport: '🛟 По оплате: @R0KENN',
+    paySupport: '🛟 По оплате: @ROKENN',
     langChanged: '✅ Язык изменён на *Русский* 🇷🇺',
     langPrompt: '🌐 *Выбери язык / Choose language:*',
     inviteText: (code) => `Присоединяйся к моей паре в Chumi! 🐾\nКод: ${code}`,
@@ -201,7 +201,7 @@ const T = {
       return msg + '\n';
     },
     slotBought: '✅ *Slot purchased!*\nYou now have one more pair slot.',
-    paySupport: '🛟 Payment support: @R0KENN',
+    paySupport: '🛟 Payment support: @ROKENN',
     langChanged: '✅ Language changed to *English* 🇬🇧',
     langPrompt: '🌐 *Выбери язык / Choose language:*',
     inviteText: (code) => `Join my pair in Chumi! 🐾\nCode: ${code}`,
@@ -637,6 +637,25 @@ if (payload.type === 'skin_gift' && payload.skinId && payload.recipientId) {
         }
       }
 
+      // ── Реферальная ссылка: запоминаем, кто пригласил ──
+if (startParam.startsWith('ref_')) {
+  const inviterId = startParam.replace('ref_', '');
+
+  // Не самому себе
+  if (inviterId && inviterId !== userId) {
+    // Сохраняем ожидающий реферал — засчитается, когда пользователь создаст или вступит в пару
+    await supabase.from('pending_referrals').upsert(
+      {
+        invited_user_id: userId,
+        inviter_user_id: inviterId,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: 'invited_user_id' }
+    ).then(() => {}, () => {});
+  }
+  // Дальше — обычный welcome
+}
+
       if (startParam.startsWith('join_')) {
         const joinCode = startParam.replace('join_', '').toUpperCase();
         const maxP = await getMaxPairs(supabase, userId);
@@ -649,15 +668,21 @@ if (payload.type === 'skin_gift' && payload.skinId && payload.recipientId) {
         if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
         if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
         await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username, timezone: 'UTC' });
-                // Track referral — the existing member invited this user
-        for (const m of members || []) {
-          if (m.user_id !== userId) {
-            await supabase.from('user_referrals').insert({
-              inviter_user_id: m.user_id,
-              invited_user_id: userId,
-              pair_code: joinCode,
-            }).catch(() => {}); // ignore duplicate
-          }
+        // ── Засчитываем pending-реферал, если он есть ──
+        const { data: pending } = await supabase
+          .from('pending_referrals')
+          .select('inviter_user_id')
+          .eq('invited_user_id', userId)
+          .maybeSingle();
+        if (pending?.inviter_user_id) {
+          await supabase.from('user_referrals').insert({
+            inviter_user_id: pending.inviter_user_id,
+            invited_user_id: userId,
+            pair_code: joinCode,
+          }).then(() => {}, () => {});
+          await supabase.from('pending_referrals')
+            .delete()
+            .eq('invited_user_id', userId);
         }
         await sendMessage(env, chatId, T[lang].joined(joinCode), webAppButton);
         for (const m of members || []) {
@@ -714,10 +739,28 @@ if (payload.type === 'skin_gift' && payload.skinId && payload.recipientId) {
         timezone: 'UTC',
       });
 
+      // ── Засчитываем pending-реферал, если он есть ──
+      const { data: pending } = await supabase
+        .from('pending_referrals')
+        .select('inviter_user_id')
+        .eq('invited_user_id', userId)
+        .maybeSingle();
+      if (pending?.inviter_user_id) {
+        await supabase.from('user_referrals').insert({
+          inviter_user_id: pending.inviter_user_id,
+          invited_user_id: userId,
+          pair_code: code,
+        }).then(() => {}, () => {});
+        await supabase.from('pending_referrals')
+          .delete()
+          .eq('invited_user_id', userId);
+      }
+
       const botUser = env.BOT_USERNAME || 'ChumiPetBot';
       await sendMessage(env, chatId, T[lang].pairCreated(code), inviteButton(code, lang, botUser));
       return new Response('OK');
     }
+
 
     // /join
     if (text.startsWith('/join')) {
@@ -733,16 +776,22 @@ if (payload.type === 'skin_gift' && payload.skinId && payload.recipientId) {
       if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
       if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
       await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username, timezone: 'UTC' });
-              // Track referral — the existing member invited this user
-        for (const m of members || []) {
-          if (m.user_id !== userId) {
-            await supabase.from('user_referrals').insert({
-              inviter_user_id: m.user_id,
-              invited_user_id: userId,
-              pair_code: code,
-            }).catch(() => {}); // ignore duplicate
-          }
-        }
+            // ── Засчитываем pending-реферал, если он есть ──
+      const { data: pending } = await supabase
+        .from('pending_referrals')
+        .select('inviter_user_id')
+        .eq('invited_user_id', userId)
+        .maybeSingle();
+      if (pending?.inviter_user_id) {
+        await supabase.from('user_referrals').insert({
+          inviter_user_id: pending.inviter_user_id,
+          invited_user_id: userId,
+          pair_code: code,
+        }).then(() => {}, () => {});
+        await supabase.from('pending_referrals')
+          .delete()
+          .eq('invited_user_id', userId);
+      }
       await sendMessage(env, chatId, T[lang].joined(code), webAppButton);
       for (const m of members || []) {
         if (m.user_id !== userId) {

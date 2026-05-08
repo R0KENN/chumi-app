@@ -497,8 +497,26 @@ export async function onRequest(context) {
         timezone: userTz,
       });
 
+      // ── Засчитываем pending-реферал, если он есть ──
+      const { data: pending } = await supabase
+        .from('pending_referrals')
+        .select('inviter_user_id')
+        .eq('invited_user_id', userId)
+        .maybeSingle();
+      if (pending?.inviter_user_id) {
+        await supabase.from('user_referrals').insert({
+          inviter_user_id: pending.inviter_user_id,
+          invited_user_id: userId,
+          pair_code: code,
+        }).then(() => {}, () => {});
+        await supabase.from('pending_referrals')
+          .delete()
+          .eq('invited_user_id', userId);
+      }
+
       return json({ code });
     }
+
 
     // ── POST /api/join ──
     if (request.method === 'POST' && path === '/api/join') {
@@ -537,16 +555,23 @@ export async function onRequest(context) {
         timezone: userTz,
       });
 
-      // Реферал
-      for (const m of members || []) {
-        if (m.user_id !== userId) {
-          await supabase.from('user_referrals').insert({
-            inviter_user_id: m.user_id,
-            invited_user_id: userId,
-            pair_code: code,
-          }).then(() => {}, () => {});
-        }
+      // ── Засчитываем pending-реферал, если он есть ──
+      const { data: pending } = await supabase
+        .from('pending_referrals')
+        .select('inviter_user_id')
+        .eq('invited_user_id', userId)
+        .maybeSingle();
+      if (pending?.inviter_user_id) {
+        await supabase.from('user_referrals').insert({
+          inviter_user_id: pending.inviter_user_id,
+          invited_user_id: userId,
+          pair_code: code,
+        }).then(() => {}, () => {});
+        await supabase.from('pending_referrals')
+          .delete()
+          .eq('invited_user_id', userId);
       }
+
 
       // Уведомление с именем
       for (const m of members || []) {
@@ -1306,10 +1331,6 @@ export async function onRequest(context) {
 
     // ── POST /api/send-reminders (cron) ──
     if (request.method === 'POST' && path === '/api/send-reminders') {
-      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
-      // Защита от частых вызовов: не чаще 1 раза в 20 часов на пользователя
-// Используем notification_log как лог отправок
-const userIdKey = String(member.user_id);
 
       const { data: allPairs } = await supabase
         .from('pairs')
