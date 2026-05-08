@@ -855,8 +855,7 @@ const handleShareInvite = () => {
   const renderEgg = () => (
     <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-      style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', background: 'transparent',
-  mixBlendMode: 'multiply' }}>
+      style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', background: 'transparent' }}>
       <source src={eggVideoSrc} type="video/webm" />
       <source src={eggVideoSrc} type='video/mp4; codecs="hvc1"' />
     </video>
@@ -885,8 +884,7 @@ if (displaySkin && displaySkin.startsWith('level_')) {
     <>
       <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${petSrc.idle}`}
         className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'none' : 'block', background: 'transparent',
-  mixBlendMode: 'multiply' }}>
+        style={{ width: 260, height: 340, objectFit: 'contain', transform: 'scale(1.4)', pointerEvents: 'none', display: petTapped ? 'none' : 'block', background: 'transparent' }}>
         <source src={`/pets/${petSrc.idle}.mov`} type='video/mp4; codecs="hvc1"' />
 <source src={`/pets/${petSrc.idle}.webm`} type="video/webm" />
       </video>
