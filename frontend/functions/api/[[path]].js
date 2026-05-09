@@ -522,14 +522,15 @@ if (request.method === 'POST' && path === '/api/diary') {
     return json({ error: 'pairCode, emoji and text required' }, 400);
   }
 
-  const { data: membership } = await supabase
-    .from('pair_users').select('user_id, timezone')
-    .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-  if (!membership) return json({ error: 'Not a member' }, 403);
+const { data: membership, error: memErr } = await supabase
+  .from('pair_users').select('user_id')
+  .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+if (memErr) return json({ error: 'Membership query failed: ' + memErr.message }, 500);
+if (!membership) return json({ error: 'Not a member' }, 403);
 
   const { data: pairTz } = await supabase
     .from('pairs').select('timezone').eq('code', pairCode).maybeSingle();
-  const today = getTodayDate(membership.timezone || pairTz?.timezone || 'UTC');
+const today = getTodayDate(pairTz?.timezone || 'UTC');
 
   // upsert: одна запись в день на пользователя
   const { error: upErr } = await supabase

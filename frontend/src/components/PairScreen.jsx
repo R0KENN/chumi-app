@@ -178,10 +178,12 @@ const handleSaveDiary = async () => {
       haptic('success');
       setDiaryText('');
       await loadDiary();
-    } else {
-      haptic('error');
-      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Не удалось сохранить' : 'Failed to save');
-    }
+} else {
+  haptic('error');
+  const errMsg = data.error || (lang === 'ru' ? 'Не удалось сохранить' : 'Failed to save');
+  if (tg?.showAlert) tg.showAlert(errMsg);
+  else alert(errMsg);
+}
   } catch (e) { haptic('error'); }
   finally { setDiarySaving(false); }
 };
