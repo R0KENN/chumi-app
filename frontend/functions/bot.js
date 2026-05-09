@@ -72,7 +72,7 @@ const ADMIN_COMMANDS = [
   { command: 'stats', description: '📊 Статистика приложения' },
   { command: 'users', description: '👥 Последние пользователи' },
   { command: 'summary', description: '📅 Ежедневная сводка' },
-  { command: 'summary', description: '📅 Ежедневная сводка' },
+  { command: 'grantbee', description: '🐝 Выдать наряд Пчёлка (USER_ID)' },
   { command: 'setcommands', description: '🔧 Обновить список команд' },
 ];
 
