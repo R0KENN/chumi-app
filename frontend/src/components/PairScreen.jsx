@@ -143,6 +143,64 @@ const changeMonth = (delta) => {
   setCalendarMonth(newMonth);
 };
 
+const [showDiary, setShowDiary] = useState(false);
+const [diaryEntries, setDiaryEntries] = useState([]);
+const [diaryLoading, setDiaryLoading] = useState(false);
+const [diaryEmoji, setDiaryEmoji] = useState('😊');
+const [diaryText, setDiaryText] = useState('');
+const [diarySaving, setDiarySaving] = useState(false);
+
+const loadDiary = useCallback(async () => {
+  setDiaryLoading(true);
+  try {
+    const res = await fetch(`${API}/diary/${pairId}`);
+    const data = await res.json();
+    setDiaryEntries(data.entries || []);
+  } catch (e) {}
+  finally { setDiaryLoading(false); }
+}, [pairId]);
+
+useEffect(() => {
+  if (showDiary) loadDiary();
+}, [showDiary, loadDiary]);
+
+const handleSaveDiary = async () => {
+  if (!diaryText.trim() || diarySaving) return;
+  setDiarySaving(true);
+  try {
+    const res = await fetch(`${API}/diary`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ userId, pairCode: pairId, emoji: diaryEmoji, text: diaryText.trim() }),
+    });
+    const data = await res.json();
+    if (!data.error) {
+      haptic('success');
+      setDiaryText('');
+      await loadDiary();
+    } else {
+      haptic('error');
+      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Не удалось сохранить' : 'Failed to save');
+    }
+  } catch (e) { haptic('error'); }
+  finally { setDiarySaving(false); }
+};
+
+const handleDeleteDiary = async (entryId) => {
+  try {
+    const res = await fetch(`${API}/diary-delete`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ userId, entryId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      haptic('light');
+      await loadDiary();
+    }
+  } catch (e) {}
+};
+
 // Когда открывается календарь — сбрасываем месяц на текущий
 useEffect(() => {
   if (showCalendar) {
@@ -1000,6 +1058,9 @@ const renderPet = () => (
             <button onClick={() => { setShowCalendar(true); setShowMenu(false); }}>
   📅 {lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}
 </button>
+<button onClick={() => { setShowDiary(true); setShowMenu(false); }}>
+  📔 {lang === 'ru' ? 'Дневник' : 'Diary'}
+</button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { handleShareToStory(); setShowMenu(false); }}>📸 {lang === 'ru' ? 'В сторис' : 'Share Story'}</button>
             <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
@@ -1628,15 +1689,8 @@ calendarData.days.forEach(d => {
       fontSize: 13, fontWeight: 600,
       border: isToday ? `2px solid ${accentColor}` : '2px solid transparent',
       boxShadow: isToday ? `0 0 0 1px ${accentColor}40` : 'none',
-      position: 'relative',
     }}>
       {day}
-      {isToday && (
-        <span style={{
-          position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)',
-          width: 4, height: 4, borderRadius: '50%', background: accentColor,
-        }} />
-      )}
     </div>
   );
 });
@@ -1659,6 +1713,103 @@ calendarData.days.forEach(d => {
           </div>
         </div>
       )}
+      {/* Diary popup */}
+{showDiary && (
+  <div className="sk-overlay" onClick={() => setShowDiary(false)}>
+    <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+      <h3>📔 {lang === 'ru' ? 'Наш дневник' : 'Our diary'}</h3>
+
+      {/* Форма ввода */}
+      <div style={{ background: '#f5f5f7', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
+          {lang === 'ru' ? 'Запись дня (1 в день)' : "Today's entry (1 per day)"}
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+          {['😊','🥰','😂','😍','🤗','😎','😴','🥺','😢','🔥','💖','✨','🌈','☀️','🌙'].map(e => (
+            <button key={e} onClick={() => setDiaryEmoji(e)} style={{
+              fontSize: 20, padding: 4, borderRadius: 8, border: 'none',
+              background: diaryEmoji === e ? accentColor + '30' : 'transparent',
+              cursor: 'pointer',
+            }}>{e}</button>
+          ))}
+        </div>
+        <textarea
+          value={diaryText}
+          onChange={e => setDiaryText(e.target.value.slice(0, 100))}
+          placeholder={lang === 'ru' ? 'Что-то приятное или просто как день...' : 'Something nice or just how the day was...'}
+          rows={2}
+          style={{
+            width: '100%', borderRadius: 10, border: '1px solid #ddd', padding: 8,
+            fontSize: 14, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+          }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+          <span style={{ fontSize: 11, color: '#aaa' }}>{diaryText.length}/100</span>
+          <button onClick={handleSaveDiary} disabled={!diaryText.trim() || diarySaving} style={{
+            padding: '8px 18px', borderRadius: 12, border: 'none',
+            background: diaryText.trim() ? accentColor : '#ddd',
+            color: '#fff', fontSize: 13, fontWeight: 600,
+            cursor: diaryText.trim() ? 'pointer' : 'default',
+          }}>
+            {diarySaving ? '...' : (lang === 'ru' ? 'Сохранить' : 'Save')}
+          </button>
+        </div>
+      </div>
+
+      {/* Лента записей */}
+      <div style={{ flex: 1, overflowY: 'auto', marginBottom: 8 }}>
+        {diaryLoading ? (
+          <div style={{ textAlign: 'center', padding: 20 }}><div className="sk-spinner" /></div>
+        ) : diaryEntries.length === 0 ? (
+          <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 20 }}>
+            {lang === 'ru' ? 'Пока нет записей. Будьте первыми! 💕' : 'No entries yet. Be the first! 💕'}
+          </p>
+        ) : (
+          (() => {
+            const grouped = {};
+            diaryEntries.forEach(e => {
+              if (!grouped[e.entry_date]) grouped[e.entry_date] = [];
+              grouped[e.entry_date].push(e);
+            });
+            return Object.entries(grouped).map(([date, entries]) => (
+              <div key={date} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#999', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase' }}>
+                  {new Date(date + 'T00:00:00').toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'long' })}
+                </div>
+                {entries.map((e, i) => {
+                  const isMine = String(e.user_id) === String(userId);
+                  const author = isMine ? (lang === 'ru' ? 'Я' : 'Me') : (partner?.display_name || (lang === 'ru' ? 'Партнёр' : 'Partner'));
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', gap: 8, padding: 10, marginBottom: 6,
+                      background: isMine ? accentColor + '10' : '#f5f5f7', borderRadius: 12,
+                      alignItems: 'flex-start',
+                    }}>
+                      <span style={{ fontSize: 22, lineHeight: 1 }}>{e.emoji}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>{author}</div>
+                        <div style={{ fontSize: 13, color: '#333', wordBreak: 'break-word' }}>{e.text}</div>
+                      </div>
+                      {isMine && (
+<button onClick={() => handleDeleteDiary(e.id)}
+  style={{ background: 'none', border: 'none', fontSize: 14, color: '#bbb', cursor: 'pointer', padding: 2 }}>
+  ✕
+</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ));
+          })()
+        )}
+      </div>
+
+      <button className="sk-popup-close" onClick={() => setShowDiary(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+    </div>
+  </div>
+)}
+
     </div>
   );
 }

@@ -494,6 +494,76 @@ if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
   return json({ month, days, bothCount, totalDays: lastDay });
 }
 
+// ── GET /api/diary/:pairCode ──
+// Возвращает все записи дневника пары, сгруппированные по датам
+if (request.method === 'GET' && path.match(/^\/api\/diary\/[^/]+$/)) {
+  const pairCode = path.split('/')[3];
+const { data: entries } = await supabase
+  .from('pair_diary')
+  .select('id, user_id, emoji, text, entry_date, created_at')
+    .eq('pair_code', pairCode)
+    .order('entry_date', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(200);
+  return json({ entries: entries || [] });
+}
+
+// ── POST /api/diary ──
+// Добавляет запись (или обновляет, если за сегодня уже была)
+if (request.method === 'POST' && path === '/api/diary') {
+  const body = await request.json();
+  const userId = extractUserId(request, env, body.userId);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+  const pairCode = body.pairCode;
+  const emoji = (body.emoji || '').toString().slice(0, 8);
+  const text = (body.text || '').toString().trim().slice(0, 100);
+  if (!pairCode || !emoji || !text) {
+    return json({ error: 'pairCode, emoji and text required' }, 400);
+  }
+
+  const { data: membership } = await supabase
+    .from('pair_users').select('user_id, timezone')
+    .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+  if (!membership) return json({ error: 'Not a member' }, 403);
+
+  const { data: pairTz } = await supabase
+    .from('pairs').select('timezone').eq('code', pairCode).maybeSingle();
+  const today = getTodayDate(membership.timezone || pairTz?.timezone || 'UTC');
+
+  // upsert: одна запись в день на пользователя
+  const { error: upErr } = await supabase
+    .from('pair_diary')
+    .upsert(
+      { pair_code: pairCode, user_id: userId, emoji, text, entry_date: today },
+      { onConflict: 'pair_code,user_id,entry_date' }
+    );
+  if (upErr) return json({ error: upErr.message }, 500);
+
+  return json({ success: true, entry_date: today });
+}
+
+// ── DELETE /api/diary/:id ──
+// Удаляет свою запись
+if (request.method === 'POST' && path === '/api/diary-delete') {
+  const body = await request.json();
+  const userId = extractUserId(request, env, body.userId);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+  const entryId = body.entryId;
+  if (!entryId) return json({ error: 'entryId required' }, 400);
+
+  // Проверяем, что запись принадлежит вызывающему
+  const { data: entry } = await supabase
+    .from('pair_diary').select('user_id')
+    .eq('id', entryId).maybeSingle();
+  if (!entry) return json({ error: 'Entry not found' }, 404);
+  if (String(entry.user_id) !== String(userId)) return json({ error: 'Not yours' }, 403);
+
+  await supabase.from('pair_diary').delete().eq('id', entryId);
+  return json({ success: true });
+}
+
     // ── GET /api/user-slots/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/user-slots\/[^/]+$/)) {
       const userId = path.split('/')[3];
