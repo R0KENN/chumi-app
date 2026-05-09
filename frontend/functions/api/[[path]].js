@@ -509,7 +509,7 @@ const { data: entries } = await supabase
 }
 
 // ── POST /api/diary ──
-// Добавляет запись (или обновляет, если за сегодня уже была)
+// Добавляет запись (или обновляет, если за сегодня уже была) + уведомляет партнёра
 if (request.method === 'POST' && path === '/api/diary') {
   const body = await request.json();
   const userId = extractUserId(request, env, body.userId);
@@ -522,15 +522,22 @@ if (request.method === 'POST' && path === '/api/diary') {
     return json({ error: 'pairCode, emoji and text required' }, 400);
   }
 
-const { data: membership, error: memErr } = await supabase
-  .from('pair_users').select('user_id')
-  .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-if (memErr) return json({ error: 'Membership query failed: ' + memErr.message }, 500);
-if (!membership) return json({ error: 'Not a member' }, 403);
+  const { data: membership, error: memErr } = await supabase
+    .from('pair_users').select('user_id, display_name')
+    .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+  if (memErr) return json({ error: 'Membership query failed: ' + memErr.message }, 500);
+  if (!membership) return json({ error: 'Not a member' }, 403);
 
   const { data: pairTz } = await supabase
-    .from('pairs').select('timezone').eq('code', pairCode).maybeSingle();
-const today = getTodayDate(pairTz?.timezone || 'UTC');
+    .from('pairs').select('timezone, pet_name').eq('code', pairCode).maybeSingle();
+  const today = getTodayDate(pairTz?.timezone || 'UTC');
+
+  // Проверяем, была ли уже запись сегодня (чтобы не спамить уведомлением при правке)
+  const { data: existingToday } = await supabase
+    .from('pair_diary').select('id')
+    .eq('pair_code', pairCode).eq('user_id', userId).eq('entry_date', today)
+    .maybeSingle();
+  const isFirstEntryToday = !existingToday;
 
   // upsert: одна запись в день на пользователя
   const { error: upErr } = await supabase
@@ -540,6 +547,37 @@ const today = getTodayDate(pairTz?.timezone || 'UTC');
       { onConflict: 'pair_code,user_id,entry_date' }
     );
   if (upErr) return json({ error: upErr.message }, 500);
+
+  // Уведомляем партнёра только если это новая запись (а не редактирование существующей)
+  if (isFirstEntryToday) {
+    try {
+      const { data: members } = await supabase
+        .from('pair_users').select('user_id').eq('pair_code', pairCode);
+      const partner = (members || []).find(m => String(m.user_id) !== String(userId));
+      if (partner) {
+        const { data: ps } = await supabase
+          .from('user_settings').select('lang')
+          .eq('telegram_user_id', partner.user_id).maybeSingle();
+        const partnerLang = ps?.lang || 'ru';
+        const authorName = membership.display_name || (partnerLang === 'ru' ? 'Партнёр' : 'Partner');
+        const petName = pairTz?.pet_name || 'Chumi';
+
+        const notifyText = partnerLang === 'ru'
+          ? `📔 *${authorName}* оставил(а) запись в дневнике ${petName}!\n\n${emoji} _${text}_`
+          : `📔 *${authorName}* added a diary entry for ${petName}!\n\n${emoji} _${text}_`;
+        const btnText = partnerLang === 'ru' ? '📖 Посмотреть' : '📖 View';
+
+        await sendTelegramMessage(env, partner.user_id, notifyText, {
+          reply_markup: {
+            inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi-app.pages.dev' } }]],
+          },
+        });
+      }
+    } catch (e) {
+      // Не падаем, если Telegram-сообщение не отправилось
+      console.error('Diary notify error:', e);
+    }
+  }
 
   return json({ success: true, entry_date: today });
 }
