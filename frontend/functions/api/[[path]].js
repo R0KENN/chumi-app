@@ -441,6 +441,59 @@ export async function onRequest(context) {
       return json({ tasks: tasks || [] });
     }
 
+    // ── GET /api/streak-calendar/:pairCode ──
+// Возвращает дни месяца с активностью обоих партнёров
+if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
+  const pairCode = path.split('/')[3];
+  const monthParam = url.searchParams.get('month'); // YYYY-MM, опционально
+
+  const { data: pair } = await supabase
+    .from('pairs').select('timezone, created_at').eq('code', pairCode).maybeSingle();
+  if (!pair) return json({ error: 'Pair not found' }, 404);
+
+  const tz = pair.timezone || 'UTC';
+  const month = monthParam || getTodayDate(tz).slice(0, 7); // YYYY-MM
+  const startDate = `${month}-01`;
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
+
+  const { data: members } = await supabase
+    .from('pair_users').select('user_id').eq('pair_code', pairCode);
+  if (!members || members.length === 0) return json({ days: [] });
+
+  const memberIds = members.map(m => m.user_id);
+
+  const { data: opens } = await supabase
+    .from('daily_tasks')
+    .select('user_id, task_date')
+    .eq('pair_code', pairCode)
+    .eq('task_key', 'daily_open')
+    .gte('task_date', startDate)
+    .lte('task_date', endDate)
+    .in('user_id', memberIds);
+
+  // Группируем по дате: сколько уникальных юзеров зашли
+  const byDate = {};
+  for (const row of (opens || [])) {
+    if (!byDate[row.task_date]) byDate[row.task_date] = new Set();
+    byDate[row.task_date].add(row.user_id);
+  }
+
+  const days = [];
+  for (let d = 1; d <= lastDay; d++) {
+    const date = `${month}-${String(d).padStart(2, '0')}`;
+    const count = byDate[date]?.size || 0;
+    let status = 'empty';
+    if (count >= 2) status = 'both';
+    else if (count === 1) status = 'one';
+    days.push({ date, status, count });
+  }
+
+  const bothCount = days.filter(d => d.status === 'both').length;
+  return json({ month, days, bothCount, totalDays: lastDay });
+}
+
     // ── GET /api/user-slots/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/user-slots\/[^/]+$/)) {
       const userId = path.split('/')[3];

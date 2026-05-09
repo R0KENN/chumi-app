@@ -408,20 +408,22 @@ else productKey = payload.productId;
       }
 
       // ── Skin purchase ──
-      if (payload.type === 'skin' && payload.skinId) {
+      const buyType = payload.type || payload.t;
+      const buySkinId = payload.skinId || payload.s;
+      if (buyType === 'skin' && buySkinId) {
         const { data: alreadyOwned } = await supabase
           .from('user_skins')
           .select('id')
           .eq('user_id', userId)
-          .eq('skin_id', payload.skinId)
+          .eq('skin_id', buySkinId)
           .maybeSingle();
         if (!alreadyOwned) {
           await supabase.from('user_skins').insert({
             user_id: userId,
-            skin_id: payload.skinId,
+            skin_id: buySkinId,
           });
         }
-        const skinName = payload.skinId.charAt(0).toUpperCase() + payload.skinId.slice(1);
+        const skinName = buySkinId.charAt(0).toUpperCase() + buySkinId.slice(1);
         await sendMessage(env, update.message.chat.id,
           lang === 'ru' ? `✅ Наряд *${skinName}* разблокирован! 🎨` : `✅ Outfit *${skinName}* unlocked! 🎨`,
           webAppButton

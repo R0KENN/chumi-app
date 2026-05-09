@@ -109,6 +109,30 @@ export default function PairScreen() {
   const hasPartner = pair?.member_count >= 2;
   const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
+  const [showCalendar, setShowCalendar] = useState(false);
+const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
+const [calendarData, setCalendarData] = useState(null);
+
+const loadCalendar = useCallback(async (month) => {
+  try {
+    const res = await fetch(`${API}/streak-calendar/${pairId}?month=${month}`);
+    const data = await res.json();
+    if (!data.error) setCalendarData(data);
+  } catch (e) {}
+}, [pairId]);
+
+const changeMonth = (delta) => {
+  const [y, m] = calendarMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  const newMonth = d.toISOString().slice(0, 7);
+  setCalendarMonth(newMonth);
+  loadCalendar(newMonth);
+};
+
+useEffect(() => {
+  if (showCalendar) loadCalendar(calendarMonth);
+}, [showCalendar, calendarMonth, loadCalendar]);
+
 
   const authHeaders = () => {
     const headers = { 'Content-Type': 'application/json' };
@@ -951,6 +975,9 @@ const renderPet = () => (
           <div className="sk-menu glass-card" onClick={e => e.stopPropagation()}>
             {!isEgg && <button onClick={() => { setRenaming(true); setShowMenu(false); }}>✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}</button>}
             <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🐾 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
+            <button onClick={() => { setShowCalendar(true); setShowMenu(false); }}>
+  📅 {lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}
+</button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { handleShareToStory(); setShowMenu(false); }}>📸 {lang === 'ru' ? 'В сторис' : 'Share Story'}</button>
             <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
@@ -1538,4 +1565,57 @@ const renderPet = () => (
       )}
     </div>
   );
+  {/* Streak Calendar popup */}
+{showCalendar && (
+  <div className="sk-overlay" onClick={() => setShowCalendar(false)}>
+    <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
+      <h3>📅 {lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <button onClick={() => changeMonth(-1)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>‹</button>
+        <span style={{ fontWeight: 600, fontSize: 15 }}>
+          {new Date(calendarMonth + '-01').toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { month: 'long', year: 'numeric' })}
+        </span>
+        <button onClick={() => changeMonth(1)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>›</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 12 }}>
+        {(lang === 'ru' ? ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'] : ['Mo','Tu','We','Th','Fr','Sa','Su']).map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 11, color: '#999', fontWeight: 600 }}>{d}</div>
+        ))}
+        {(() => {
+          if (!calendarData) return null;
+          const firstDay = new Date(calendarMonth + '-01');
+          const offset = (firstDay.getDay() + 6) % 7; // понедельник = 0
+          const cells = [];
+          for (let i = 0; i < offset; i++) cells.push(<div key={'empty-' + i} />);
+          calendarData.days.forEach(d => {
+            const day = parseInt(d.date.split('-')[2]);
+            const bg = d.status === 'both' ? '#4CAF50' : d.status === 'one' ? '#FFC107' : '#f0f0f0';
+            const color = d.status === 'empty' ? '#bbb' : '#fff';
+            cells.push(
+              <div key={d.date} style={{
+                aspectRatio: '1', borderRadius: 8, background: bg, color,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 600,
+              }}>{day}</div>
+            );
+          });
+          return cells;
+        })()}
+      </div>
+      {calendarData && (
+        <div style={{ textAlign: 'center', fontSize: 13, color: '#666', marginBottom: 12, lineHeight: 1.6 }}>
+          {lang === 'ru'
+            ? `🔥 Вместе ${calendarData.bothCount} из ${calendarData.totalDays} дней`
+            : `🔥 Together ${calendarData.bothCount} of ${calendarData.totalDays} days`}
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 12, fontSize: 11, color: '#888', marginBottom: 8 }}>
+        <span>🟢 {lang === 'ru' ? 'Оба' : 'Both'}</span>
+        <span>🟡 {lang === 'ru' ? 'Один' : 'One'}</span>
+        <span>⚪ {lang === 'ru' ? 'Нет' : 'None'}</span>
+      </div>
+      <button className="sk-popup-close" onClick={() => setShowCalendar(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+    </div>
+  </div>
+)}
 }
