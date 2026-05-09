@@ -110,6 +110,9 @@ export default function PairScreen() {
   const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
 const [showCalendar, setShowCalendar] = useState(false);
+const [showPostcard, setShowPostcard] = useState(false);
+const [postcardUrl, setPostcardUrl] = useState(null);
+const [postcardGenerating, setPostcardGenerating] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(() => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -233,6 +236,8 @@ useEffect(() => {
       }
     } catch (e) {}
   };
+
+
 
   // ══════ Адаптивные цвета Telegram UI ══════
   useEffect(() => {
@@ -561,6 +566,189 @@ const handleShareMessage = async () => {
   const accentColor = activeSkinData?.accent || lv.accent;
   const checkColor = activeSkinData?.accent || lv.check;
 
+    // ── Postcard helpers ──
+  const loadImage = (src) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
+  const drawCircleAvatar = (ctx, img, x, y, radius) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  };
+
+  const roundRect = (ctx, x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  };
+
+  const generatePostcard = async () => {
+    setPostcardGenerating(true);
+    try {
+      const W = 1080, H = 1080;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+
+      // Фон — градиент уровня/скина
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, bgColors[0]);
+      grad.addColorStop(1, bgColors[1]);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Декор: круги на фоне
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.beginPath(); ctx.arc(120, 180, 90, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 100, 240, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 180, H - 200, 110, 0, Math.PI * 2); ctx.fill();
+
+      // Серия — бейдж сверху слева
+      const streakText = `🔥 ${pair?.streak_days || 0}`;
+      ctx.font = 'bold 56px -apple-system, system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      const streakW = ctx.measureText(streakText).width + 60;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      roundRect(ctx, 50, 50, streakW, 90, 45);
+      ctx.fill();
+      ctx.fillStyle = '#1a1a1a';
+      ctx.textAlign = 'left';
+      ctx.fillText(streakText, 80, 95);
+
+      // Уровень — бейдж сверху справа
+      const lvText = lang === 'ru' ? lv.nameRu : lv.name;
+      ctx.font = 'bold 38px -apple-system, system-ui, sans-serif';
+      const lvW = ctx.measureText(lvText).width + 60;
+      ctx.fillStyle = accentColor;
+      roundRect(ctx, W - 50 - lvW, 60, lvW, 70, 35);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText(lvText, W - 50 - lvW / 2, 95);
+
+      // Аватары
+      const myAvatarUrl = avatars[userId];
+      const partnerAvatarUrl = partner ? avatars[partner.user_id] : null;
+      try {
+        if (myAvatarUrl) {
+          const img = await loadImage(myAvatarUrl);
+          drawCircleAvatar(ctx, img, 200, 280, 80);
+        } else {
+          ctx.fillStyle = '#ddd';
+          ctx.beginPath(); ctx.arc(200, 280, 80, 0, Math.PI * 2); ctx.fill();
+        }
+      } catch (e) {
+        ctx.fillStyle = '#ddd';
+        ctx.beginPath(); ctx.arc(200, 280, 80, 0, Math.PI * 2); ctx.fill();
+      }
+      try {
+        if (partnerAvatarUrl) {
+          const img = await loadImage(partnerAvatarUrl);
+          drawCircleAvatar(ctx, img, 320, 280, 80);
+        } else {
+          ctx.fillStyle = '#ddd';
+          ctx.beginPath(); ctx.arc(320, 280, 80, 0, Math.PI * 2); ctx.fill();
+        }
+      } catch (e) {
+        ctx.fillStyle = '#ddd';
+        ctx.beginPath(); ctx.arc(320, 280, 80, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Сердце
+      ctx.font = '64px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = '#E63946';
+      ctx.textAlign = 'center';
+      ctx.fillText('💕', 260, 280);
+
+      // Имя питомца
+      const displayPetName = pair?.pet_name || lvText;
+      ctx.font = 'bold 84px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = isDark ? '#fff' : '#1a1a1a';
+      ctx.textAlign = 'center';
+      ctx.fillText(displayPetName, W / 2, 460);
+
+      // Подзаголовок
+      ctx.font = '36px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)';
+      ctx.fillText(
+        lang === 'ru' ? `${pair?.streak_days || 0} дней вместе` : `${pair?.streak_days || 0} days together`,
+        W / 2, 520
+      );
+
+      // Питомец — статичный кадр или эмодзи
+      const petPath = isEgg
+        ? `/pets/egg_${eggDay}_frame.png`
+        : `/pets/${petSrc.idle}_frame.png`;
+      let petImg = null;
+      try {
+        petImg = await loadImage(petPath);
+      } catch (e) {
+        ctx.font = '420px -apple-system, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(lv.emoji || '🐾', W / 2, H / 2 + 80);
+      }
+      if (petImg) {
+        const petSize = 520;
+        ctx.drawImage(petImg, (W - petSize) / 2, H / 2 - 100, petSize, petSize);
+      }
+
+      // Логотип
+      ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = isDark ? '#fff' : '#1a1a1a';
+      ctx.textAlign = 'center';
+      ctx.fillText('🐾 Chumi', W / 2, H - 120);
+      ctx.font = '28px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
+      ctx.fillText('@ChumiPetBot', W / 2, H - 70);
+
+      const dataUrl = canvas.toDataURL('image/png', 0.95);
+      setPostcardUrl(dataUrl);
+    } catch (e) {
+      console.error('Postcard generation error:', e);
+      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Не удалось создать открытку' : 'Failed to create postcard');
+    } finally {
+      setPostcardGenerating(false);
+    }
+  };
+
+  // Запускаем генерацию при открытии попапа
+  if (showPostcard && !postcardUrl && !postcardGenerating) {
+    // Откладываем на следующий тик, чтобы не вызывать setState во время рендера
+    setTimeout(() => generatePostcard(), 0);
+  }
+
+  const handleDownloadPostcard = () => {
+    if (!postcardUrl) return;
+    const link = document.createElement('a');
+    link.download = `chumi-${pair?.pet_name || 'pet'}-${new Date().toISOString().slice(0, 10)}.png`;
+    link.href = postcardUrl;
+    link.click();
+    haptic('success');
+  };
 
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
@@ -1062,6 +1250,9 @@ const renderPet = () => (
 </button>
 <button onClick={() => { setShowDiary(true); setShowMenu(false); }}>
   📔 {lang === 'ru' ? 'Дневник' : 'Diary'}
+</button>
+<button onClick={() => { setPostcardUrl(null); setShowPostcard(true); setShowMenu(false); }}>
+  💌 {lang === 'ru' ? 'Открытка' : 'Postcard'}
 </button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { handleShareToStory(); setShowMenu(false); }}>📸 {lang === 'ru' ? 'В сторис' : 'Share Story'}</button>
@@ -1812,6 +2003,33 @@ calendarData.days.forEach(d => {
   </div>
 )}
 
+{/* Postcard popup */}
+{showPostcard && (
+  <div className="sk-overlay" onClick={() => setShowPostcard(false)}>
+    <div className="sk-popup" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+      <h3>💌 {lang === 'ru' ? 'Наша открытка' : 'Our postcard'}</h3>
+      {postcardGenerating || !postcardUrl ? (
+        <div style={{ aspectRatio: '1', background: '#f5f5f7', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <div className="sk-spinner" />
+        </div>
+      ) : (
+        <img src={postcardUrl} alt="postcard" style={{
+          width: '100%', borderRadius: 16, marginBottom: 16,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+        }} />
+      )}
+      <p style={{ fontSize: 12, color: '#888', textAlign: 'center', marginBottom: 12, lineHeight: 1.4 }}>
+        {lang === 'ru'
+          ? 'Сохрани картинку и поделись с друзьями или в сторис 💕'
+          : 'Save the image and share with friends or to your story 💕'}
+      </p>
+      <button onClick={handleDownloadPostcard} disabled={!postcardUrl} className="sk-btn-primary" style={{ background: accentColor, marginBottom: 8 }}>
+        💾 {lang === 'ru' ? 'Сохранить' : 'Save'}
+      </button>
+      <button onClick={() => setShowPostcard(false)} className="sk-popup-close">{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+    </div>
+  </div>
+)}
     </div>
   );
 }
