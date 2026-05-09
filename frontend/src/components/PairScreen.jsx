@@ -688,14 +688,14 @@ const handleShareMessage = async () => {
       ctx.font = 'bold 84px -apple-system, system-ui, sans-serif';
       ctx.fillStyle = isDark ? '#fff' : '#1a1a1a';
       ctx.textAlign = 'center';
-      ctx.fillText(displayPetName, W / 2, 460);
+      ctx.fillText(displayPetName, W / 2, 410);
 
       // Подзаголовок
       ctx.font = '36px -apple-system, system-ui, sans-serif';
       ctx.fillStyle = isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)';
       ctx.fillText(
         lang === 'ru' ? `${pair?.streak_days || 0} дней вместе` : `${pair?.streak_days || 0} days together`,
-        W / 2, 520
+        W / 2, 470
       );
 
       // Питомец — статичный кадр или эмодзи
@@ -709,21 +709,21 @@ const handleShareMessage = async () => {
         ctx.font = '420px -apple-system, system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(lv.emoji || '🐾', W / 2, H / 2 + 80);
+        ctx.fillText(lv.emoji || '🐾', W / 2, 720);
       }
       if (petImg) {
-        const petSize = 520;
-        ctx.drawImage(petImg, (W - petSize) / 2, H / 2 - 100, petSize, petSize);
+        const petSize = 460;
+        ctx.drawImage(petImg, (W - petSize) / 2, 510, petSize, petSize);
       }
 
       // Логотип
       ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
       ctx.fillStyle = isDark ? '#fff' : '#1a1a1a';
       ctx.textAlign = 'center';
-      ctx.fillText('🐾 Chumi', W / 2, H - 120);
+      ctx.fillText('🐾 Chumi', W / 2, H - 90);
       ctx.font = '28px -apple-system, system-ui, sans-serif';
       ctx.fillStyle = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
-      ctx.fillText('@ChumiPetBot', W / 2, H - 70);
+      ctx.fillText('@ChumiPetBot', W / 2, H - 45);
 
       const dataUrl = canvas.toDataURL('image/png', 0.95);
       setPostcardUrl(dataUrl);
