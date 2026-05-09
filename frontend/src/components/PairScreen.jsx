@@ -109,12 +109,25 @@ export default function PairScreen() {
   const hasPartner = pair?.member_count >= 2;
   const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
-  const [showCalendar, setShowCalendar] = useState(false);
-const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
+const [showCalendar, setShowCalendar] = useState(false);
+const [calendarMonth, setCalendarMonth] = useState(() => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+});
 const [calendarData, setCalendarData] = useState(null);
+
+// Сегодняшняя дата в локальной таймзоне в формате YYYY-MM-DD
+const todayStr = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+
+// Текущий месяц (для блокировки кнопки «вперёд»)
+const currentMonthStr = todayStr.slice(0, 7);
 
 const loadCalendar = useCallback(async (month) => {
   try {
+    setCalendarData(null);
     const res = await fetch(`${API}/streak-calendar/${pairId}?month=${month}`);
     const data = await res.json();
     if (!data.error) setCalendarData(data);
@@ -124,13 +137,22 @@ const loadCalendar = useCallback(async (month) => {
 const changeMonth = (delta) => {
   const [y, m] = calendarMonth.split('-').map(Number);
   const d = new Date(y, m - 1 + delta, 1);
-  const newMonth = d.toISOString().slice(0, 7);
+  const newMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  // Не пускаем в будущее
+  if (newMonth > currentMonthStr) return;
   setCalendarMonth(newMonth);
-  loadCalendar(newMonth);
 };
 
+// Когда открывается календарь — сбрасываем месяц на текущий
 useEffect(() => {
-  if (showCalendar) loadCalendar(calendarMonth);
+  if (showCalendar) {
+    setCalendarMonth(currentMonthStr);
+  }
+}, [showCalendar, currentMonthStr]);
+
+// Загружаем данные при изменении месяца (только если попап открыт)
+useEffect(() => {
+  if (showCalendar && calendarMonth) loadCalendar(calendarMonth);
 }, [showCalendar, calendarMonth, loadCalendar]);
 
 
@@ -1574,7 +1596,15 @@ const renderPet = () => (
               <span style={{ fontWeight: 600, fontSize: 15 }}>
                 {new Date(calendarMonth + '-01').toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { month: 'long', year: 'numeric' })}
               </span>
-              <button onClick={() => changeMonth(1)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>›</button>
+        <button
+          onClick={() => changeMonth(1)}
+          disabled={calendarMonth >= currentMonthStr}
+          style={{
+            background: 'none', border: 'none', fontSize: 20,
+            cursor: calendarMonth >= currentMonthStr ? 'default' : 'pointer',
+            opacity: calendarMonth >= currentMonthStr ? 0.3 : 1,
+          }}
+        >›</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 12 }}>
               {(lang === 'ru' ? ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'] : ['Mo','Tu','We','Th','Fr','Sa','Su']).map(d => (
@@ -1586,18 +1616,30 @@ const renderPet = () => (
                 const offset = (firstDay.getDay() + 6) % 7;
                 const cells = [];
                 for (let i = 0; i < offset; i++) cells.push(<div key={'empty-' + i} />);
-                calendarData.days.forEach(d => {
-                  const day = parseInt(d.date.split('-')[2]);
-                  const bg = d.status === 'both' ? '#4CAF50' : d.status === 'one' ? '#FFC107' : '#f0f0f0';
-                  const color = d.status === 'empty' ? '#bbb' : '#fff';
-                  cells.push(
-                    <div key={d.date} style={{
-                      aspectRatio: '1', borderRadius: 8, background: bg, color,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 600,
-                    }}>{day}</div>
-                  );
-                });
+calendarData.days.forEach(d => {
+  const day = parseInt(d.date.split('-')[2]);
+  const bg = d.status === 'both' ? '#4CAF50' : d.status === 'one' ? '#FFC107' : '#f0f0f0';
+  const color = d.status === 'empty' ? '#666' : '#fff';
+  const isToday = d.date === todayStr;
+  cells.push(
+    <div key={d.date} style={{
+      aspectRatio: '1', borderRadius: 8, background: bg, color,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 13, fontWeight: 600,
+      border: isToday ? `2px solid ${accentColor}` : '2px solid transparent',
+      boxShadow: isToday ? `0 0 0 1px ${accentColor}40` : 'none',
+      position: 'relative',
+    }}>
+      {day}
+      {isToday && (
+        <span style={{
+          position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)',
+          width: 4, height: 4, borderRadius: '50%', background: accentColor,
+        }} />
+      )}
+    </div>
+  );
+});
                 return cells;
               })()}
             </div>
