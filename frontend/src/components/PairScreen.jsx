@@ -468,6 +468,104 @@ useEffect(() => {
     });
   };
 
+      // ── Список всех питомцев для случайной промо-карточки ──
+  // Берём всех уровневых питомцев + скины
+  const ALL_PROMO_PETS = (() => {
+    const list = [];
+    // Уровневые питомцы (axolotl_pink, axolotl_peach, axolotl_blue, axolotl_black и т.д.)
+    LEVELS.forEach(l => {
+      if (l.pet) list.push({ pet: l.pet, bg: l.bg, accent: l.accent });
+    });
+    // Скины
+    list.push({ pet: 'axolotl_Strawberry', bg: ['#FFE5EC', '#FFB3C6'], accent: '#E63946' });
+    list.push({ pet: 'axolotl_Bee',        bg: ['#FFF8DC', '#FFE066'], accent: '#F4A300' });
+    list.push({ pet: 'axolotl_Floral',     bg: ['#F0FFF4', '#C8F0D4'], accent: '#52B788' });
+    list.push({ pet: 'axolotl_Astronaut',  bg: ['#E8F0FF', '#B8D0F4'], accent: '#4A7BD4' });
+    // Яйцо тоже добавим как опцию
+    list.push({ pet: 'egg_3', bg: ['#FFF4E0', '#FFD89B'], accent: '#F5A623' });
+    return list;
+  })();
+
+  // ── Генерация промо-карточки 1080×1080 ──
+  // Фон автоматически соответствует питомцу (берётся из его bg)
+  const generatePromoCard = (chosenPet) => new Promise((resolve, reject) => {
+    try {
+      const W = 1080, H = 1080;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+
+      const chosen = chosenPet || ALL_PROMO_PETS[Math.floor(Math.random() * ALL_PROMO_PETS.length)];
+
+      // Фон — родной для питомца
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, chosen.bg[0]);
+      grad.addColorStop(1, chosen.bg[1]);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Декоративные круги
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
+      ctx.beginPath(); ctx.arc(120, 180, 95, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 140, 220, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 90, H - 280, 110, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(160, H - 200, 75, 0, Math.PI * 2); ctx.fill();
+
+      // Заголовок
+      ctx.font = 'bold 78px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = '#1a1a1a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🐾 Chumi', W / 2, 130);
+
+      // Подзаголовок
+      ctx.font = '42px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(
+        lang === 'ru' ? 'Питомец для двоих' : 'A pet for two',
+        W / 2, 200
+      );
+
+      const petSize = 720;
+      const petX = (W - petSize) / 2;
+      const petY = 240;
+      const petPath = `/pets/${chosen.pet}_frame.png`;
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      const finish = () => {
+        ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = chosen.accent || '#1a1a1a';
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          lang === 'ru' ? 'Заведи питомца с другом' : 'Get a pet with a friend',
+          W / 2, H - 130
+        );
+
+        ctx.font = '34px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillText('@ChumiPetBot', W / 2, H - 70);
+
+        resolve(canvas.toDataURL('image/png', 0.95));
+      };
+
+      img.onload = () => {
+        ctx.drawImage(img, petX, petY, petSize, petSize);
+        finish();
+      };
+      img.onerror = () => {
+        ctx.font = '380px -apple-system, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🐾', W / 2, petY + petSize / 2);
+        finish();
+      };
+      img.src = petPath;
+    } catch (e) { reject(e); }
+  });
+
   // ══════ Share Message — открывает попап с превью промо-карты ══════
   const handleShareMessage = () => {
     haptic('light');
@@ -834,103 +932,6 @@ useEffect(() => {
     if (needRegen) setTimeout(() => generatePostcard(), 0);
   }
 
-    // ── Список всех питомцев для случайной промо-карточки ──
-  // Берём всех уровневых питомцев + скины
-  const ALL_PROMO_PETS = (() => {
-    const list = [];
-    // Уровневые питомцы (axolotl_pink, axolotl_peach, axolotl_blue, axolotl_black и т.д.)
-    LEVELS.forEach(l => {
-      if (l.pet) list.push({ pet: l.pet, bg: l.bg, accent: l.accent });
-    });
-    // Скины
-    list.push({ pet: 'axolotl_Strawberry', bg: ['#FFE5EC', '#FFB3C6'], accent: '#E63946' });
-    list.push({ pet: 'axolotl_Bee',        bg: ['#FFF8DC', '#FFE066'], accent: '#F4A300' });
-    list.push({ pet: 'axolotl_Floral',     bg: ['#F0FFF4', '#C8F0D4'], accent: '#52B788' });
-    list.push({ pet: 'axolotl_Astronaut',  bg: ['#E8F0FF', '#B8D0F4'], accent: '#4A7BD4' });
-    // Яйцо тоже добавим как опцию
-    list.push({ pet: 'egg_3', bg: ['#FFF4E0', '#FFD89B'], accent: '#F5A623' });
-    return list;
-  })();
-
-  // ── Генерация промо-карточки 1080×1080 ──
-  // Фон автоматически соответствует питомцу (берётся из его bg)
-  const generatePromoCard = (chosenPet) => new Promise((resolve, reject) => {
-    try {
-      const W = 1080, H = 1080;
-      const canvas = document.createElement('canvas');
-      canvas.width = W;
-      canvas.height = H;
-      const ctx = canvas.getContext('2d');
-
-      const chosen = chosenPet || ALL_PROMO_PETS[Math.floor(Math.random() * ALL_PROMO_PETS.length)];
-
-      // Фон — родной для питомца
-      const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, chosen.bg[0]);
-      grad.addColorStop(1, chosen.bg[1]);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, W, H);
-
-      // Декоративные круги
-      ctx.fillStyle = 'rgba(255,255,255,0.20)';
-      ctx.beginPath(); ctx.arc(120, 180, 95, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 140, 220, 70, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 90, H - 280, 110, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(160, H - 200, 75, 0, Math.PI * 2); ctx.fill();
-
-      // Заголовок
-      ctx.font = 'bold 78px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = '#1a1a1a';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🐾 Chumi', W / 2, 130);
-
-      // Подзаголовок
-      ctx.font = '42px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillText(
-        lang === 'ru' ? 'Питомец для двоих' : 'A pet for two',
-        W / 2, 200
-      );
-
-      const petSize = 720;
-      const petX = (W - petSize) / 2;
-      const petY = 240;
-      const petPath = `/pets/${chosen.pet}_frame.png`;
-
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-
-      const finish = () => {
-        ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
-        ctx.fillStyle = chosen.accent || '#1a1a1a';
-        ctx.textAlign = 'center';
-        ctx.fillText(
-          lang === 'ru' ? 'Заведи питомца с другом' : 'Get a pet with a friend',
-          W / 2, H - 130
-        );
-
-        ctx.font = '34px -apple-system, system-ui, sans-serif';
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillText('@ChumiPetBot', W / 2, H - 70);
-
-        resolve(canvas.toDataURL('image/png', 0.95));
-      };
-
-      img.onload = () => {
-        ctx.drawImage(img, petX, petY, petSize, petSize);
-        finish();
-      };
-      img.onerror = () => {
-        ctx.font = '380px -apple-system, system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🐾', W / 2, petY + petSize / 2);
-        finish();
-      };
-      img.src = petPath;
-    } catch (e) { reject(e); }
-  });
 
   // 💾 Сохранить на устройство
   // Telegram WebView блокирует <a download>, поэтому используем tg.downloadFile
@@ -2361,6 +2362,42 @@ calendarData.days.forEach(d => {
         )}
       </div>
 
+      {/* Выбор цвета фона */}
+      <div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600 }}>
+          🎨 {lang === 'ru' ? 'Цвет фона' : 'Background'}
+        </div>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+          {POSTCARD_BG_PRESETS.map(preset => {
+            const isActive = (postcardBg?.id || 'default') === preset.id;
+            const bgStyle = preset.colors
+              ? `linear-gradient(180deg, ${preset.colors[0]}, ${preset.colors[1]})`
+              : 'linear-gradient(135deg,#fff 50%,#ddd 50%)';
+            return (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  setPostcardBg(preset.colors ? preset : null);
+                  setPostcardUrl(null);
+                }}
+                style={{
+                  minWidth: 38, height: 38, borderRadius: '50%',
+                  border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
+                  background: bgStyle,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, padding: 0,
+                }}
+                title={preset.label}
+              >
+                {preset.colors ? preset.label : '∅'}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Кнопки действий */}
       <button
         onClick={handlePublishPostcardStory}
@@ -2482,42 +2519,6 @@ calendarData.days.forEach(d => {
       >
         🎲 {lang === 'ru' ? 'Другой питомец' : 'Another pet'}
       </button>
-
-      {/* Выбор цвета фона */}
-      <div>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600 }}>
-          🎨 {lang === 'ru' ? 'Цвет фона' : 'Background'}
-        </div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-          {POSTCARD_BG_PRESETS.map(preset => {
-            const isActive = (shareCardBg?.id || 'default') === preset.id;
-            const bgStyle = preset.colors
-              ? `linear-gradient(180deg, ${preset.colors[0]}, ${preset.colors[1]})`
-              : 'linear-gradient(135deg,#fff 50%,#ddd 50%)';
-            return (
-              <button
-                key={preset.id}
-                onClick={() => {
-                  setShareCardBg(preset.colors ? preset : null);
-                  setShareCardUrl(null);
-                }}
-                style={{
-                  minWidth: 38, height: 38, borderRadius: '50%',
-                  border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
-                  background: bgStyle,
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, padding: 0,
-                }}
-                title={preset.label}
-              >
-                {preset.colors ? preset.label : '∅'}
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       {/* Кнопка отправки */}
       <button
