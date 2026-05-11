@@ -618,6 +618,37 @@ const handleShareMessage = async () => {
     { id: 'night',    label: '🌙', colors: ['#2D3561', '#4A5491'] },
   ];
 
+    // Берёт data:image/png (1080×1440) и оборачивает в холст 1080×1920 для Stories.
+  // Сверху/снизу — тот же градиент, что у самой открытки.
+  const wrapPostcardForStory = (sourceDataUrl) => new Promise((resolve, reject) => {
+    try {
+      const STORY_W = 1080, STORY_H = 1920;
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = STORY_W;
+        canvas.height = STORY_H;
+        const ctx = canvas.getContext('2d');
+
+        // Градиент того же цвета, что и сама открытка
+        const chosenBg = postcardBg?.colors || bgColors;
+        const grad = ctx.createLinearGradient(0, 0, 0, STORY_H);
+        grad.addColorStop(0, chosenBg[0]);
+        grad.addColorStop(1, chosenBg[1]);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, STORY_W, STORY_H);
+
+        // Рисуем открытку 1080×1440 по вертикальному центру
+        const offsetY = Math.round((STORY_H - img.height) / 2);
+        ctx.drawImage(img, 0, offsetY);
+
+        resolve(canvas.toDataURL('image/png', 0.95));
+      };
+      img.onerror = reject;
+      img.src = sourceDataUrl;
+    } catch (e) { reject(e); }
+  });
+
   const generatePostcard = async () => {
     setPostcardGenerating(true);
     try {
@@ -751,25 +782,7 @@ const handleShareMessage = async () => {
       ctx.fillText('@ChumiPetBot', W - 60, H - 70);
 
       // ── Оборачиваем открытку в холст 1080×1920 (9:16) для Stories ──
-      const STORY_W = 1080, STORY_H = 1920;
-      const finalCanvas = document.createElement('canvas');
-      finalCanvas.width = STORY_W;
-      finalCanvas.height = STORY_H;
-      const fctx = finalCanvas.getContext('2d');
-
-      // Тот же градиент по краям, чтобы переход был незаметным
-      const chosenBgFinal = postcardBg?.colors || bgColors;
-      const fgrad = fctx.createLinearGradient(0, 0, 0, STORY_H);
-      fgrad.addColorStop(0, chosenBgFinal[0]);
-      fgrad.addColorStop(1, chosenBgFinal[1]);
-      fctx.fillStyle = fgrad;
-      fctx.fillRect(0, 0, STORY_W, STORY_H);
-
-      // Рисуем нашу открытку 1080×1440 по вертикальному центру
-      const offsetY = Math.round((STORY_H - H) / 2); // = 240
-      fctx.drawImage(canvas, 0, offsetY);
-
-      const dataUrl = finalCanvas.toDataURL('image/png', 0.95);
+      const dataUrl = canvas.toDataURL('image/png', 0.95);
       setPostcardUrl(dataUrl);
     } catch (e) {
       console.error('Postcard generation error:', e);
@@ -882,15 +895,19 @@ const handleShareMessage = async () => {
     }
   };
 
-  // 📱 Опубликовать в Stories
+  // 📱 Опубликовать в Stories — оборачиваем в 1080×1920
   const handlePublishPostcardStory = async () => {
     if (!postcardUrl) return;
     haptic('light');
     try {
+      // 1) Оборачиваем открытку в формат 9:16 специально для Stories
+      const storyDataUrl = await wrapPostcardForStory(postcardUrl);
+
+      // 2) Загружаем её на сервер
       const res = await fetch(`${API}/upload-postcard`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ userId, imageDataUrl: postcardUrl }),
+        body: JSON.stringify({ userId, imageDataUrl: storyDataUrl }),
       });
       const data = await res.json();
       if (data.url && tg?.shareToStory) {
@@ -2188,7 +2205,7 @@ calendarData.days.forEach(d => {
       {/* Превью */}
       <div style={{
         width: '100%',
-        aspectRatio: '1080/1920',
+        aspectRatio: '1080/1440',
         maxHeight: '46vh',
         margin: '0 auto',
         borderRadius: 14,
