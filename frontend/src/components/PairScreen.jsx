@@ -115,6 +115,13 @@ const [postcardUrl, setPostcardUrl] = useState(null);
 const [postcardGenerating, setPostcardGenerating] = useState(false);
 const [postcardBg, setPostcardBg] = useState(null);
 const [postcardSharing, setPostcardSharing] = useState(false);
+const [showShareCard, setShowShareCard] = useState(false);
+const [shareCardUrl, setShareCardUrl] = useState(null);
+const [shareCardGenerating, setShareCardGenerating] = useState(false);
+const [shareCardSharing, setShareCardSharing] = useState(false);
+// Зафиксированный случайный питомец на время сессии попапа,
+// чтобы при смене цвета фона не менялся питомец
+const [shareCardPet, setShareCardPet] = useState(null);
 const [calendarMonth, setCalendarMonth] = useState(() => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -461,30 +468,63 @@ useEffect(() => {
     });
   };
 
-  // ══════ Share Message (prepared inline) ══════
-const handleShareMessage = async () => {
-  if (!tg?.shareMessage) {
-    handleShareInvite();
-    return;
+  // ══════ Share Message — открывает попап с превью промо-карты ══════
+  const handleShareMessage = () => {
+    haptic('light');
+    const randomPet = ALL_PROMO_PETS[Math.floor(Math.random() * ALL_PROMO_PETS.length)];
+    setShareCardPet(randomPet);
+    setShareCardUrl(null);
+    setShowShareCard(true);
+  };
+
+  // Перегенерация при открытии или смене питомца
+  if (showShareCard && shareCardPet && !shareCardGenerating && !shareCardUrl) {
+    setShareCardGenerating(true);
+    setTimeout(() => {
+      generatePromoCard(shareCardPet)
+        .then(url => { setShareCardUrl(url); })
+        .catch(() => {})
+        .finally(() => setShareCardGenerating(false));
+    }, 0);
   }
-  try {
-    const res = await fetch(`${API}/prepare-share`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ userId }),
-    });
-    const data = await res.json();
-    if (data.prepared_message_id) {
-      tg.shareMessage(data.prepared_message_id, (ok) => {
-        if (ok) haptic('success');
+
+  const handleSendShareCard = async () => {
+    if (!shareCardUrl || shareCardSharing) return;
+    setShareCardSharing(true);
+    haptic('light');
+    try {
+      const res = await fetch(`${API}/prepare-share`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, imageDataUrl: shareCardUrl }),
       });
-    } else {
+      const data = await res.json();
+      if (data.prepared_message_id && tg?.shareMessage) {
+        tg.shareMessage(data.prepared_message_id, (ok) => {
+          if (ok) haptic('success');
+          setShowShareCard(false);
+        });
+      } else {
+        handleShareInvite();
+        setShowShareCard(false);
+      }
+    } catch (e) {
       handleShareInvite();
+      setShowShareCard(false);
+    } finally {
+      setShareCardSharing(false);
     }
-  } catch (e) {
-    handleShareInvite();
-  }
-};
+  };
+
+  const handleReshufflePet = () => {
+    haptic('light');
+    let next = shareCardPet;
+    for (let i = 0; i < 5 && next === shareCardPet; i++) {
+      next = ALL_PROMO_PETS[Math.floor(Math.random() * ALL_PROMO_PETS.length)];
+    }
+    setShareCardPet(next);
+    setShareCardUrl(null);
+  };
 
   if (loading) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 
@@ -730,10 +770,6 @@ const handleShareMessage = async () => {
       await drawAvatarSafe(myAvatarUrl, avX1, avY);
       await drawAvatarSafe(partnerAvatarUrl, avX2, avY);
 
-      // Сердечко над аватарами — крупнее
-      ctx.font = '54px -apple-system, system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('💕', (avX1 + avX2) / 2, avY - avRadius - 10);
 
       // ── Имя питомца (центр) ──
       const displayPetName = pair?.pet_name || lvText;
@@ -797,6 +833,104 @@ const handleShareMessage = async () => {
     const needRegen = !postcardUrl;
     if (needRegen) setTimeout(() => generatePostcard(), 0);
   }
+
+    // ── Список всех питомцев для случайной промо-карточки ──
+  // Берём всех уровневых питомцев + скины
+  const ALL_PROMO_PETS = (() => {
+    const list = [];
+    // Уровневые питомцы (axolotl_pink, axolotl_peach, axolotl_blue, axolotl_black и т.д.)
+    LEVELS.forEach(l => {
+      if (l.pet) list.push({ pet: l.pet, bg: l.bg, accent: l.accent });
+    });
+    // Скины
+    list.push({ pet: 'axolotl_Strawberry', bg: ['#FFE5EC', '#FFB3C6'], accent: '#E63946' });
+    list.push({ pet: 'axolotl_Bee',        bg: ['#FFF8DC', '#FFE066'], accent: '#F4A300' });
+    list.push({ pet: 'axolotl_Floral',     bg: ['#F0FFF4', '#C8F0D4'], accent: '#52B788' });
+    list.push({ pet: 'axolotl_Astronaut',  bg: ['#E8F0FF', '#B8D0F4'], accent: '#4A7BD4' });
+    // Яйцо тоже добавим как опцию
+    list.push({ pet: 'egg_3', bg: ['#FFF4E0', '#FFD89B'], accent: '#F5A623' });
+    return list;
+  })();
+
+  // ── Генерация промо-карточки 1080×1080 ──
+  // Фон автоматически соответствует питомцу (берётся из его bg)
+  const generatePromoCard = (chosenPet) => new Promise((resolve, reject) => {
+    try {
+      const W = 1080, H = 1080;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+
+      const chosen = chosenPet || ALL_PROMO_PETS[Math.floor(Math.random() * ALL_PROMO_PETS.length)];
+
+      // Фон — родной для питомца
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, chosen.bg[0]);
+      grad.addColorStop(1, chosen.bg[1]);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Декоративные круги
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
+      ctx.beginPath(); ctx.arc(120, 180, 95, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 140, 220, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 90, H - 280, 110, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(160, H - 200, 75, 0, Math.PI * 2); ctx.fill();
+
+      // Заголовок
+      ctx.font = 'bold 78px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = '#1a1a1a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🐾 Chumi', W / 2, 130);
+
+      // Подзаголовок
+      ctx.font = '42px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(
+        lang === 'ru' ? 'Питомец для двоих' : 'A pet for two',
+        W / 2, 200
+      );
+
+      const petSize = 720;
+      const petX = (W - petSize) / 2;
+      const petY = 240;
+      const petPath = `/pets/${chosen.pet}_frame.png`;
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      const finish = () => {
+        ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = chosen.accent || '#1a1a1a';
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          lang === 'ru' ? 'Заведи питомца с другом' : 'Get a pet with a friend',
+          W / 2, H - 130
+        );
+
+        ctx.font = '34px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillText('@ChumiPetBot', W / 2, H - 70);
+
+        resolve(canvas.toDataURL('image/png', 0.95));
+      };
+
+      img.onload = () => {
+        ctx.drawImage(img, petX, petY, petSize, petSize);
+        finish();
+      };
+      img.onerror = () => {
+        ctx.font = '380px -apple-system, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🐾', W / 2, petY + petSize / 2);
+        finish();
+      };
+      img.src = petPath;
+    } catch (e) { reject(e); }
+  });
 
   // 💾 Сохранить на устройство
   // Telegram WebView блокирует <a download>, поэтому используем tg.downloadFile
@@ -2227,42 +2361,6 @@ calendarData.days.forEach(d => {
         )}
       </div>
 
-      {/* Выбор цвета фона */}
-      <div>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600 }}>
-          🎨 {lang === 'ru' ? 'Цвет фона' : 'Background'}
-        </div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-          {POSTCARD_BG_PRESETS.map(preset => {
-            const isActive = (postcardBg?.id || 'default') === preset.id;
-            const bgStyle = preset.colors
-              ? `linear-gradient(180deg, ${preset.colors[0]}, ${preset.colors[1]})`
-              : 'linear-gradient(135deg,#fff 50%,#ddd 50%)';
-            return (
-              <button
-                key={preset.id}
-                onClick={() => {
-                  setPostcardBg(preset.colors ? preset : null);
-                  setPostcardUrl(null);
-                }}
-                style={{
-                  minWidth: 38, height: 38, borderRadius: '50%',
-                  border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
-                  background: bgStyle,
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, padding: 0,
-                }}
-                title={preset.label}
-              >
-                {preset.colors ? preset.label : '∅'}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Кнопки действий */}
       <button
         onClick={handlePublishPostcardStory}
@@ -2311,6 +2409,135 @@ calendarData.days.forEach(d => {
 
       <button
         onClick={() => setShowPostcard(false)}
+        style={{
+          width: '100%', padding: '8px 0',
+          background: 'transparent', color: '#6b7280',
+          border: 'none', borderRadius: 12,
+          fontSize: 13, cursor: 'pointer',
+        }}
+      >
+        {lang === 'ru' ? 'Закрыть' : 'Close'}
+      </button>
+    </div>
+  </div>
+)}
+{/* Share promo-card popup */}
+{showShareCard && (
+  <div className="sk-overlay" onClick={() => setShowShareCard(false)}>
+    <div
+      className="sk-popup"
+      onClick={e => e.stopPropagation()}
+      style={{
+        maxWidth: 320,
+        padding: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        maxHeight: '92vh',
+        overflowY: 'auto',
+      }}
+    >
+      <h3 style={{ margin: 0, fontSize: 16, textAlign: 'center' }}>
+        📤 {lang === 'ru' ? 'Поделиться Chumi' : 'Share Chumi'}
+      </h3>
+
+      {/* Превью 1:1 */}
+      <div style={{
+        width: '100%',
+        aspectRatio: '1 / 1',
+        maxHeight: '50vh',
+        margin: '0 auto',
+        borderRadius: 14,
+        overflow: 'hidden',
+        background: '#f3f4f6',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+      }}>
+        {shareCardGenerating || !shareCardUrl ? (
+          <div className="sk-spinner" />
+        ) : (
+          <img
+            src={shareCardUrl}
+            alt="promo"
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        )}
+      </div>
+
+      {/* Кнопка "Другой питомец" */}
+      <button
+        onClick={handleReshufflePet}
+        disabled={shareCardGenerating}
+        style={{
+          width: '100%', padding: '8px 0',
+          background: 'transparent',
+          color: accentColor,
+          border: `1px dashed ${accentColor}80`,
+          borderRadius: 12,
+          fontSize: 12, fontWeight: 600,
+          cursor: shareCardGenerating ? 'default' : 'pointer',
+        }}
+      >
+        🎲 {lang === 'ru' ? 'Другой питомец' : 'Another pet'}
+      </button>
+
+      {/* Выбор цвета фона */}
+      <div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600 }}>
+          🎨 {lang === 'ru' ? 'Цвет фона' : 'Background'}
+        </div>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+          {POSTCARD_BG_PRESETS.map(preset => {
+            const isActive = (shareCardBg?.id || 'default') === preset.id;
+            const bgStyle = preset.colors
+              ? `linear-gradient(180deg, ${preset.colors[0]}, ${preset.colors[1]})`
+              : 'linear-gradient(135deg,#fff 50%,#ddd 50%)';
+            return (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  setShareCardBg(preset.colors ? preset : null);
+                  setShareCardUrl(null);
+                }}
+                style={{
+                  minWidth: 38, height: 38, borderRadius: '50%',
+                  border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
+                  background: bgStyle,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, padding: 0,
+                }}
+                title={preset.label}
+              >
+                {preset.colors ? preset.label : '∅'}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Кнопка отправки */}
+      <button
+        onClick={handleSendShareCard}
+        disabled={shareCardGenerating || !shareCardUrl || shareCardSharing}
+        style={{
+          width: '100%', padding: '11px 0', borderRadius: 12, border: 'none',
+          background: `linear-gradient(135deg, ${accentColor}, #ec4899)`,
+          color: '#fff', fontSize: 14, fontWeight: 600,
+          cursor: shareCardUrl ? 'pointer' : 'default',
+          opacity: shareCardUrl ? 1 : 0.6,
+        }}
+      >
+        📤 {shareCardSharing
+          ? (lang === 'ru' ? 'Отправка...' : 'Sending...')
+          : (lang === 'ru' ? 'Поделиться' : 'Share')}
+      </button>
+
+      <button
+        onClick={() => setShowShareCard(false)}
         style={{
           width: '100%', padding: '8px 0',
           background: 'transparent', color: '#6b7280',
