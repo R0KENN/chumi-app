@@ -621,7 +621,7 @@ const handleShareMessage = async () => {
   const generatePostcard = async () => {
     setPostcardGenerating(true);
     try {
-      const W = 1080, H = 1080;
+      const W = 1080, H = 1440;
       const canvas = document.createElement('canvas');
       canvas.width = W;
       canvas.height = H;
@@ -637,9 +637,9 @@ const handleShareMessage = async () => {
 
       // Декоративные круги
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.beginPath(); ctx.arc(120, H - 180, 90, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 100, H - 320, 70, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 180, 880, 110, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(120, H - 220, 90, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 100, H - 380, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 180, 1180, 110, 0, Math.PI * 2); ctx.fill();
 
       const isDarkBg = postcardBg?.id === 'night' || (!postcardBg && isDark);
       const textColor = isDarkBg ? '#fff' : '#1a1a1a';
@@ -668,11 +668,11 @@ const handleShareMessage = async () => {
       ctx.textAlign = 'center';
       ctx.fillText(lvText, 50 + lvW / 2, 192);
 
-      // ── Аватары пары (СПРАВА сверху) ──
-      const avRadius = 70;
-      const avY = 110;
-      const avX2 = W - 80;
-      const avX1 = avX2 - 95;
+      // ── Аватары пары (СПРАВА сверху, симметрично серии слева) ──
+      const avRadius = 60;
+      const avY = 95;
+      const avX2 = W - 50 - avRadius;   // правый аватар (отступ 50 от края)
+      const avX1 = avX2 - 90;            // левый аватар, нахлёст
       const myAvatarUrl = avatars[userId];
       const partnerAvatarUrl = partner ? avatars[partner.user_id] : null;
 
@@ -694,28 +694,28 @@ const handleShareMessage = async () => {
       await drawAvatarSafe(partnerAvatarUrl, avX2, avY);
 
       // Сердечко над аватарами
-      ctx.font = '44px -apple-system, system-ui, sans-serif';
+      ctx.font = '38px -apple-system, system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('💕', (avX1 + avX2) / 2, avY - avRadius - 8);
+      ctx.fillText('💕', (avX1 + avX2) / 2, avY - avRadius - 5);
 
       // ── Имя питомца (центр) ──
       const displayPetName = pair?.pet_name || lvText;
-      ctx.font = 'bold 92px -apple-system, system-ui, sans-serif';
+      ctx.font = 'bold 100px -apple-system, system-ui, sans-serif';
       ctx.fillStyle = textColor;
       ctx.textAlign = 'center';
-      ctx.fillText(displayPetName, W / 2, 320);
+      ctx.fillText(displayPetName, W / 2, 380);
 
       // Подзаголовок
-      ctx.font = '38px -apple-system, system-ui, sans-serif';
+      ctx.font = '40px -apple-system, system-ui, sans-serif';
       ctx.fillStyle = subColor;
       ctx.fillText(
         lang === 'ru' ? `${pair?.streak_days || 0} дней вместе` : `${pair?.streak_days || 0} days together`,
-        W / 2, 385
+        W / 2, 450
       );
 
       // ── Питомец БОЛЬШОЙ по центру ──
-      const petSize = 680;
-      const petY = 410;
+      const petSize = 820;
+      const petY = 500;
       const petPath = isEgg
         ? `/pets/egg_${eggDay}_frame.png`
         : `/pets/${petSrc.idle}_frame.png`;
@@ -761,15 +761,63 @@ const handleShareMessage = async () => {
   }
 
   // 💾 Сохранить на устройство
-  const handleDownloadPostcard = () => {
+  // Telegram WebView блокирует <a download>, поэтому используем tg.downloadFile
+  // (Bot API 8.0+), а как fallback — заливаем в Storage и открываем через tg.openLink.
+  const handleDownloadPostcard = async () => {
     if (!postcardUrl) return;
     haptic('light');
-    const link = document.createElement('a');
-    link.download = `chumi-${pair?.pet_name || 'pet'}-${new Date().toISOString().slice(0, 10)}.png`;
-    link.href = postcardUrl;
-    link.click();
-    if (tg?.showAlert) {
-      tg.showAlert(lang === 'ru' ? '✅ Открытка сохранена!' : '✅ Postcard saved!');
+
+    const fileName = `chumi-${pair?.pet_name || 'pet'}-${new Date().toISOString().slice(0, 10)}.png`;
+
+    // 1) Заливаем картинку на сервер, чтобы получить публичный URL
+    let publicUrl = null;
+    try {
+      const res = await fetch(`${API}/upload-postcard`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, imageDataUrl: postcardUrl }),
+      });
+      const data = await res.json();
+      if (data.url) publicUrl = data.url;
+    } catch (e) {}
+
+    // 2) Способ A: Telegram downloadFile (нативное сохранение)
+    if (publicUrl && tg?.downloadFile) {
+      try {
+        tg.downloadFile({ url: publicUrl, file_name: fileName }, (accepted) => {
+          if (accepted) {
+            haptic('success');
+            if (tg?.showAlert) {
+              tg.showAlert(lang === 'ru' ? '✅ Открытка сохраняется в Галерею' : '✅ Saving to Gallery');
+            }
+          }
+        });
+        return;
+      } catch (e) {}
+    }
+
+    // 3) Способ B: открыть картинку в браузере — пользователь долгим тапом сохранит
+    if (publicUrl && tg?.openLink) {
+      tg.openLink(publicUrl, { try_instant_view: false });
+      if (tg?.showAlert) {
+        tg.showAlert(lang === 'ru'
+          ? '📷 Открытка открыта в браузере. Зажмите её пальцем и выберите «Сохранить изображение».'
+          : '📷 Postcard opened in browser. Long-press it and choose "Save image".');
+      }
+      return;
+    }
+
+    // 4) Fallback для обычного браузера: классический download
+    try {
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = postcardUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      haptic('success');
+    } catch (e) {
+      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Не удалось сохранить' : 'Failed to save');
     }
   };
 
@@ -2101,7 +2149,7 @@ calendarData.days.forEach(d => {
       {/* Превью */}
       {postcardGenerating || !postcardUrl ? (
         <div style={{
-          aspectRatio: '1', background: '#f5f5f7', borderRadius: 16,
+          aspectRatio: '1080/1440', background: '#f5f5f7', borderRadius: 16,
           display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14,
         }}>
           <div className="sk-spinner" />
