@@ -1400,6 +1400,106 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       return json({ error: 'Failed to prepare message', details: data }, 500);
     }
 
+        // ── POST /api/upload-postcard ──
+    // Загружает PNG-открытку в Supabase Storage (bucket: postcards) и возвращает публичный URL
+    if (request.method === 'POST' && path === '/api/upload-postcard') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const imageDataUrl = body.imageDataUrl || '';
+      if (!imageDataUrl.startsWith('data:image/png;base64,')) {
+        return json({ error: 'Invalid image' }, 400);
+      }
+      const base64 = imageDataUrl.split(',')[1];
+      const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const fileName = `postcard_${userId}_${Date.now()}.png`;
+
+      const uploadRes = await fetch(
+        `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+            'Content-Type': 'image/png',
+            'x-upsert': 'true',
+          },
+          body: binary,
+        }
+      );
+      if (!uploadRes.ok) {
+        const err = await uploadRes.text();
+        return json({ error: 'Upload failed: ' + err.slice(0, 200) }, 500);
+      }
+      const publicUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
+      return json({ url: publicUrl });
+    }
+
+    // ── POST /api/prepare-postcard ──
+    // Заливает открытку в Storage и готовит inline-сообщение с фото для tg.shareMessage
+    if (request.method === 'POST' && path === '/api/prepare-postcard') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const imageDataUrl = body.imageDataUrl || '';
+      const text = (body.text || '').toString().slice(0, 800);
+      if (!imageDataUrl.startsWith('data:image/png;base64,')) {
+        return json({ error: 'Invalid image' }, 400);
+      }
+      const base64 = imageDataUrl.split(',')[1];
+      const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const fileName = `postcard_${userId}_${Date.now()}.png`;
+
+      const uploadRes = await fetch(
+        `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+            'Content-Type': 'image/png',
+            'x-upsert': 'true',
+          },
+          body: binary,
+        }
+      );
+      if (!uploadRes.ok) return json({ error: 'Upload failed' }, 500);
+      const photoUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
+
+      const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
+      const { data: ps } = await supabase
+        .from('user_settings').select('lang')
+        .eq('telegram_user_id', userId).maybeSingle();
+      const userLang = ps?.lang || 'ru';
+      const btnText = userLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: parseInt(userId),
+          result: {
+            type: 'photo',
+            id: 'pc_' + Date.now(),
+            photo_url: photoUrl,
+            thumbnail_url: photoUrl,
+            caption: text,
+            reply_markup: {
+              inline_keyboard: [[{ text: btnText, url: `https://t.me/${botUsername}` }]],
+            },
+          },
+          allow_user_chats: true,
+          allow_bot_chats: false,
+          allow_group_chats: true,
+          allow_channel_chats: true,
+        }),
+      });
+      const tgData = await tgRes.json();
+      if (!tgData.ok) return json({ error: tgData.description || 'TG error' }, 500);
+      return json({ prepared_message_id: tgData.result.id });
+    }
+
+
         // ── POST /api/prepare-task-message ──
     // Готовит inline-сообщение для заданий send_msg / send_sticker / send_media.
     // У получателя в чате появится текстовое сообщение с inline-кнопкой

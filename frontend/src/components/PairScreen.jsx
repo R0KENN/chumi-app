@@ -113,6 +113,8 @@ const [showCalendar, setShowCalendar] = useState(false);
 const [showPostcard, setShowPostcard] = useState(false);
 const [postcardUrl, setPostcardUrl] = useState(null);
 const [postcardGenerating, setPostcardGenerating] = useState(false);
+const [postcardBg, setPostcardBg] = useState(null);
+const [postcardSharing, setPostcardSharing] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(() => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -604,6 +606,18 @@ const handleShareMessage = async () => {
     ctx.closePath();
   };
 
+  // ── Постcard: пресеты фона ──
+  const POSTCARD_BG_PRESETS = [
+    { id: 'default',  label: lang === 'ru' ? 'Авто' : 'Auto', colors: null },
+    { id: 'pink',     label: '🌸', colors: ['#FFE5EC', '#FFB3C6'] },
+    { id: 'mint',     label: '🌿', colors: ['#D4F4DD', '#A8E6B8'] },
+    { id: 'sky',      label: '☁️', colors: ['#E0F2FF', '#A8D5F0'] },
+    { id: 'sunset',   label: '🌅', colors: ['#FFD6A5', '#FFADAD'] },
+    { id: 'lavender', label: '💜', colors: ['#E8DFF5', '#C9B6E4'] },
+    { id: 'peach',    label: '🍑', colors: ['#FFE8D6', '#FFCBA4'] },
+    { id: 'night',    label: '🌙', colors: ['#2D3561', '#4A5491'] },
+  ];
+
   const generatePostcard = async () => {
     setPostcardGenerating(true);
     try {
@@ -613,117 +627,122 @@ const handleShareMessage = async () => {
       canvas.height = H;
       const ctx = canvas.getContext('2d');
 
-      // Фон — градиент уровня/скина
+      // ── Фон ──
+      const chosenBg = postcardBg?.colors || bgColors;
       const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, bgColors[0]);
-      grad.addColorStop(1, bgColors[1]);
+      grad.addColorStop(0, chosenBg[0]);
+      grad.addColorStop(1, chosenBg[1]);
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
-      // Декор: круги на фоне
+      // Декоративные круги
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.beginPath(); ctx.arc(120, 180, 90, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 100, 240, 70, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 180, H - 200, 110, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(120, H - 180, 90, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 100, H - 320, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W - 180, 880, 110, 0, Math.PI * 2); ctx.fill();
 
-      // Серия — бейдж сверху слева
+      const isDarkBg = postcardBg?.id === 'night' || (!postcardBg && isDark);
+      const textColor = isDarkBg ? '#fff' : '#1a1a1a';
+      const subColor  = isDarkBg ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.55)';
+
+      // ── Серия (слева сверху) ──
       const streakText = `🔥 ${pair?.streak_days || 0}`;
       ctx.font = 'bold 56px -apple-system, system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       const streakW = ctx.measureText(streakText).width + 60;
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
       roundRect(ctx, 50, 50, streakW, 90, 45);
       ctx.fill();
       ctx.fillStyle = '#1a1a1a';
       ctx.textAlign = 'left';
       ctx.fillText(streakText, 80, 95);
 
-      // Уровень — бейдж сверху справа
+      // ── Бейдж уровня (ПОД серией, слева) ──
       const lvText = lang === 'ru' ? lv.nameRu : lv.name;
-      ctx.font = 'bold 38px -apple-system, system-ui, sans-serif';
-      const lvW = ctx.measureText(lvText).width + 60;
+      ctx.font = 'bold 36px -apple-system, system-ui, sans-serif';
+      const lvW = ctx.measureText(lvText).width + 50;
       ctx.fillStyle = accentColor;
-      roundRect(ctx, W - 50 - lvW, 60, lvW, 70, 35);
+      roundRect(ctx, 50, 160, lvW, 64, 32);
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
-      ctx.fillText(lvText, W - 50 - lvW / 2, 95);
+      ctx.fillText(lvText, 50 + lvW / 2, 192);
 
-      // Аватары
+      // ── Аватары пары (СПРАВА сверху) ──
+      const avRadius = 70;
+      const avY = 110;
+      const avX2 = W - 80;
+      const avX1 = avX2 - 95;
       const myAvatarUrl = avatars[userId];
       const partnerAvatarUrl = partner ? avatars[partner.user_id] : null;
-      try {
-        if (myAvatarUrl) {
-          const img = await loadImage(myAvatarUrl);
-          drawCircleAvatar(ctx, img, 200, 280, 80);
-        } else {
-          ctx.fillStyle = '#ddd';
-          ctx.beginPath(); ctx.arc(200, 280, 80, 0, Math.PI * 2); ctx.fill();
-        }
-      } catch (e) {
-        ctx.fillStyle = '#ddd';
-        ctx.beginPath(); ctx.arc(200, 280, 80, 0, Math.PI * 2); ctx.fill();
-      }
-      try {
-        if (partnerAvatarUrl) {
-          const img = await loadImage(partnerAvatarUrl);
-          drawCircleAvatar(ctx, img, 320, 280, 80);
-        } else {
-          ctx.fillStyle = '#ddd';
-          ctx.beginPath(); ctx.arc(320, 280, 80, 0, Math.PI * 2); ctx.fill();
-        }
-      } catch (e) {
-        ctx.fillStyle = '#ddd';
-        ctx.beginPath(); ctx.arc(320, 280, 80, 0, Math.PI * 2); ctx.fill();
-      }
 
-      // Сердце
-      ctx.font = '64px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = '#E63946';
+      const drawAvatarSafe = async (avUrl, x, y) => {
+        try {
+          if (avUrl) {
+            const img = await loadImage(avUrl);
+            drawCircleAvatar(ctx, img, x, y, avRadius);
+            return;
+          }
+        } catch (e) {}
+        ctx.fillStyle = '#ddd';
+        ctx.beginPath(); ctx.arc(x, y, avRadius, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, avRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.stroke();
+      };
+
+      await drawAvatarSafe(myAvatarUrl, avX1, avY);
+      await drawAvatarSafe(partnerAvatarUrl, avX2, avY);
+
+      // Сердечко над аватарами
+      ctx.font = '44px -apple-system, system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('💕', 260, 280);
+      ctx.fillText('💕', (avX1 + avX2) / 2, avY - avRadius - 8);
 
-      // Имя питомца
+      // ── Имя питомца (центр) ──
       const displayPetName = pair?.pet_name || lvText;
-      ctx.font = 'bold 84px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = isDark ? '#fff' : '#1a1a1a';
+      ctx.font = 'bold 92px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = textColor;
       ctx.textAlign = 'center';
-      ctx.fillText(displayPetName, W / 2, 410);
+      ctx.fillText(displayPetName, W / 2, 320);
 
       // Подзаголовок
-      ctx.font = '36px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)';
+      ctx.font = '38px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = subColor;
       ctx.fillText(
         lang === 'ru' ? `${pair?.streak_days || 0} дней вместе` : `${pair?.streak_days || 0} days together`,
-        W / 2, 470
+        W / 2, 385
       );
 
-      // Питомец — статичный кадр или эмодзи
+      // ── Питомец БОЛЬШОЙ по центру ──
+      const petSize = 680;
+      const petY = 410;
       const petPath = isEgg
         ? `/pets/egg_${eggDay}_frame.png`
         : `/pets/${petSrc.idle}_frame.png`;
-      let petImg = null;
+      let petDrawn = false;
       try {
-        petImg = await loadImage(petPath);
-      } catch (e) {
+        const petImg = await loadImage(petPath);
+        ctx.drawImage(petImg, (W - petSize) / 2, petY, petSize, petSize);
+        petDrawn = true;
+      } catch (e) {}
+      if (!petDrawn) {
         ctx.font = '420px -apple-system, system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(lv.emoji || '🐾', W / 2, 720);
-      }
-      if (petImg) {
-        const petSize = 460;
-        ctx.drawImage(petImg, (W - petSize) / 2, 510, petSize, petSize);
+        ctx.fillText(lv.emoji || '🐾', W / 2, petY + petSize / 2 + 100);
       }
 
-      // Логотип
+      // ── Низ: Chumi слева, @ChumiPetBot справа ──
+      ctx.textBaseline = 'middle';
       ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = isDark ? '#fff' : '#1a1a1a';
-      ctx.textAlign = 'center';
-      ctx.fillText('🐾 Chumi', W / 2, H - 90);
-      ctx.font = '28px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
-      ctx.fillText('@ChumiPetBot', W / 2, H - 45);
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'left';
+      ctx.fillText('🐾 Chumi', 60, H - 70);
+
+      ctx.font = '30px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = subColor;
+      ctx.textAlign = 'right';
+      ctx.fillText('@ChumiPetBot', W - 60, H - 70);
 
       const dataUrl = canvas.toDataURL('image/png', 0.95);
       setPostcardUrl(dataUrl);
@@ -735,20 +754,90 @@ const handleShareMessage = async () => {
     }
   };
 
-  // Запускаем генерацию при открытии попапа
-  if (showPostcard && !postcardUrl && !postcardGenerating) {
-    // Откладываем на следующий тик, чтобы не вызывать setState во время рендера
-    setTimeout(() => generatePostcard(), 0);
+  // Перегенерация при открытии попапа или смене фона
+  if (showPostcard && !postcardGenerating) {
+    const needRegen = !postcardUrl;
+    if (needRegen) setTimeout(() => generatePostcard(), 0);
   }
 
+  // 💾 Сохранить на устройство
   const handleDownloadPostcard = () => {
     if (!postcardUrl) return;
+    haptic('light');
     const link = document.createElement('a');
     link.download = `chumi-${pair?.pet_name || 'pet'}-${new Date().toISOString().slice(0, 10)}.png`;
     link.href = postcardUrl;
     link.click();
-    haptic('success');
+    if (tg?.showAlert) {
+      tg.showAlert(lang === 'ru' ? '✅ Открытка сохранена!' : '✅ Postcard saved!');
+    }
   };
+
+  // 📤 Поделиться (выбор чата в Telegram)
+  const handleSharePostcardChat = async () => {
+    if (!postcardUrl || postcardSharing) return;
+    setPostcardSharing(true);
+    haptic('light');
+    try {
+      const res = await fetch(`${API}/prepare-postcard`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          userId,
+          pairCode: pairId,
+          imageDataUrl: postcardUrl,
+          text: lang === 'ru'
+            ? `💌 Наша открытка из Chumi! ${pair?.pet_name || ''} — ${pair?.streak_days || 0} дней вместе 🐾`
+            : `💌 Our Chumi postcard! ${pair?.pet_name || ''} — ${pair?.streak_days || 0} days together 🐾`,
+        }),
+      });
+      const data = await res.json();
+      if (data.prepared_message_id && tg?.shareMessage) {
+        tg.shareMessage(data.prepared_message_id, (ok) => { if (ok) haptic('success'); });
+      } else {
+        handleDownloadPostcard();
+        if (tg?.showAlert) {
+          tg.showAlert(lang === 'ru'
+            ? 'Открытка сохранена. Отправь её вручную в чат.'
+            : 'Postcard saved. Send it manually to a chat.');
+        }
+      }
+    } catch (e) {
+      handleDownloadPostcard();
+    } finally {
+      setPostcardSharing(false);
+    }
+  };
+
+  // 📱 Опубликовать в Stories
+  const handlePublishPostcardStory = async () => {
+    if (!postcardUrl) return;
+    haptic('light');
+    try {
+      const res = await fetch(`${API}/upload-postcard`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, imageDataUrl: postcardUrl }),
+      });
+      const data = await res.json();
+      if (data.url && tg?.shareToStory) {
+        tg.shareToStory(data.url, {
+          text: lang === 'ru'
+            ? `💌 Моя открытка в Chumi 🐾\n\nЗаведи питомца с другом: https://t.me/${BOT_USERNAME}`
+            : `💌 My Chumi postcard 🐾\n\nGet a pet with a friend: https://t.me/${BOT_USERNAME}`,
+          widget_link: { url: `https://t.me/${BOT_USERNAME}`, name: 'Chumi' },
+        });
+        haptic('success');
+      } else if (tg?.showAlert) {
+        tg.showAlert(lang === 'ru'
+          ? 'Stories недоступны в этой версии Telegram'
+          : 'Stories not available in this Telegram version');
+      }
+    } catch (e) {
+      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Не удалось опубликовать' : 'Failed to publish');
+    }
+  };
+
 
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
@@ -2006,27 +2095,91 @@ calendarData.days.forEach(d => {
 {/* Postcard popup */}
 {showPostcard && (
   <div className="sk-overlay" onClick={() => setShowPostcard(false)}>
-    <div className="sk-popup" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+    <div className="sk-popup" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }}>
       <h3>💌 {lang === 'ru' ? 'Наша открытка' : 'Our postcard'}</h3>
+
+      {/* Превью */}
       {postcardGenerating || !postcardUrl ? (
-        <div style={{ aspectRatio: '1', background: '#f5f5f7', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+        <div style={{
+          aspectRatio: '1', background: '#f5f5f7', borderRadius: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+        }}>
           <div className="sk-spinner" />
         </div>
       ) : (
         <img src={postcardUrl} alt="postcard" style={{
-          width: '100%', borderRadius: 16, marginBottom: 16,
+          width: '100%', borderRadius: 16, marginBottom: 14,
           boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
         }} />
       )}
-      <p style={{ fontSize: 12, color: '#888', textAlign: 'center', marginBottom: 12, lineHeight: 1.4 }}>
-        {lang === 'ru'
-          ? 'Сохрани картинку и поделись с друзьями или в сторис 💕'
-          : 'Save the image and share with friends or to your story 💕'}
-      </p>
-      <button onClick={handleDownloadPostcard} disabled={!postcardUrl} className="sk-btn-primary" style={{ background: accentColor, marginBottom: 8 }}>
+
+      {/* Выбор цвета фона */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 600 }}>
+          🎨 {lang === 'ru' ? 'Цвет фона' : 'Background'}
+        </div>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+          {POSTCARD_BG_PRESETS.map(preset => {
+            const isActive = (postcardBg?.id || 'default') === preset.id;
+            const bgStyle = preset.colors
+              ? `linear-gradient(180deg, ${preset.colors[0]}, ${preset.colors[1]})`
+              : 'linear-gradient(135deg,#fff 50%,#ddd 50%)';
+            return (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  setPostcardBg(preset.colors ? preset : null);
+                  setPostcardUrl(null);
+                }}
+                style={{
+                  minWidth: 48, height: 48, borderRadius: 12,
+                  border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
+                  background: bgStyle, cursor: 'pointer', fontSize: 20,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, padding: 0,
+                }}
+                title={preset.label}
+              >
+                {preset.colors ? preset.label : '∅'}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Кнопки действий */}
+      <button
+        onClick={handlePublishPostcardStory}
+        disabled={postcardGenerating || !postcardUrl}
+        className="sk-btn-primary"
+        style={{ background: accentColor, marginBottom: 8 }}
+      >
+        📱 {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
+      </button>
+
+      <button
+        onClick={handleSharePostcardChat}
+        disabled={postcardGenerating || !postcardUrl || postcardSharing}
+        className="sk-btn-primary"
+        style={{ background: '#3390EC', marginBottom: 8 }}
+      >
+        📤 {postcardSharing
+          ? (lang === 'ru' ? 'Подготовка...' : 'Preparing...')
+          : (lang === 'ru' ? 'Поделиться' : 'Share')}
+      </button>
+
+      <button
+        onClick={handleDownloadPostcard}
+        disabled={postcardGenerating || !postcardUrl}
+        className="sk-btn-primary"
+        style={{ background: '#4CAF50', marginBottom: 8 }}
+      >
         💾 {lang === 'ru' ? 'Сохранить' : 'Save'}
       </button>
-      <button onClick={() => setShowPostcard(false)} className="sk-popup-close">{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+
+      <button onClick={() => setShowPostcard(false)} className="sk-popup-close">
+        {lang === 'ru' ? 'Закрыть' : 'Close'}
+      </button>
     </div>
   </div>
 )}
