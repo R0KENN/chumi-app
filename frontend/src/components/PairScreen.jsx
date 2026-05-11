@@ -459,12 +459,12 @@ useEffect(() => {
   // ══════ Share to Story ══════
   const handleShareToStory = () => {
     if (!tg?.shareToStory) return;
-    const lv = getLevel(pair?.growth_points || 0);
-    const mediaUrl = `https://chumi-app.pages.dev/pets/og-preview.png`;
+    const mediaUrl = `https://chumi-app.pages.dev/pets/story-promo.png`;
     tg.shareToStory(mediaUrl, {
       text: lang === 'ru'
-        ? `🐾 Мой питомец ${petName} — уровень ${lv.nameRu}! Серия ${pair?.streak_days || 0} дней 🔥\n\nПопробуй: https://t.me/${BOT_USERNAME}`
-        : `🐾 My pet ${petName} — level ${lv.name}! ${pair?.streak_days || 0} day streak 🔥\n\nTry it: https://t.me/${BOT_USERNAME}`,
+        ? `🐾 Заведи питомца с другом!\n\nРастим вместе, поддерживаем серию, открываем новые наряды 💕\n\n👉 https://t.me/${BOT_USERNAME}`
+        : `🐾 Get a pet with a friend!\n\nGrow together, keep your streak, unlock new outfits 💕\n\n👉 https://t.me/${BOT_USERNAME}`,
+      widget_link: { url: `https://t.me/${BOT_USERNAME}`, name: 'Chumi' },
     });
   };
 
