@@ -588,7 +588,7 @@ const handleShareMessage = async () => {
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 8;
     ctx.stroke();
   };
 
@@ -645,34 +645,40 @@ const handleShareMessage = async () => {
       const textColor = isDarkBg ? '#fff' : '#1a1a1a';
       const subColor  = isDarkBg ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.55)';
 
-      // ── Серия (слева сверху) ──
+      // ── Серия (слева сверху) — УВЕЛИЧЕНА ──
       const streakText = `🔥 ${pair?.streak_days || 0}`;
-      ctx.font = 'bold 56px -apple-system, system-ui, sans-serif';
+      ctx.font = 'bold 78px -apple-system, system-ui, sans-serif';
       ctx.textBaseline = 'middle';
-      const streakW = ctx.measureText(streakText).width + 60;
+      const streakW = ctx.measureText(streakText).width + 80;
+      const streakH = 120;
+      const streakX = 50;
+      const streakY = 50;
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      roundRect(ctx, 50, 50, streakW, 90, 45);
+      roundRect(ctx, streakX, streakY, streakW, streakH, 60);
       ctx.fill();
       ctx.fillStyle = '#1a1a1a';
       ctx.textAlign = 'left';
-      ctx.fillText(streakText, 80, 95);
+      ctx.fillText(streakText, streakX + 30, streakY + streakH / 2);
 
-      // ── Бейдж уровня (ПОД серией, слева) ──
+      // ── Бейдж уровня (ПОД серией, слева) — УВЕЛИЧЕН ──
       const lvText = lang === 'ru' ? lv.nameRu : lv.name;
-      ctx.font = 'bold 36px -apple-system, system-ui, sans-serif';
-      const lvW = ctx.measureText(lvText).width + 50;
+      ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
+      const lvW = ctx.measureText(lvText).width + 60;
+      const lvH = 80;
+      const lvY = streakY + streakH + 16;   // 50 + 120 + 16 = 186
       ctx.fillStyle = accentColor;
-      roundRect(ctx, 50, 160, lvW, 64, 32);
+      roundRect(ctx, 50, lvY, lvW, lvH, 40);
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
-      ctx.fillText(lvText, 50 + lvW / 2, 192);
+      ctx.fillText(lvText, 50 + lvW / 2, lvY + lvH / 2);
 
-      // ── Аватары пары (СПРАВА сверху, симметрично серии слева) ──
-      const avRadius = 60;
-      const avY = 95;
-      const avX2 = W - 50 - avRadius;   // правый аватар (отступ 50 от края)
-      const avX1 = avX2 - 90;            // левый аватар, нахлёст
+      // ── Аватары пары (СПРАВА сверху) — УВЕЛИЧЕНЫ ──
+      const avRadius = 85;                 // было 60
+      const avY = streakY + streakH / 2;   // выровнены по центру со «🔥 серией»
+      const avX2 = W - 50 - avRadius;      // правый аватар
+      const avX1 = avX2 - 130;             // левый аватар, нахлёст увеличен
+
       const myAvatarUrl = avatars[userId];
       const partnerAvatarUrl = partner ? avatars[partner.user_id] : null;
 
@@ -687,16 +693,16 @@ const handleShareMessage = async () => {
         ctx.fillStyle = '#ddd';
         ctx.beginPath(); ctx.arc(x, y, avRadius, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(x, y, avRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.stroke();
       };
 
       await drawAvatarSafe(myAvatarUrl, avX1, avY);
       await drawAvatarSafe(partnerAvatarUrl, avX2, avY);
 
-      // Сердечко над аватарами
-      ctx.font = '38px -apple-system, system-ui, sans-serif';
+      // Сердечко над аватарами — крупнее
+      ctx.font = '54px -apple-system, system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('💕', (avX1 + avX2) / 2, avY - avRadius - 5);
+      ctx.fillText('💕', (avX1 + avX2) / 2, avY - avRadius - 10);
 
       // ── Имя питомца (центр) ──
       const displayPetName = pair?.pet_name || lvText;
