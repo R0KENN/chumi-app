@@ -585,6 +585,16 @@ useEffect(() => {
         .finally(() => setShareCardGenerating(false));
     }, 0);
   }
+    // Перегенерация открытки при открытии попапа или смене фона
+  if (showPostcard && !postcardGenerating && !postcardUrl) {
+    setPostcardGenerating(true);
+    setTimeout(() => {
+      generatePostcard()
+        .then(url => { setPostcardUrl(url); })
+        .catch(() => {})
+        .finally(() => setPostcardGenerating(false));
+    }, 0);
+  }
 
   const handleSendShareCard = async () => {
     if (!shareCardUrl || shareCardSharing) return;
@@ -744,6 +754,58 @@ useEffect(() => {
     ctx.closePath();
   };
 
+    // ── Postcard: полароидные фоны ──
+  const POSTCARD_BACKGROUNDS = [
+    {
+      id: 'pink',
+      label: '🌸',
+      file: '/pets/postcard-bg-pink.png',
+      polaroid: { x: 175, y: 240, w: 730, h: 820, angle: -5 },
+      accent: '#E63946',
+      textColor: '#3a2a2a',
+    },
+    {
+      id: 'morning',
+      label: '☀️',
+      file: '/pets/postcard-bg-morning.png',
+      polaroid: { x: 165, y: 270, w: 760, h: 850, angle: 0 },
+      accent: '#F4A300',
+      textColor: '#4a3520',
+    },
+    {
+      id: 'evening',
+      label: '🌙',
+      file: '/pets/postcard-bg-evening.png',
+      polaroid: { x: 160, y: 210, w: 770, h: 860, angle: 0 },
+      accent: '#9B7BD4',
+      textColor: '#f5e8d8',
+    },
+    {
+      id: 'winter',
+      label: '❄️',
+      file: '/pets/postcard-bg-winter.png',
+      polaroid: { x: 175, y: 230, w: 740, h: 830, angle: 4 },
+      accent: '#4A7BD4',
+      textColor: '#2a3a55',
+    },
+    {
+      id: 'summer',
+      label: '🏖',
+      file: '/pets/postcard-bg-summer.png',
+      polaroid: { x: 145, y: 220, w: 740, h: 830, angle: 0 },
+      accent: '#52B788',
+      textColor: '#2a4a55',
+    },
+    {
+      id: 'cosmic',
+      label: '✨',
+      file: '/pets/postcard-bg-cosmic.png',
+      polaroid: { x: 350, y: 580, w: 620, h: 700, angle: 0 },
+      accent: '#FFD700',
+      textColor: '#f5e8d8',
+    },
+  ];
+
   // ── Постcard: пресеты фона ──
   const POSTCARD_BG_PRESETS = [
     { id: 'default',  label: lang === 'ru' ? 'Авто' : 'Auto', colors: null },
@@ -787,150 +849,170 @@ useEffect(() => {
     } catch (e) { reject(e); }
   });
 
-  const generatePostcard = async () => {
-    setPostcardGenerating(true);
-    try {
-      const W = 1080, H = 1440;
-      const canvas = document.createElement('canvas');
-      canvas.width = W;
-      canvas.height = H;
-      const ctx = canvas.getContext('2d');
+const generatePostcard = () => new Promise((resolve, reject) => {
+  const W = 1080, H = 1440;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
 
-      // ── Фон ──
-      const chosenBg = postcardBg?.colors || bgColors;
-      const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, chosenBg[0]);
-      grad.addColorStop(1, chosenBg[1]);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, W, H);
+  // postcardBg хранит объект пресета (либо null = первый по умолчанию)
+  const bgConfig = (postcardBg && postcardBg.file)
+    ? postcardBg
+    : POSTCARD_BACKGROUNDS[0];
 
-      // Декоративные круги
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.beginPath(); ctx.arc(120, H - 220, 90, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 100, H - 380, 70, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W - 180, 1180, 110, 0, Math.PI * 2); ctx.fill();
+  const bgImg = new Image();
+  bgImg.crossOrigin = 'anonymous';
+  bgImg.onload = () => {
+    ctx.drawImage(bgImg, 0, 0, W, H);
+    drawPolaroidContent();
+  };
+  bgImg.onerror = () => {
+    // fallback на однотонную заливку
+    ctx.fillStyle = '#FFE5EC';
+    ctx.fillRect(0, 0, W, H);
+    drawPolaroidContent();
+  };
+  bgImg.src = bgConfig.file;
 
-      const isDarkBg = postcardBg?.id === 'night' || (!postcardBg && isDark);
-      const textColor = isDarkBg ? '#fff' : '#1a1a1a';
-      const subColor  = isDarkBg ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.55)';
-
-      // ── Серия (слева сверху) — УВЕЛИЧЕНА ──
-      const streakText = `🔥 ${pair?.streak_days || 0}`;
-      ctx.font = 'bold 78px -apple-system, system-ui, sans-serif';
-      ctx.textBaseline = 'middle';
-      const streakW = ctx.measureText(streakText).width + 80;
-      const streakH = 120;
-      const streakX = 50;
-      const streakY = 50;
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      roundRect(ctx, streakX, streakY, streakW, streakH, 60);
-      ctx.fill();
-      ctx.fillStyle = '#1a1a1a';
-      ctx.textAlign = 'left';
-      ctx.fillText(streakText, streakX + 30, streakY + streakH / 2);
-
-      // ── Бейдж уровня (ПОД серией, слева) — УВЕЛИЧЕН ──
-      const lvText = lang === 'ru' ? lv.nameRu : lv.name;
-      ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
-      const lvW = ctx.measureText(lvText).width + 60;
-      const lvH = 80;
-      const lvY = streakY + streakH + 16;   // 50 + 120 + 16 = 186
-      ctx.fillStyle = accentColor;
-      roundRect(ctx, 50, lvY, lvW, lvH, 40);
+  // Безопасная загрузка аватара в круг (или плейсхолдер)
+  const drawAvatarSafe = (ctx, url, x, y, radius) => new Promise(res => {
+    if (!url) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ddd';
       ctx.fill();
       ctx.fillStyle = '#fff';
+      ctx.font = `${radius}px -apple-system, system-ui, sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText(lvText, 50 + lvW / 2, lvY + lvH / 2);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('👤', x, y);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      return res();
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { drawCircleAvatar(ctx, img, x, y, radius); res(); };
+    img.onerror = () => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ddd';
+      ctx.fill();
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      res();
+    };
+    img.src = url;
+  });
 
-      // ── Аватары пары (СПРАВА сверху) — УВЕЛИЧЕНЫ ──
-      const avRadius = 85;                 // было 60
-      const avY = streakY + streakH / 2;   // выровнены по центру со «🔥 серией»
-      const avX2 = W - 50 - avRadius;      // правый аватар
-      const avX1 = avX2 - 130;             // левый аватар, нахлёст увеличен
+  async function drawPolaroidContent() {
+    const p = bgConfig.polaroid;
+    const angleRad = (p.angle * Math.PI) / 180;
 
-      const myAvatarUrl = avatars[userId];
-      const partnerAvatarUrl = partner ? avatars[partner.user_id] : null;
+    ctx.save();
+    ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+    ctx.rotate(angleRad);
+    ctx.translate(-p.w / 2, -p.h / 2);
 
-      const drawAvatarSafe = async (avUrl, x, y) => {
-        try {
-          if (avUrl) {
-            const img = await loadImage(avUrl);
-            drawCircleAvatar(ctx, img, x, y, avRadius);
-            return;
-          }
-        } catch (e) {}
-        ctx.fillStyle = '#ddd';
-        ctx.beginPath(); ctx.arc(x, y, avRadius, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(x, y, avRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.stroke();
+    // Внутренняя область полароида (рамка ~6% сверху/боков, ~22% снизу)
+    const padX = p.w * 0.06;
+    const padTop = p.w * 0.06;
+    const padBot = p.w * 0.22;
+    const innerX = padX;
+    const innerY = padTop;
+    const innerW = p.w - padX * 2;
+    const innerH = p.h - padTop - padBot;
+
+    // 1. Плашка серии (правый верх)
+    const streakText = `🔥 ${pair?.streak_days || 0}`;
+    ctx.font = 'bold 48px -apple-system, system-ui, sans-serif';
+    const streakW = ctx.measureText(streakText).width + 40;
+    const streakH = 72;
+    const streakX = innerX + innerW - streakW - 14;
+    const streakY = innerY + 14;
+    ctx.fillStyle = bgConfig.accent;
+    roundRect(ctx, streakX, streakY, streakW, streakH, 34);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
+
+    // 2. Аватары (левый верх)
+    const avR = 54;
+    const avY = innerY + 14 + avR;
+    const avX1 = innerX + 14 + avR;
+    const avX2 = avX1 + avR * 2 - 18;
+    const partnerAvUrl = partner ? avatars[partner.user_id] : null;
+    const myAvUrl = avatars[userId];
+    await drawAvatarSafe(ctx, partnerAvUrl, avX2, avY, avR);
+    await drawAvatarSafe(ctx, myAvUrl, avX1, avY, avR);
+
+    // 3. Питомец по центру полароида
+    const petAreaTop = avY + avR + 24;
+    const petAreaBot = innerY + innerH - 200;
+    const petAreaH = petAreaBot - petAreaTop;
+    const petSize = Math.min(innerW - 40, petAreaH);
+    const petX = innerX + (innerW - petSize) / 2;
+    const petY = petAreaTop + (petAreaH - petSize) / 2;
+
+    await new Promise(res => {
+      const petImg = new Image();
+      petImg.crossOrigin = 'anonymous';
+      petImg.onload = () => {
+        ctx.drawImage(petImg, petX, petY, petSize, petSize);
+        res();
       };
-
-      await drawAvatarSafe(myAvatarUrl, avX1, avY);
-      await drawAvatarSafe(partnerAvatarUrl, avX2, avY);
-
-
-      // ── Имя питомца (центр) ──
-      const displayPetName = pair?.pet_name || lvText;
-      ctx.font = 'bold 100px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = textColor;
-      ctx.textAlign = 'center';
-      ctx.fillText(displayPetName, W / 2, 380);
-
-      // Подзаголовок
-      ctx.font = '40px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = subColor;
-      ctx.fillText(
-        lang === 'ru' ? `${pair?.streak_days || 0} дней вместе` : `${pair?.streak_days || 0} days together`,
-        W / 2, 450
-      );
-
-      // ── Питомец БОЛЬШОЙ по центру ──
-      const petSize = 820;
-      const petY = 500;
-      const petPath = isEgg
-        ? `/pets/egg_${eggDay}_frame.png`
-        : `/pets/${petSrc.idle}_frame.png`;
-      let petDrawn = false;
-      try {
-        const petImg = await loadImage(petPath);
-        ctx.drawImage(petImg, (W - petSize) / 2, petY, petSize, petSize);
-        petDrawn = true;
-      } catch (e) {}
-      if (!petDrawn) {
-        ctx.font = '420px -apple-system, system-ui, sans-serif';
+      petImg.onerror = () => {
+        ctx.font = `${Math.floor(petSize * 0.55)}px -apple-system, system-ui, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(lv.emoji || '🐾', W / 2, petY + petSize / 2 + 100);
-      }
+        ctx.fillText('🐾', petX + petSize / 2, petY + petSize / 2);
+        res();
+      };
+      petImg.src = `/pets/${petSrc?.idle || 'egg_1'}_frame.png`;
+    });
 
-      // ── Низ: Chumi слева, @ChumiPetBot справа ──
-      ctx.textBaseline = 'middle';
-      ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = textColor;
-      ctx.textAlign = 'left';
-      ctx.fillText('🐾 Chumi', 60, H - 70);
+    // 4. Имя крупно (рукописный шрифт)
+    const nameY = innerY + innerH - 130;
+    ctx.font = 'bold 82px "Caveat", "Patrick Hand", cursive';
+    ctx.fillStyle = bgConfig.textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    const petNameDraw = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
+    ctx.fillText(petNameDraw, innerX + innerW / 2, nameY);
 
-      ctx.font = '30px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = subColor;
-      ctx.textAlign = 'right';
-      ctx.fillText('@ChumiPetBot', W - 60, H - 70);
+    // 5. Подпись под именем
+    ctx.font = '36px "Caveat", "Patrick Hand", cursive';
+    ctx.fillStyle = bgConfig.textColor;
+    ctx.globalAlpha = 0.75;
+    const subtitle = lang === 'ru'
+      ? `${pair?.streak_days || 0} дней вместе 💕`
+      : `${pair?.streak_days || 0} days together 💕`;
+    ctx.fillText(subtitle, innerX + innerW / 2, nameY + 46);
+    ctx.globalAlpha = 1;
 
-      // ── Оборачиваем открытку в холст 1080×1920 (9:16) для Stories ──
-      const dataUrl = canvas.toDataURL('image/png', 0.95);
-      setPostcardUrl(dataUrl);
-    } catch (e) {
-      console.error('Postcard generation error:', e);
-      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Не удалось создать открытку' : 'Failed to create postcard');
-    } finally {
-      setPostcardGenerating(false);
-    }
-  };
+    ctx.restore();
 
-  // Перегенерация при открытии попапа или смене фона
-  if (showPostcard && !postcardGenerating) {
-    const needRegen = !postcardUrl;
-    if (needRegen) setTimeout(() => generatePostcard(), 0);
+    // 6. @ChumiPetBot в углу всей открытки
+    ctx.font = '26px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.textAlign = 'right';
+    ctx.fillText('@ChumiPetBot', W - 36, H - 36);
+
+    resolve(canvas.toDataURL('image/png', 0.95));
   }
+});
 
 
   // 💾 Сохранить на устройство
@@ -2362,36 +2444,33 @@ calendarData.days.forEach(d => {
         )}
       </div>
 
-      {/* Выбор цвета фона */}
+      {/* Выбор стиля фона */}
       <div>
         <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600 }}>
-          🎨 {lang === 'ru' ? 'Цвет фона' : 'Background'}
+          🎨 {lang === 'ru' ? 'Стиль фона' : 'Background style'}
         </div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-          {POSTCARD_BG_PRESETS.map(preset => {
-            const isActive = (postcardBg?.id || 'default') === preset.id;
-            const bgStyle = preset.colors
-              ? `linear-gradient(180deg, ${preset.colors[0]}, ${preset.colors[1]})`
-              : 'linear-gradient(135deg,#fff 50%,#ddd 50%)';
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {POSTCARD_BACKGROUNDS.map(bg => {
+            const isActive = (postcardBg?.id || POSTCARD_BACKGROUNDS[0].id) === bg.id;
             return (
               <button
-                key={preset.id}
+                key={bg.id}
                 onClick={() => {
-                  setPostcardBg(preset.colors ? preset : null);
+                  setPostcardBg(bg);
                   setPostcardUrl(null);
                 }}
                 style={{
-                  minWidth: 38, height: 38, borderRadius: '50%',
+                  width: 42, height: 42, borderRadius: 12,
                   border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
-                  background: bgStyle,
+                  background: '#fff',
                   cursor: 'pointer',
-                  fontSize: 14,
+                  fontSize: 20,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, padding: 0,
+                  padding: 0, flexShrink: 0,
                 }}
-                title={preset.label}
+                title={bg.id}
               >
-                {preset.colors ? preset.label : '∅'}
+                {bg.label}
               </button>
             );
           })}
