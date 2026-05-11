@@ -744,7 +744,26 @@ const handleShareMessage = async () => {
       ctx.textAlign = 'right';
       ctx.fillText('@ChumiPetBot', W - 60, H - 70);
 
-      const dataUrl = canvas.toDataURL('image/png', 0.95);
+      // ── Оборачиваем открытку в холст 1080×1920 (9:16) для Stories ──
+      const STORY_W = 1080, STORY_H = 1920;
+      const finalCanvas = document.createElement('canvas');
+      finalCanvas.width = STORY_W;
+      finalCanvas.height = STORY_H;
+      const fctx = finalCanvas.getContext('2d');
+
+      // Тот же градиент по краям, чтобы переход был незаметным
+      const chosenBgFinal = postcardBg?.colors || bgColors;
+      const fgrad = fctx.createLinearGradient(0, 0, 0, STORY_H);
+      fgrad.addColorStop(0, chosenBgFinal[0]);
+      fgrad.addColorStop(1, chosenBgFinal[1]);
+      fctx.fillStyle = fgrad;
+      fctx.fillRect(0, 0, STORY_W, STORY_H);
+
+      // Рисуем нашу открытку 1080×1440 по вертикальному центру
+      const offsetY = Math.round((STORY_H - H) / 2); // = 240
+      fctx.drawImage(canvas, 0, offsetY);
+
+      const dataUrl = finalCanvas.toDataURL('image/png', 0.95);
       setPostcardUrl(dataUrl);
     } catch (e) {
       console.error('Postcard generation error:', e);
@@ -2143,30 +2162,54 @@ calendarData.days.forEach(d => {
 {/* Postcard popup */}
 {showPostcard && (
   <div className="sk-overlay" onClick={() => setShowPostcard(false)}>
-    <div className="sk-popup" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }}>
-      <h3>💌 {lang === 'ru' ? 'Наша открытка' : 'Our postcard'}</h3>
+    <div
+      className="sk-popup"
+      onClick={e => e.stopPropagation()}
+      style={{
+        maxWidth: 320,
+        padding: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        maxHeight: '92vh',
+        overflowY: 'auto',
+      }}
+    >
+      <h3 style={{ margin: 0, fontSize: 16, textAlign: 'center' }}>
+        💌 {lang === 'ru' ? 'Наша открытка' : 'Our postcard'}
+      </h3>
 
       {/* Превью */}
-      {postcardGenerating || !postcardUrl ? (
-        <div style={{
-          aspectRatio: '1080/1440', background: '#f5f5f7', borderRadius: 16,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14,
-        }}>
+      <div style={{
+        width: '100%',
+        aspectRatio: '1080/1920',
+        maxHeight: '46vh',
+        margin: '0 auto',
+        borderRadius: 14,
+        overflow: 'hidden',
+        background: '#f3f4f6',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+      }}>
+        {postcardGenerating || !postcardUrl ? (
           <div className="sk-spinner" />
-        </div>
-      ) : (
-        <img src={postcardUrl} alt="postcard" style={{
-          width: '100%', borderRadius: 16, marginBottom: 14,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
-        }} />
-      )}
+        ) : (
+          <img
+            src={postcardUrl}
+            alt="postcard"
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        )}
+      </div>
 
       {/* Выбор цвета фона */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 600 }}>
+      <div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600 }}>
           🎨 {lang === 'ru' ? 'Цвет фона' : 'Background'}
         </div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
           {POSTCARD_BG_PRESETS.map(preset => {
             const isActive = (postcardBg?.id || 'default') === preset.id;
             const bgStyle = preset.colors
@@ -2180,9 +2223,11 @@ calendarData.days.forEach(d => {
                   setPostcardUrl(null);
                 }}
                 style={{
-                  minWidth: 48, height: 48, borderRadius: 12,
+                  minWidth: 38, height: 38, borderRadius: '50%',
                   border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
-                  background: bgStyle, cursor: 'pointer', fontSize: 20,
+                  background: bgStyle,
+                  cursor: 'pointer',
+                  fontSize: 14,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0, padding: 0,
                 }}
@@ -2199,33 +2244,57 @@ calendarData.days.forEach(d => {
       <button
         onClick={handlePublishPostcardStory}
         disabled={postcardGenerating || !postcardUrl}
-        className="sk-btn-primary"
-        style={{ background: accentColor, marginBottom: 8 }}
+        style={{
+          width: '100%', padding: '11px 0', borderRadius: 12, border: 'none',
+          background: `linear-gradient(135deg, ${accentColor}, #ec4899)`,
+          color: '#fff', fontSize: 14, fontWeight: 600,
+          cursor: postcardUrl ? 'pointer' : 'default',
+          opacity: postcardUrl ? 1 : 0.6,
+        }}
       >
         📱 {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
       </button>
 
-      <button
-        onClick={handleSharePostcardChat}
-        disabled={postcardGenerating || !postcardUrl || postcardSharing}
-        className="sk-btn-primary"
-        style={{ background: '#3390EC', marginBottom: 8 }}
-      >
-        📤 {postcardSharing
-          ? (lang === 'ru' ? 'Подготовка...' : 'Preparing...')
-          : (lang === 'ru' ? 'Поделиться' : 'Share')}
-      </button>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={handleSharePostcardChat}
+          disabled={postcardGenerating || !postcardUrl || postcardSharing}
+          style={{
+            flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
+            background: '#3390EC', color: '#fff',
+            fontSize: 13, fontWeight: 600,
+            cursor: postcardUrl ? 'pointer' : 'default',
+            opacity: postcardUrl ? 1 : 0.6,
+          }}
+        >
+          📤 {postcardSharing
+            ? (lang === 'ru' ? '...' : '...')
+            : (lang === 'ru' ? 'Поделиться' : 'Share')}
+        </button>
+        <button
+          onClick={handleDownloadPostcard}
+          disabled={postcardGenerating || !postcardUrl}
+          style={{
+            flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
+            background: '#4CAF50', color: '#fff',
+            fontSize: 13, fontWeight: 600,
+            cursor: postcardUrl ? 'pointer' : 'default',
+            opacity: postcardUrl ? 1 : 0.6,
+          }}
+        >
+          💾 {lang === 'ru' ? 'Сохранить' : 'Save'}
+        </button>
+      </div>
 
       <button
-        onClick={handleDownloadPostcard}
-        disabled={postcardGenerating || !postcardUrl}
-        className="sk-btn-primary"
-        style={{ background: '#4CAF50', marginBottom: 8 }}
+        onClick={() => setShowPostcard(false)}
+        style={{
+          width: '100%', padding: '8px 0',
+          background: 'transparent', color: '#6b7280',
+          border: 'none', borderRadius: 12,
+          fontSize: 13, cursor: 'pointer',
+        }}
       >
-        💾 {lang === 'ru' ? 'Сохранить' : 'Save'}
-      </button>
-
-      <button onClick={() => setShowPostcard(false)} className="sk-popup-close">
         {lang === 'ru' ? 'Закрыть' : 'Close'}
       </button>
     </div>
