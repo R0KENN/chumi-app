@@ -24,10 +24,29 @@ async function generateUniqueCode(supabase) {
 
 
 async function sendMessage(env, chatId, text, extra = {}) {
+  const body = {
+    chat_id: chatId,
+    text,
+    parse_mode: 'Markdown',
+    ...extra,
+  };
+
+  // Если кнопка не задана явно — добавляем стандартную «Открыть Chumi»
+  if (!body.reply_markup) {
+    body.reply_markup = {
+      inline_keyboard: [[
+        { text: '🐾 Открыть Chumi', web_app: { url: WEBAPP_URL } },
+      ]],
+    };
+  } else if (typeof body.reply_markup === 'string') {
+    // В коде местами reply_markup сериализован как строка (старый формат)
+    // — Telegram это принимает, оставляем как есть
+  }
+
   await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', ...extra }),
+    body: JSON.stringify(body),
   });
 }
 

@@ -123,10 +123,20 @@ async function getMaxPairs(supabase, userId) {
 
 async function sendTelegramMessage(env, chatId, text, extra = {}) {
   try {
+    const body = { chat_id: chatId, text, parse_mode: 'Markdown', ...extra };
+
+    if (!body.reply_markup) {
+      body.reply_markup = {
+        inline_keyboard: [[
+          { text: '🐾 Открыть Chumi', web_app: { url: 'https://chumi-app.pages.dev' } },
+        ]],
+      };
+    }
+
     await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', ...extra }),
+      body: JSON.stringify(body),
     });
   } catch (e) {
     console.error('Telegram send error:', e);
@@ -1303,6 +1313,8 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
     }
 
     // ── POST /api/prepare-share ──
+    // Если пришла imageDataUrl — заливаем в Storage и шлём как photo с кнопкой.
+    // Если нет — fallback на старый text-only вариант.
     if (request.method === 'POST' && path === '/api/prepare-share') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
@@ -1310,8 +1322,69 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
 
       const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
       const botLink = `https://t.me/${botUsername}`;
-      const messageText = `🐾 Chumi — заведи виртуального питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые образы.\n\nПопробуй 👇`;
 
+      // Язык отправителя
+      const { data: ps } = await supabase
+        .from('user_settings').select('lang')
+        .eq('telegram_user_id', userId).maybeSingle();
+      const userLang = ps?.lang || 'ru';
+
+      const caption = userLang === 'ru'
+        ? `🐾 Chumi — заведи виртуального питомца и расти его вместе с другом!\n\nВыполняй задания каждый день, поддерживай серию и открывай новые образы.`
+        : `🐾 Chumi — get a virtual pet and grow it with a friend!\n\nComplete tasks daily, keep your streak, unlock new outfits.`;
+      const btnText = userLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+
+      const imageDataUrl = body.imageDataUrl || '';
+
+      // ── Вариант с картинкой (photo) ──
+      if (imageDataUrl.startsWith('data:image/png;base64,')) {
+        const base64 = imageDataUrl.split(',')[1];
+        const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        const fileName = `promo_${userId}_${Date.now()}.png`;
+
+        const uploadRes = await fetch(
+          `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+              'Content-Type': 'image/png',
+              'x-upsert': 'true',
+            },
+            body: binary,
+          }
+        );
+        if (uploadRes.ok) {
+          const photoUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
+
+          const tgRes = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: parseInt(userId),
+              result: {
+                type: 'photo',
+                id: 'share_promo_' + Date.now(),
+                photo_url: photoUrl,
+                thumbnail_url: photoUrl,
+                caption,
+                reply_markup: { inline_keyboard: [[{ text: btnText, url: botLink }]] },
+              },
+              allow_user_chats: true,
+              allow_bot_chats: false,
+              allow_group_chats: true,
+              allow_channel_chats: true,
+            }),
+          });
+          const tgData = await tgRes.json();
+          if (tgData.ok && tgData.result?.id) {
+            return json({ prepared_message_id: tgData.result.id });
+          }
+          // если Telegram не принял photo — падаем в text-fallback ниже
+        }
+      }
+
+      // ── Fallback: текстовый article (как было) ──
       const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1320,10 +1393,10 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
           result: {
             type: 'article',
             id: 'share_app_' + Date.now(),
-            title: 'Chumi — Вырасти питомца! 🐾',
-            input_message_content: { message_text: messageText },
-            description: 'Заведи питомца и расти вместе с другом 🐾',
-            reply_markup: { inline_keyboard: [[{ text: '🐾 Chumi', url: botLink }]] },
+            title: userLang === 'ru' ? 'Chumi — Вырасти питомца! 🐾' : 'Chumi — Grow a pet! 🐾',
+            input_message_content: { message_text: caption },
+            description: userLang === 'ru' ? 'Заведи питомца и расти вместе с другом 🐾' : 'Get a pet and grow with a friend 🐾',
+            reply_markup: { inline_keyboard: [[{ text: btnText, url: botLink }]] },
           },
           allow_user_chats: true,
           allow_bot_chats: false,
