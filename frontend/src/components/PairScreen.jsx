@@ -736,7 +736,7 @@ useEffect(() => {
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 8;
+    ctx.lineWidth = 4;
     ctx.stroke();
   };
 
@@ -790,7 +790,7 @@ const drawAvatarSafe = (ctx, url, x, y, r) => new Promise((resolve) => {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 4;
     ctx.stroke();
     resolve();
     return;
@@ -827,10 +827,10 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
   ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
 
   // ── Аватары (СПРАВА сверху, на одной линии со streak) ──
-  const avR = 50;
+  const avR = 68;
   const avY = streakY + streakH / 2;
   const avX2 = I.x + I.w - SIDE_PAD - avR;      // партнёр (внешний)
-  const avX1 = avX2 - avR * 2 + 22;             // я (под партнёром)
+  const avX1 = avX2 - avR * 2 + 36;             // я (под партнёром, перекрытие 36px)
   await drawAvatarSafe(ctx, avatars?.[partner?.user_id], avX2, avY, avR);
   await drawAvatarSafe(ctx, avatars?.[userId], avX1, avY, avR);
 
