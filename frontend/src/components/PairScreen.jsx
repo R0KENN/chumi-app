@@ -863,42 +863,35 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
 };
 
 const POSTCARD_BACKGROUNDS = [
-  {
-    id:'sakura', label:'🌸', file:'/pets/postcard-bg-sakura.png',
-    inner:     { x: 235, y: 245, w: 615, h: 760 },   // серое окно
-    nameStrip: { x: 215, y: 1015, w: 670, h: 200 },  // нижняя белая полоса
-    accent:'#E89AB8', textColor:'#8a5a6a'
-  },
-  {
-    id:'strawberry', label:'🍓', file:'/pets/postcard-bg-strawberry.png',
-    inner:     { x: 230, y: 220, w: 605, h: 770 },
-    nameStrip: { x: 205, y: 1000, w: 660, h: 200 },
-    accent:'#E63976', textColor:'#9a3a5a'
-  },
-  {
-    id:'sunshine', label:'☀️', file:'/pets/postcard-bg-sunshine.png',
-    inner:     { x: 215, y: 220, w: 620, h: 770 },
-    nameStrip: { x: 195, y: 1000, w: 670, h: 210 },
-    accent:'#F4A300', textColor:'#8a6a20'
-  },
-  {
-    id:'ocean', label:'🌊', file:'/pets/postcard-bg-ocean.png',
-    inner:     { x: 200, y: 220, w: 615, h: 765 },
-    nameStrip: { x: 180, y: 1000, w: 665, h: 200 },
-    accent:'#3FA8B8', textColor:'#2a6a75'
-  },
-  {
-    id:'cocoa', label:'❄️', file:'/pets/postcard-bg-cocoa.png',
-    inner:     { x: 210, y: 220, w: 620, h: 770 },
-    nameStrip: { x: 190, y: 1000, w: 670, h: 200 },
-    accent:'#4A9CB8', textColor:'#3a5a75'
-  },
-  {
-    id:'night', label:'✨', file:'/pets/postcard-bg-night.png',
-    inner:     { x: 225, y: 230, w: 595, h: 765 },
-    nameStrip: { x: 205, y: 1010, w: 650, h: 200 },
-    accent:'#B89DE8', textColor:'#f0e8ff'
-  }
+  { id:'sakura', label:'🌸', file:'/pets/postcard-bg-sakura.png',
+    inner: { x: 145, y: 130, w: 790, h: 970 },
+    nameStrip: { x: 145, y: 1120, w: 790, h: 200 },
+    accent:'#E89AB8', textColor:'#8a5a6a' },
+
+  { id:'strawberry', label:'🍓', file:'/pets/postcard-bg-strawberry.png',
+    inner: { x: 145, y: 130, w: 790, h: 970 },
+    nameStrip: { x: 145, y: 1120, w: 790, h: 200 },
+    accent:'#E63976', textColor:'#9a3a5a' },
+
+  { id:'sunshine', label:'☀️', file:'/pets/postcard-bg-sunshine.png',
+    inner: { x: 145, y: 130, w: 790, h: 970 },
+    nameStrip: { x: 145, y: 1120, w: 790, h: 200 },
+    accent:'#F4A300', textColor:'#8a6a20' },
+
+  { id:'ocean', label:'🌊', file:'/pets/postcard-bg-ocean.png',
+    inner: { x: 145, y: 130, w: 790, h: 970 },
+    nameStrip: { x: 145, y: 1120, w: 790, h: 200 },
+    accent:'#3FA8B8', textColor:'#2a6a75' },
+
+  { id:'cocoa', label:'❄️', file:'/pets/postcard-bg-cocoa.png',
+    inner: { x: 145, y: 130, w: 790, h: 970 },
+    nameStrip: { x: 145, y: 1120, w: 790, h: 200 },
+    accent:'#4A9CB8', textColor:'#3a5a75' },
+
+  { id:'night', label:'✨', file:'/pets/postcard-bg-night.png',
+    inner: { x: 145, y: 130, w: 790, h: 970 },
+    nameStrip: { x: 145, y: 1120, w: 790, h: 200 },
+    accent:'#B89DE8', textColor:'#f0e8ff' }
 ];
 
   // Открытка 1080×1920 (тот же размер что и Stories) — фон + полароид
