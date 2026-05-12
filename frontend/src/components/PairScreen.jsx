@@ -827,10 +827,10 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
   ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
 
   // ── Аватары (СПРАВА сверху, на одной линии со streak) ──
-  const avR = 68;
+  const avR = 58;
   const avY = streakY + streakH / 2;
   const avX2 = I.x + I.w - SIDE_PAD - avR;      // партнёр (внешний)
-  const avX1 = avX2 - avR * 2 + 36;             // я (под партнёром, перекрытие 36px)
+  const avX1 = avX2 - avR * 2 + 28;             // я (под партнёром, перекрытие 28px)
   await drawAvatarSafe(ctx, avatars?.[partner?.user_id], avX2, avY, avR);
   await drawAvatarSafe(ctx, avatars?.[userId], avX1, avY, avR);
 
