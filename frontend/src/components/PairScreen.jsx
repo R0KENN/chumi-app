@@ -808,17 +808,17 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
   const N = bgConfig.nameStrip;
 
   // Отступ от верхнего края цветной зоны, чтобы элементы не уходили на белую рамку
-  const TOP_PAD = 60;
+  const TOP_PAD = 110;
 
-  // ── Бейдж серии (СЛЕВА сверху) ──
+  // ── Бейдж серии (СЛЕВА сверху, внутри рамки) ──
   const streakText = `🔥 ${pair?.streak_days || 0}`;
-  ctx.font = 'bold 38px -apple-system, system-ui, sans-serif';
-  const streakW = ctx.measureText(streakText).width + 30;
-  const streakH = 58;
-  const streakX = I.x + 18;
+  ctx.font = 'bold 52px -apple-system, system-ui, sans-serif';
+  const streakW = ctx.measureText(streakText).width + 44;
+  const streakH = 78;
+  const streakX = I.x + 36;
   const streakY = I.y + TOP_PAD;
   ctx.fillStyle = bgConfig.accent;
-  roundRect(ctx, streakX, streakY, streakW, streakH, 28);
+  roundRect(ctx, streakX, streakY, streakW, streakH, 38);
   ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
@@ -826,10 +826,10 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
   ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
 
   // ── Аватары (СПРАВА сверху, на одной линии со streak) ──
-  const avR = 38;
+  const avR = 52;
   const avY = streakY + streakH / 2;
-  const avX2 = I.x + I.w - 18 - avR;            // партнёр (внешний)
-  const avX1 = avX2 - avR * 2 + 14;             // я (под партнёром)
+  const avX2 = I.x + I.w - 36 - avR;            // партнёр (внешний)
+  const avX1 = avX2 - avR * 2 + 22;             // я (под партнёром)
   await drawAvatarSafe(ctx, avatars?.[partner?.user_id], avX2, avY, avR);
   await drawAvatarSafe(ctx, avatars?.[userId], avX1, avY, avR);
 
@@ -848,17 +848,17 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
   const stripCenterX = N.x + N.w / 2;
   const stripCenterY = N.y + N.h / 2;
 
-  ctx.font = 'bold 60px "Caveat", "Patrick Hand", cursive';
+  ctx.font = 'bold 92px "Caveat", "Patrick Hand", cursive';
   const petName = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
-  ctx.fillText(petName, stripCenterX, stripCenterY - 14);
+  ctx.fillText(petName, stripCenterX, stripCenterY - 22);
 
   // ── Подпись под именем ──
-  ctx.font = '26px "Caveat", "Patrick Hand", cursive';
+  ctx.font = '40px "Caveat", "Patrick Hand", cursive';
   ctx.globalAlpha = 0.7;
   const subtitle = lang === 'ru'
     ? `${pair?.streak_days || 0} дней вместе 💕`
     : `${pair?.streak_days || 0} days together 💕`;
-  ctx.fillText(subtitle, stripCenterX, stripCenterY + 22);
+  ctx.fillText(subtitle, stripCenterX, stripCenterY + 36);
   ctx.globalAlpha = 1;
 };
 
