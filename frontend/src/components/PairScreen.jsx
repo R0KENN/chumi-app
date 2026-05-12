@@ -754,55 +754,55 @@ useEffect(() => {
     ctx.closePath();
   };
 
-    // ── Postcard: полароидные фоны ──
+  // ── Postcard: полароидные фоны (1080×1920, полароид в верхних 1440) ──
   const POSTCARD_BACKGROUNDS = [
     {
-      id: 'pink',
+      id: 'sakura',
       label: '🌸',
-      file: '/pets/postcard-bg-pink.png',
-      polaroid: { x: 175, y: 240, w: 730, h: 820, angle: -5 },
-      accent: '#E63946',
-      textColor: '#3a2a2a',
+      file: '/pets/postcard-bg-sakura.png',
+      polaroid: { x: 140, y: 530, w: 800, h: 1050, angle: 0 },
+      accent: '#E89AB8',
+      textColor: '#5a3a4a',
     },
     {
-      id: 'morning',
+      id: 'strawberry',
+      label: '🍓',
+      file: '/pets/postcard-bg-strawberry.png',
+      polaroid: { x: 130, y: 510, w: 820, h: 1100, angle: 0 },
+      accent: '#E63976',
+      textColor: '#7a2a4a',
+    },
+    {
+      id: 'sunshine',
       label: '☀️',
-      file: '/pets/postcard-bg-morning.png',
-      polaroid: { x: 165, y: 270, w: 760, h: 850, angle: 0 },
+      file: '/pets/postcard-bg-sunshine.png',
+      polaroid: { x: 145, y: 530, w: 800, h: 1080, angle: 0 },
       accent: '#F4A300',
-      textColor: '#4a3520',
+      textColor: '#6a4a10',
     },
     {
-      id: 'evening',
-      label: '🌙',
-      file: '/pets/postcard-bg-evening.png',
-      polaroid: { x: 160, y: 210, w: 770, h: 860, angle: 0 },
-      accent: '#9B7BD4',
-      textColor: '#f5e8d8',
+      id: 'ocean',
+      label: '🌊',
+      file: '/pets/postcard-bg-ocean.png',
+      polaroid: { x: 145, y: 520, w: 800, h: 1080, angle: 0 },
+      accent: '#3FA8B8',
+      textColor: '#1a4a55',
     },
     {
-      id: 'winter',
+      id: 'cocoa',
       label: '❄️',
-      file: '/pets/postcard-bg-winter.png',
-      polaroid: { x: 175, y: 230, w: 740, h: 830, angle: 4 },
-      accent: '#4A7BD4',
-      textColor: '#2a3a55',
+      file: '/pets/postcard-bg-cocoa.png',
+      polaroid: { x: 145, y: 540, w: 800, h: 1100, angle: 0 },
+      accent: '#4A9CB8',
+      textColor: '#2a4055',
     },
     {
-      id: 'summer',
-      label: '🏖',
-      file: '/pets/postcard-bg-summer.png',
-      polaroid: { x: 145, y: 220, w: 740, h: 830, angle: 0 },
-      accent: '#52B788',
-      textColor: '#2a4a55',
-    },
-    {
-      id: 'cosmic',
+      id: 'night',
       label: '✨',
-      file: '/pets/postcard-bg-cosmic.png',
-      polaroid: { x: 350, y: 580, w: 620, h: 700, angle: 0 },
-      accent: '#FFD700',
-      textColor: '#f5e8d8',
+      file: '/pets/postcard-bg-night.png',
+      polaroid: { x: 165, y: 520, w: 760, h: 1190, angle: 0 },
+      accent: '#B89DE8',
+      textColor: '#f0e8ff',
     },
   ];
 
@@ -818,128 +818,59 @@ useEffect(() => {
     { id: 'night',    label: '🌙', colors: ['#2D3561', '#4A5491'] },
   ];
 
-    // Берёт data:image/png (1080×1440) и оборачивает в холст 1080×1920 для Stories.
-  // Сверху/снизу — тот же градиент, что у самой открытки.
-  const wrapPostcardForStory = (sourceDataUrl) => new Promise((resolve, reject) => {
-    try {
-      const STORY_W = 1080, STORY_H = 1920;
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = STORY_W;
-        canvas.height = STORY_H;
-        const ctx = canvas.getContext('2d');
+    // Генерация открытки 1080×1440 — верхняя часть фона + полароид с питомцем
+  const generatePostcard = () => new Promise((resolve, reject) => {
+    const W = 1080, H = 1440;
+    const BG_W = 1080, BG_H = 1920;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
 
-        // Градиент того же цвета, что и сама открытка
-        const chosenBg = postcardBg?.colors || bgColors;
-        const grad = ctx.createLinearGradient(0, 0, 0, STORY_H);
-        grad.addColorStop(0, chosenBg[0]);
-        grad.addColorStop(1, chosenBg[1]);
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, STORY_W, STORY_H);
+    const bgConfig = (postcardBg && postcardBg.file)
+      ? postcardBg
+      : POSTCARD_BACKGROUNDS[0];
 
-        // Рисуем открытку 1080×1440 по вертикальному центру
-        const offsetY = Math.round((STORY_H - img.height) / 2);
-        ctx.drawImage(img, 0, offsetY);
+    const bgImg = new Image();
+    bgImg.crossOrigin = 'anonymous';
+    bgImg.onload = async () => {
+      // Рисуем верхние 1440 px фона (обрезаем нижние 480 px)
+      ctx.drawImage(bgImg, 0, 0, BG_W, H, 0, 0, W, H);
+      await drawPolaroidContent(ctx, bgConfig);
 
-        resolve(canvas.toDataURL('image/png', 0.95));
-      };
-      img.onerror = reject;
-      img.src = sourceDataUrl;
-    } catch (e) { reject(e); }
-  });
+      // @ChumiPetBot в углу
+      ctx.font = '24px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.textAlign = 'right';
+      ctx.fillText('@ChumiPetBot', W - 28, H - 24);
 
-const generatePostcard = () => new Promise((resolve, reject) => {
-  const W = 1080, H = 1440;
-  const canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext('2d');
-
-  // postcardBg хранит объект пресета (либо null = первый по умолчанию)
-  const bgConfig = (postcardBg && postcardBg.file)
-    ? postcardBg
-    : POSTCARD_BACKGROUNDS[0];
-
-  const bgImg = new Image();
-  bgImg.crossOrigin = 'anonymous';
-  bgImg.onload = () => {
-    ctx.drawImage(bgImg, 0, 0, W, H);
-    drawPolaroidContent();
-  };
-  bgImg.onerror = () => {
-    // fallback на однотонную заливку
-    ctx.fillStyle = '#FFE5EC';
-    ctx.fillRect(0, 0, W, H);
-    drawPolaroidContent();
-  };
-  bgImg.src = bgConfig.file;
-
-  // Безопасная загрузка аватара в круг (или плейсхолдер)
-  const drawAvatarSafe = (ctx, url, x, y, radius) => new Promise(res => {
-    if (!url) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = '#ddd';
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = `${radius}px -apple-system, system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('👤', x, y);
-      ctx.restore();
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 8;
-      ctx.stroke();
-      return res();
-    }
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => { drawCircleAvatar(ctx, img, x, y, radius); res(); };
-    img.onerror = () => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = '#ddd';
-      ctx.fill();
-      ctx.restore();
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 8;
-      ctx.stroke();
-      res();
+      resolve(canvas.toDataURL('image/png', 0.95));
     };
-    img.src = url;
+    bgImg.onerror = () => {
+      ctx.fillStyle = '#FFE5EC';
+      ctx.fillRect(0, 0, W, H);
+      resolve(canvas.toDataURL('image/png', 0.95));
+    };
+    bgImg.src = bgConfig.file;
   });
 
-  async function drawPolaroidContent() {
+  // Общая функция отрисовки содержимого полароида (питомец, серия, аватары, имя)
+  const drawPolaroidContent = async (ctx, bgConfig) => {
     const p = bgConfig.polaroid;
-    const angleRad = (p.angle * Math.PI) / 180;
-
-    ctx.save();
-    ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
-    ctx.rotate(angleRad);
-    ctx.translate(-p.w / 2, -p.h / 2);
-
-    // Внутренняя область полароида (рамка ~6% сверху/боков, ~22% снизу)
-    const padX = p.w * 0.06;
-    const padTop = p.w * 0.06;
+    const padX = p.w * 0.07;
+    const padTop = p.w * 0.07;
     const padBot = p.w * 0.22;
-    const innerX = padX;
-    const innerY = padTop;
+    const innerX = p.x + padX;
+    const innerY = p.y + padTop;
     const innerW = p.w - padX * 2;
     const innerH = p.h - padTop - padBot;
 
-    // 1. Плашка серии (правый верх)
+    // Плашка серии (правый верх полароида)
     const streakText = `🔥 ${pair?.streak_days || 0}`;
-    ctx.font = 'bold 48px -apple-system, system-ui, sans-serif';
-    const streakW = ctx.measureText(streakText).width + 40;
-    const streakH = 72;
-    const streakX = innerX + innerW - streakW - 14;
-    const streakY = innerY + 14;
+    ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
+    const streakW = ctx.measureText(streakText).width + 36;
+    const streakH = 68;
+    const streakX = innerX + innerW - streakW - 12;
+    const streakY = innerY + 12;
     ctx.fillStyle = bgConfig.accent;
     roundRect(ctx, streakX, streakY, streakW, streakH, 34);
     ctx.fill();
@@ -948,71 +879,94 @@ const generatePostcard = () => new Promise((resolve, reject) => {
     ctx.textBaseline = 'middle';
     ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
 
-    // 2. Аватары (левый верх)
-    const avR = 54;
-    const avY = innerY + 14 + avR;
-    const avX1 = innerX + 14 + avR;
+    // Аватары (левый верх полароида)
+    const avR = 50;
+    const avY = innerY + 12 + avR;
+    const avX1 = innerX + 12 + avR;
     const avX2 = avX1 + avR * 2 - 18;
-    const partnerAvUrl = partner ? avatars[partner.user_id] : null;
-    const myAvUrl = avatars[userId];
-    await drawAvatarSafe(ctx, partnerAvUrl, avX2, avY, avR);
-    await drawAvatarSafe(ctx, myAvUrl, avX1, avY, avR);
 
-    // 3. Питомец по центру полароида
-    const petAreaTop = avY + avR + 24;
-    const petAreaBot = innerY + innerH - 200;
+    const drawAv = (url, x, y, r) => new Promise(res => {
+      if (!url) {
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#ddd'; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.stroke();
+        return res();
+      }
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = () => { drawCircleAvatar(ctx, im, x, y, r); res(); };
+      im.onerror = () => res();
+      im.src = url;
+    });
+    await drawAv(partner ? avatars[partner.user_id] : null, avX2, avY, avR);
+    await drawAv(avatars[userId], avX1, avY, avR);
+
+    // Питомец по центру полароида
+    const petAreaTop = avY + avR + 20;
+    const petAreaBot = innerY + innerH - 20;
     const petAreaH = petAreaBot - petAreaTop;
     const petSize = Math.min(innerW - 40, petAreaH);
     const petX = innerX + (innerW - petSize) / 2;
     const petY = petAreaTop + (petAreaH - petSize) / 2;
 
     await new Promise(res => {
-      const petImg = new Image();
-      petImg.crossOrigin = 'anonymous';
-      petImg.onload = () => {
-        ctx.drawImage(petImg, petX, petY, petSize, petSize);
-        res();
-      };
-      petImg.onerror = () => {
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = () => { ctx.drawImage(im, petX, petY, petSize, petSize); res(); };
+      im.onerror = () => {
         ctx.font = `${Math.floor(petSize * 0.55)}px -apple-system, system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('🐾', petX + petSize / 2, petY + petSize / 2);
         res();
       };
-      petImg.src = `/pets/${petSrc?.idle || 'egg_1'}_frame.png`;
+      im.src = `/pets/${petSrc?.idle || 'egg_1'}_frame.png`;
     });
 
-    // 4. Имя крупно (рукописный шрифт)
-    const nameY = innerY + innerH - 130;
-    ctx.font = 'bold 82px "Caveat", "Patrick Hand", cursive';
+    // Имя крупно на белой нижней полосе
+    const nameY = p.y + p.h - padBot * 0.55;
+    ctx.font = 'bold 68px "Caveat", "Patrick Hand", cursive';
     ctx.fillStyle = bgConfig.textColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    const petNameDraw = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
-    ctx.fillText(petNameDraw, innerX + innerW / 2, nameY);
+    ctx.fillText(pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi'),
+                 p.x + p.w / 2, nameY);
 
-    // 5. Подпись под именем
-    ctx.font = '36px "Caveat", "Patrick Hand", cursive';
-    ctx.fillStyle = bgConfig.textColor;
-    ctx.globalAlpha = 0.75;
-    const subtitle = lang === 'ru'
+    // Подпись
+    ctx.font = '32px "Caveat", "Patrick Hand", cursive';
+    ctx.globalAlpha = 0.7;
+    ctx.fillText(lang === 'ru'
       ? `${pair?.streak_days || 0} дней вместе 💕`
-      : `${pair?.streak_days || 0} days together 💕`;
-    ctx.fillText(subtitle, innerX + innerW / 2, nameY + 46);
+      : `${pair?.streak_days || 0} days together 💕`,
+      p.x + p.w / 2, nameY + 42);
     ctx.globalAlpha = 1;
+  };
 
-    ctx.restore();
+  // Открытка для Stories — фон 1080×1920 целиком + полароид с питомцем
+  const wrapPostcardForStory = () => new Promise((resolve, reject) => {
+    const STORY_W = 1080, STORY_H = 1920;
+    const canvas = document.createElement('canvas');
+    canvas.width = STORY_W; canvas.height = STORY_H;
+    const ctx = canvas.getContext('2d');
 
-    // 6. @ChumiPetBot в углу всей открытки
-    ctx.font = '26px -apple-system, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.textAlign = 'right';
-    ctx.fillText('@ChumiPetBot', W - 36, H - 36);
+    const bgConfig = (postcardBg && postcardBg.file)
+      ? postcardBg
+      : POSTCARD_BACKGROUNDS[0];
 
-    resolve(canvas.toDataURL('image/png', 0.95));
-  }
-});
+    const bgImg = new Image();
+    bgImg.crossOrigin = 'anonymous';
+    bgImg.onload = async () => {
+      ctx.drawImage(bgImg, 0, 0, STORY_W, STORY_H);
+      await drawPolaroidContent(ctx, bgConfig);
+
+      // @ChumiPetBot в углу
+      ctx.font = '28px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.textAlign = 'right';
+      ctx.fillText('@ChumiPetBot', STORY_W - 32, STORY_H - 32);
+
+      resolve(canvas.toDataURL('image/png', 0.95));
+    };
+    bgImg.onerror = reject;
+    bgImg.src = bgConfig.file;
+  });
 
 
   // 💾 Сохранить на устройство
@@ -1118,7 +1072,7 @@ const generatePostcard = () => new Promise((resolve, reject) => {
     haptic('light');
     try {
       // 1) Оборачиваем открытку в формат 9:16 специально для Stories
-      const storyDataUrl = await wrapPostcardForStory(postcardUrl);
+const storyDataUrl = await wrapPostcardForStory();
 
       // 2) Загружаем её на сервер
       const res = await fetch(`${API}/upload-postcard`, {
