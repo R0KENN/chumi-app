@@ -754,13 +754,14 @@ useEffect(() => {
     ctx.closePath();
   };
 
-  // ── Postcard: полароидные фоны (1080×1920, полароид в верхних 1440) ──
+  // ── Postcard: полароидные фоны (фон 1080×1920) ──
+  // polaroid координаты — относительно ИСХОДНОГО фона 1080×1920
   const POSTCARD_BACKGROUNDS = [
     {
       id: 'sakura',
       label: '🌸',
       file: '/pets/postcard-bg-sakura.png',
-      polaroid: { x: 140, y: 530, w: 800, h: 1050, angle: 0 },
+      polaroid: { x: 250, y: 470, w: 760, h: 1020, angle: 0 },
       accent: '#E89AB8',
       textColor: '#5a3a4a',
     },
@@ -768,7 +769,7 @@ useEffect(() => {
       id: 'strawberry',
       label: '🍓',
       file: '/pets/postcard-bg-strawberry.png',
-      polaroid: { x: 130, y: 510, w: 820, h: 1100, angle: 0 },
+      polaroid: { x: 230, y: 450, w: 790, h: 1080, angle: 0 },
       accent: '#E63976',
       textColor: '#7a2a4a',
     },
@@ -776,7 +777,7 @@ useEffect(() => {
       id: 'sunshine',
       label: '☀️',
       file: '/pets/postcard-bg-sunshine.png',
-      polaroid: { x: 145, y: 530, w: 800, h: 1080, angle: 0 },
+      polaroid: { x: 250, y: 470, w: 770, h: 1040, angle: 0 },
       accent: '#F4A300',
       textColor: '#6a4a10',
     },
@@ -784,7 +785,7 @@ useEffect(() => {
       id: 'ocean',
       label: '🌊',
       file: '/pets/postcard-bg-ocean.png',
-      polaroid: { x: 145, y: 520, w: 800, h: 1080, angle: 0 },
+      polaroid: { x: 250, y: 460, w: 770, h: 1050, angle: 0 },
       accent: '#3FA8B8',
       textColor: '#1a4a55',
     },
@@ -792,7 +793,7 @@ useEffect(() => {
       id: 'cocoa',
       label: '❄️',
       file: '/pets/postcard-bg-cocoa.png',
-      polaroid: { x: 145, y: 540, w: 800, h: 1100, angle: 0 },
+      polaroid: { x: 250, y: 480, w: 780, h: 1070, angle: 0 },
       accent: '#4A9CB8',
       textColor: '#2a4055',
     },
@@ -800,7 +801,7 @@ useEffect(() => {
       id: 'night',
       label: '✨',
       file: '/pets/postcard-bg-night.png',
-      polaroid: { x: 165, y: 520, w: 760, h: 1190, angle: 0 },
+      polaroid: { x: 270, y: 470, w: 730, h: 1160, angle: 0 },
       accent: '#B89DE8',
       textColor: '#f0e8ff',
     },
@@ -818,10 +819,9 @@ useEffect(() => {
     { id: 'night',    label: '🌙', colors: ['#2D3561', '#4A5491'] },
   ];
 
-    // Генерация открытки 1080×1440 — верхняя часть фона + полароид с питомцем
+  // Открытка 1080×1920 (тот же размер что и Stories) — фон + полароид
   const generatePostcard = () => new Promise((resolve, reject) => {
-    const W = 1080, H = 1440;
-    const BG_W = 1080, BG_H = 1920;
+    const W = 1080, H = 1920;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
@@ -833,15 +833,13 @@ useEffect(() => {
     const bgImg = new Image();
     bgImg.crossOrigin = 'anonymous';
     bgImg.onload = async () => {
-      // Рисуем верхние 1440 px фона (обрезаем нижние 480 px)
-      ctx.drawImage(bgImg, 0, 0, BG_W, H, 0, 0, W, H);
+      ctx.drawImage(bgImg, 0, 0, W, H);
       await drawPolaroidContent(ctx, bgConfig);
 
-      // @ChumiPetBot в углу
-      ctx.font = '24px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.font = '26px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.textAlign = 'right';
-      ctx.fillText('@ChumiPetBot', W - 28, H - 24);
+      ctx.fillText('@ChumiPetBot', W - 30, H - 30);
 
       resolve(canvas.toDataURL('image/png', 0.95));
     };
@@ -1072,7 +1070,7 @@ useEffect(() => {
     haptic('light');
     try {
       // 1) Оборачиваем открытку в формат 9:16 специально для Stories
-const storyDataUrl = await wrapPostcardForStory();
+const storyDataUrl = postcardUrl; // открытка уже 1080×1920
 
       // 2) Загружаем её на сервер
       const res = await fetch(`${API}/upload-postcard`, {
@@ -2376,8 +2374,8 @@ calendarData.days.forEach(d => {
       {/* Превью */}
       <div style={{
         width: '100%',
-        aspectRatio: '1080/1440',
-        maxHeight: '46vh',
+        aspectRatio: '1080/1920',
+        maxHeight: '52vh',
         margin: '0 auto',
         borderRadius: 14,
         overflow: 'hidden',
@@ -2403,7 +2401,14 @@ calendarData.days.forEach(d => {
         <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600 }}>
           🎨 {lang === 'ru' ? 'Стиль фона' : 'Background style'}
         </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'flex',
+          gap: 6,
+          justifyContent: 'center',
+          flexWrap: 'nowrap',
+          overflowX: 'auto',
+          paddingBottom: 2,
+        }}>
           {POSTCARD_BACKGROUNDS.map(bg => {
             const isActive = (postcardBg?.id || POSTCARD_BACKGROUNDS[0].id) === bg.id;
             return (
@@ -2414,11 +2419,11 @@ calendarData.days.forEach(d => {
                   setPostcardUrl(null);
                 }}
                 style={{
-                  width: 42, height: 42, borderRadius: 12,
-                  border: isActive ? `3px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
+                  width: 38, height: 38, borderRadius: 10,
+                  border: isActive ? `2.5px solid ${accentColor}` : '2px solid rgba(0,0,0,0.08)',
                   background: '#fff',
                   cursor: 'pointer',
-                  fontSize: 20,
+                  fontSize: 18,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 0, flexShrink: 0,
                 }}
