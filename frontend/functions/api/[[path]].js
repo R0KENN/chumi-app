@@ -1572,6 +1572,38 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       return json({ prepared_message_id: tgData.result.id });
     }
 
+// ── POST /api/prepare-sticker ──
+// Готовит prepared inline-сообщение со стикером из набора @ChumiPetBot.
+// При вызове tg.shareMessage пользователь выбирает чат, и туда отправляется
+// настоящий стикер (type: 'sticker').
+if (request.method === 'POST' && path === '/api/prepare-sticker') {
+  const body = await request.json();
+  const userId = extractUserId(request, env, body.userId);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+  const stickerFileId = (body.sticker_file_id || '').toString();
+  if (!stickerFileId) return json({ error: 'sticker_file_id required' }, 400);
+
+  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_id: parseInt(userId),
+      result: {
+        type: 'sticker',
+        id: 'sticker_' + Date.now(),
+        sticker_file_id: stickerFileId,
+      },
+      allow_user_chats: true,
+      allow_bot_chats: false,
+      allow_group_chats: true,
+      allow_channel_chats: true,
+    }),
+  });
+  const data = await res.json();
+  if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id });
+  return json({ error: 'Failed to prepare sticker', details: data }, 500);
+}
 
         // ── POST /api/prepare-task-message ──
     // Готовит inline-сообщение для заданий send_msg / send_sticker / send_media.

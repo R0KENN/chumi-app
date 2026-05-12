@@ -9,6 +9,36 @@ const API = '/api';
 const ADMIN_IDS = ['713156118'];
 const BOT_USERNAME = 'ChumiPetBot';
 
+// 26 стикеров из набора @ChumiPetBot — file_id получены через getStickerSet
+const CHUMI_STICKERS = [
+  { id: 1,  emoji: '😌', file_id: 'CAACAgIAAxUAAWoDqcb6S2S-sdOd50neXHttUp2XAAJWrQACG9kZSD8OdXHLgPl1OwQ' },
+  { id: 2,  emoji: '🔞', file_id: 'CAACAgIAAxUAAWoDqcYs6NNWs26D8lO_IhN-BWORAAIwoAACbWoZSGsIGpJYTTGsOwQ' },
+  { id: 3,  emoji: '🥵', file_id: 'CAACAgIAAxUAAWoDqcbtJk_U1INpBvFQKmpJbjqmAALNwgACZSEhSC0W7b5r-J0lOwQ' },
+  { id: 4,  emoji: '☺️', file_id: 'CAACAgIAAxUAAWoDqcZbGg48WwdkXnovnLxtJyrZAAKzrQACOp8YSHf8XVmXNR-wOwQ' },
+  { id: 5,  emoji: '😇', file_id: 'CAACAgIAAxUAAWoDqcZfR3tkQeYAATt_urbLxeTRowACVaUAAkxXIUhWX-Z0oCNFWDsE' },
+  { id: 6,  emoji: '😘', file_id: 'CAACAgIAAxUAAWoDqcaOlT2JiQou4npj4leYde4MAAJsrwAC1JUgSAUJHblcfiNzOwQ' },
+  { id: 7,  emoji: '🥵', file_id: 'CAACAgIAAxUAAWoDqcZFNlZc1zcCQgjzX3QZUx5GAAJfogACfrIYSJ8FWwHyON7_OwQ' },
+  { id: 8,  emoji: '👄', file_id: 'CAACAgIAAxUAAWoDqcbCG-ZG0a-m6z66pBokV-L1AAIUlwAC40MgSGOp6Yg7xDUxOwQ' },
+  { id: 9,  emoji: '☺️', file_id: 'CAACAgIAAxUAAWoDqcajQ1lcC5DaqxHsCQS-kkRgAAJIpgACpL4hSFj09wO8skbXOwQ' },
+  { id: 10, emoji: '💔', file_id: 'CAACAgIAAxUAAWoDqcanp_xiKdnNIkmQH9NUxpzLAAIrogAC9GcgSIXa6QrEkqVVOwQ' },
+  { id: 11, emoji: '🥰', file_id: 'CAACAgIAAxUAAWoDqcaga7mwoGsuPcqMqEOL12i5AAKtqwACxS8gSEWizbebr8kaOwQ' },
+  { id: 12, emoji: '🍜', file_id: 'CAACAgIAAxUAAWoDqcbNM6urlYNKpinuIBvH7fdcAAJXowACylcZSGZJFG-9SnHDOwQ' },
+  { id: 13, emoji: '🥰', file_id: 'CAACAgIAAxUAAWoDqcZCRoHDiBMiv6gcKOCJs7TsAAKUmQAC0QQgSEZ_jgKH4salOwQ' },
+  { id: 14, emoji: '🙂', file_id: 'CAACAgIAAxUAAWoDqcZjEG95hVEyrsVkYUl9Q2ULAALwlQACF8khSLCP1tA6P0YqOwQ' },
+  { id: 15, emoji: '🤪', file_id: 'CAACAgIAAxUAAWoDqcYtDh6KUuLY9qsbTw_3oVTcAAKVoQACb_sgSB-yPWyHSUQfOwQ' },
+  { id: 16, emoji: '💐', file_id: 'CAACAgIAAxUAAWoDqcYhKi86EPLGEu0i2rhQpUm2AALKqgACkqwYSIgBrkuLKk_EOwQ' },
+  { id: 17, emoji: '🥰', file_id: 'CAACAgIAAxUAAWoDqca6XDBjC5zQ-uYd1rYtRMwHAAIVqwACEkwYSDxNLTL8ZHkSOwQ' },
+  { id: 18, emoji: '❗️', file_id: 'CAACAgIAAxUAAWoDqcaryg5xDVeQvw2M9-zmlpPBAAJ3vQACo5whSLSYk3IfhwdJOwQ' },
+  { id: 19, emoji: '😡', file_id: 'CAACAgIAAxUAAWoDqcZItdLz4TfjTrStOpxUT0O1AAJplwACGjYgSC5hatD_XXeaOwQ' },
+  { id: 20, emoji: '😍', file_id: 'CAACAgIAAxUAAWoDqcY8JtwTvvtAAAETr-sFs0gP1AAC55sAAkvDIUjVosHZ8YM-vzsE' },
+  { id: 21, emoji: '😴', file_id: 'CAACAgIAAxUAAWoDqcYioJUFTe92CTjVXxfqAYudAAJbsQACsH8ZSNHcbsJ2tMXcOwQ' },
+  { id: 22, emoji: '😂', file_id: 'CAACAgIAAxUAAWoDqcbGUt20bcZ_newLs_W-D67AAAKzmQACVMMhSPtzkIZXacYnOwQ' },
+  { id: 23, emoji: '🥲', file_id: 'CAACAgIAAxUAAWoDqcaU7nG0AcXPrniz2-V2_aJXAAI_lgACXZwhSMRMSs3mbrdGOwQ' },
+  { id: 24, emoji: '😄', file_id: 'CAACAgIAAxUAAWoDqcbp9qVxPaNQ7oCT40TpbSnMAAKWmQACxlMhSOq020SOjFvBOwQ' },
+  { id: 25, emoji: '👋', file_id: 'CAACAgIAAxUAAWoDqcaLmC0ZK9N47B03_aRi3qxAAALPmQACqGEgSE_S91lyNDLaOwQ' },
+  { id: 26, emoji: '😋', file_id: 'CAACAgIAAxUAAWoDqcbTBSju8LkwfSkKDXfXOdWQAAKhngACNSUgSP1Y9EAae8F-OwQ' },
+];
+
 
 const EGG_VIDEOS = {
   1: '/pets/egg_1.webm',
@@ -111,6 +141,8 @@ export default function PairScreen() {
 
 const [showCalendar, setShowCalendar] = useState(false);
 const [showPostcard, setShowPostcard] = useState(false);
+const [showStickers, setShowStickers] = useState(false);
+const [stickerSending, setStickerSending] = useState(false);
 const [postcardUrl, setPostcardUrl] = useState(null);
 const [postcardGenerating, setPostcardGenerating] = useState(false);
 const [postcardBg, setPostcardBg] = useState(null);
@@ -1145,6 +1177,41 @@ if (!addToHomeDone && supportsAddToHome) {
     }
   };
 
+  // ══════ Отправка стикера партнёру через выбор чата ══════
+const handleSendSticker = async (sticker) => {
+  if (stickerSending) return;
+  setStickerSending(true);
+  haptic('light');
+  try {
+    const res = await fetch(`${API}/prepare-sticker`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ userId, sticker_file_id: sticker.file_id }),
+    });
+    const data = await res.json();
+    if (data.prepared_message_id && tg?.shareMessage) {
+      tg.shareMessage(data.prepared_message_id, (ok) => {
+        if (ok) {
+          haptic('success');
+          const stickerDone = pair?.daily_tasks?.some(dt => dt.task_key === 'send_sticker');
+          if (!stickerDone && !completing) {
+            setCompleting(true);
+            completeTask('send_sticker').then(() => load()).finally(() => setCompleting(false));
+          }
+          setShowStickers(false);
+        }
+      });
+    } else {
+      haptic('error');
+      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Не удалось подготовить стикер' : 'Failed to prepare sticker');
+    }
+  } catch (e) {
+    haptic('error');
+  } finally {
+    setStickerSending(false);
+  }
+};
+
   // ══════ handleShareTask ══════
   // Все три задания (send_msg / send_sticker / send_media) теперь работают одинаково:
   // 1) бэк готовит inline-сообщение с текстом и кнопкой «🐾 Открыть Chumi»;
@@ -1186,6 +1253,12 @@ if (!addToHomeDone && supportsAddToHome) {
       }
       return;
     }
+
+    // ─── send_sticker: открываем модалку выбора стикера ───
+if (task.key === 'send_sticker') {
+  setShowStickers(true);
+  return;
+}
 
     // ─── send_sticker / send_media: prepared inline через выбор чата ───
     const hint = task.key === 'send_sticker'
@@ -2338,6 +2411,80 @@ calendarData.days.forEach(d => {
       </div>
 
       <button className="sk-popup-close" onClick={() => setShowDiary(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
+    </div>
+  </div>
+)}
+{/* Stickers picker popup */}
+{showStickers && (
+  <div className="sk-overlay" onClick={() => setShowStickers(false)}>
+    <div
+      className="sk-popup"
+      onClick={e => e.stopPropagation()}
+      style={{
+        maxWidth: 360,
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        maxHeight: '85vh',
+      }}
+    >
+      <h3 style={{ margin: 0, fontSize: 16, textAlign: 'center' }}>
+        🎨 {lang === 'ru' ? 'Выбери стикер' : 'Pick a sticker'}
+      </h3>
+      <p style={{ margin: 0, fontSize: 12, color: '#888', textAlign: 'center' }}>
+        {lang === 'ru'
+          ? 'Стикер откроется в окне выбора чата — отправь его партнёру'
+          : 'Sticker will open in the chat picker — send it to your partner'}
+      </p>
+
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: 8,
+        padding: 4,
+      }}>
+        {CHUMI_STICKERS.map(s => (
+          <button
+            key={s.id}
+            onClick={() => handleSendSticker(s)}
+            disabled={stickerSending}
+            style={{
+              aspectRatio: '1 / 1',
+              borderRadius: 12,
+              border: '2px solid rgba(0,0,0,0.06)',
+              background: '#f5f5f7',
+              fontSize: 32,
+              cursor: stickerSending ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+              transition: 'transform 0.15s, border-color 0.15s',
+              opacity: stickerSending ? 0.5 : 1,
+            }}
+            onMouseDown={e => { if (!stickerSending) e.currentTarget.style.transform = 'scale(0.92)'; }}
+            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            {s.emoji}
+          </button>
+        ))}
+      </div>
+
+      <button
+        onClick={() => setShowStickers(false)}
+        style={{
+          width: '100%', padding: '10px 0',
+          background: 'transparent', color: '#6b7280',
+          border: 'none', borderRadius: 12,
+          fontSize: 14, cursor: 'pointer',
+        }}
+      >
+        {lang === 'ru' ? 'Закрыть' : 'Close'}
+      </button>
     </div>
   </div>
 )}
