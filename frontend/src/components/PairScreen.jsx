@@ -678,7 +678,7 @@ useEffect(() => {
     { key: 'daily_open',   points: 1, ru: 'Зайти в приложение',               en: 'Open the app',                 icon: '📱', action: 'auto' },
     { key: 'send_msg',     points: 1, ru: 'Написать партнёру сообщение',       en: 'Send partner a message',        icon: '💬', action: 'share' },
     { key: 'send_sticker', points: 2, ru: 'Отправить партнёру стикер',         en: 'Send partner a sticker',        icon: '🎨', action: 'share' },
-    { key: 'send_media',   points: 4, ru: 'Отправить партнёру фото или видео', en: 'Send partner a photo or video', icon: '📸', action: 'share' },
+    { key: 'send_media',   points: 4, ru: 'Отправить партнёру открытку', en: 'Send partner a postcard', icon: '💌', action: 'postcard' },
     { key: 'pet_touch',    points: 1,
       ru: isEgg ? 'Тапнуть яйцо' : `Тапнуть ${petName}`,
       en: isEgg ? 'Tap the egg' : `Tap ${petName}`,
@@ -1033,7 +1033,19 @@ const wrapPostcardForStory = () => new Promise((resolve) => {
       });
       const data = await res.json();
       if (data.prepared_message_id && tg?.shareMessage) {
-        tg.shareMessage(data.prepared_message_id, (ok) => { if (ok) haptic('success'); });
+        tg.shareMessage(data.prepared_message_id, (ok) => {
+          if (ok) {
+            haptic('success');
+            // Засчитываем задание send_media (Отправить партнёру открытку), если ещё не выполнено
+            const mediaDone = pair?.daily_tasks?.some(dt => dt.task_key === 'send_media');
+            if (!mediaDone && !completing) {
+              setCompleting(true);
+              completeTask('send_media').then(() => load()).finally(() => setCompleting(false));
+            }
+            // Закрываем попап
+            setShowPostcard(false);
+          }
+        });
       } else {
         handleDownloadPostcard();
         if (tg?.showAlert) {
@@ -1101,6 +1113,12 @@ if (!addToHomeDone && supportsAddToHome) {
     if (task.completed || completing || isDeadBlocked) return;
     haptic('light');
     if (task.action === 'share') { handleShareTask(task); return; }
+        if (task.action === 'postcard') {
+      // Открываем попап открытки. Задание засчитается после успешного «Поделиться».
+      setPostcardUrl(null);
+      setShowPostcard(true);
+      return;
+    }
     if (task.action === 'add_home') {
       if (!tg?.addToHomeScreen) return;
       // Слушаем результат: засчитываем XP только при реальном добавлении
@@ -1576,7 +1594,6 @@ const renderPet = () => (
       {showMenu && (
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)}>
           <div className="sk-menu glass-card" onClick={e => e.stopPropagation()}>
-            {!isEgg && <button onClick={() => { setRenaming(true); setShowMenu(false); }}>✏️ {lang === 'ru' ? 'Изменить имя' : 'Edit name'}</button>}
             <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🐾 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
             <button onClick={() => { setShowCalendar(true); setShowMenu(false); }}>
   📅 {lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}
@@ -1590,11 +1607,6 @@ const renderPet = () => (
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
             <button onClick={() => { handleShareToStory(); setShowMenu(false); }}>📸 {lang === 'ru' ? 'В сторис' : 'Share Story'}</button>
             <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
-{tg?.addToHomeScreen && tg?.platform !== 'ios' && (
-  <button onClick={() => { tg.addToHomeScreen(); haptic('light'); setShowMenu(false); }}>
-    📌 {lang === 'ru' ? 'На главный экран' : 'Home Screen'}
-  </button>
-)}
             <button onClick={() => { setShowPremium(true); setShowMenu(false); }}>⭐ {lang === 'ru' ? 'Премиум' : 'Premium'}</button>
             <button onClick={() => { const newLang = lang === 'ru' ? 'en' : 'ru'; setLang(newLang); setShowMenu(false); haptic('light'); }}>
               🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
@@ -2316,12 +2328,6 @@ calendarData.days.forEach(d => {
                         <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>{author}</div>
                         <div style={{ fontSize: 13, color: '#333', wordBreak: 'break-word' }}>{e.text}</div>
                       </div>
-                      {isMine && (
-<button onClick={() => handleDeleteDiary(e.id)}
-  style={{ background: 'none', border: 'none', fontSize: 14, color: '#bbb', cursor: 'pointer', padding: 2 }}>
-  ✕
-</button>
-                      )}
                     </div>
                   );
                 })}
