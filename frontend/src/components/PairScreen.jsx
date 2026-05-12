@@ -755,23 +755,23 @@ useEffect(() => {
   };
 
   // ── Postcard: полароидные фоны (фон 1080×1920) ──
-  // polaroid координаты — относительно ИСХОДНОГО фона 1080×1920
+  // polaroid = координаты ВСЕЙ нарисованной рамки полароида на фоне
   const POSTCARD_BACKGROUNDS = [
     {
       id: 'sakura',
       label: '🌸',
       file: '/pets/postcard-bg-sakura.png',
-      polaroid: { x: 250, y: 470, w: 760, h: 1020, angle: 0 },
+      polaroid: { x: 250, y: 470, w: 760, h: 1030, angle: 0 },
       accent: '#E89AB8',
-      textColor: '#5a3a4a',
+      textColor: '#8a5a6a',
     },
     {
       id: 'strawberry',
       label: '🍓',
       file: '/pets/postcard-bg-strawberry.png',
-      polaroid: { x: 230, y: 450, w: 790, h: 1080, angle: 0 },
+      polaroid: { x: 240, y: 460, w: 780, h: 1060, angle: 0 },
       accent: '#E63976',
-      textColor: '#7a2a4a',
+      textColor: '#9a3a5a',
     },
     {
       id: 'sunshine',
@@ -779,23 +779,23 @@ useEffect(() => {
       file: '/pets/postcard-bg-sunshine.png',
       polaroid: { x: 250, y: 470, w: 770, h: 1040, angle: 0 },
       accent: '#F4A300',
-      textColor: '#6a4a10',
+      textColor: '#8a6a20',
     },
     {
       id: 'ocean',
       label: '🌊',
       file: '/pets/postcard-bg-ocean.png',
-      polaroid: { x: 250, y: 460, w: 770, h: 1050, angle: 0 },
+      polaroid: { x: 255, y: 460, w: 770, h: 1050, angle: 0 },
       accent: '#3FA8B8',
-      textColor: '#1a4a55',
+      textColor: '#2a6a75',
     },
     {
       id: 'cocoa',
       label: '❄️',
       file: '/pets/postcard-bg-cocoa.png',
-      polaroid: { x: 250, y: 480, w: 780, h: 1070, angle: 0 },
+      polaroid: { x: 255, y: 480, w: 770, h: 1060, angle: 0 },
       accent: '#4A9CB8',
-      textColor: '#2a4055',
+      textColor: '#3a5a75',
     },
     {
       id: 'night',
@@ -803,7 +803,7 @@ useEffect(() => {
       file: '/pets/postcard-bg-night.png',
       polaroid: { x: 270, y: 470, w: 730, h: 1160, angle: 0 },
       accent: '#B89DE8',
-      textColor: '#f0e8ff',
+      textColor: '#e0d0ff',
     },
   ];
 
@@ -851,43 +851,47 @@ useEffect(() => {
     bgImg.src = bgConfig.file;
   });
 
-  // Общая функция отрисовки содержимого полароида (питомец, серия, аватары, имя)
+  // Отрисовка содержимого ВНУТРИ уже нарисованного полароида на фоне
   const drawPolaroidContent = async (ctx, bgConfig) => {
     const p = bgConfig.polaroid;
-    const padX = p.w * 0.07;
-    const padTop = p.w * 0.07;
-    const padBot = p.w * 0.22;
-    const innerX = p.x + padX;
+    // Внутренняя цветная зона (за вычетом белой рамки полароида)
+    // На наших фонах рамка занимает примерно:
+    //  - 5-6% сверху и по бокам
+    //  - ~15% снизу (белая полоса под имя)
+    const padSide = p.w * 0.055;
+    const padTop = p.w * 0.055;
+    const padBot = p.w * 0.16;
+    const innerX = p.x + padSide;
     const innerY = p.y + padTop;
-    const innerW = p.w - padX * 2;
+    const innerW = p.w - padSide * 2;
     const innerH = p.h - padTop - padBot;
 
-    // Плашка серии (правый верх полароида)
+    // Плашка серии (правый верх внутренней зоны)
     const streakText = `🔥 ${pair?.streak_days || 0}`;
-    ctx.font = 'bold 44px -apple-system, system-ui, sans-serif';
-    const streakW = ctx.measureText(streakText).width + 36;
-    const streakH = 68;
-    const streakX = innerX + innerW - streakW - 12;
-    const streakY = innerY + 12;
+    ctx.font = 'bold 36px -apple-system, system-ui, sans-serif';
+    const streakW = ctx.measureText(streakText).width + 28;
+    const streakH = 54;
+    const streakX = innerX + innerW - streakW - 14;
+    const streakY = innerY + 14;
     ctx.fillStyle = bgConfig.accent;
-    roundRect(ctx, streakX, streakY, streakW, streakH, 34);
+    roundRect(ctx, streakX, streakY, streakW, streakH, 27);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
 
-    // Аватары (левый верх полароида)
-    const avR = 50;
-    const avY = innerY + 12 + avR;
-    const avX1 = innerX + 12 + avR;
-    const avX2 = avX1 + avR * 2 - 18;
+    // Аватары (левый верх внутренней зоны)
+    const avR = 38;
+    const avY = innerY + 14 + avR;
+    const avX1 = innerX + 14 + avR;
+    const avX2 = avX1 + avR * 2 - 14;
 
     const drawAv = (url, x, y, r) => new Promise(res => {
       if (!url) {
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fillStyle = '#ddd'; ctx.fill();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.stroke();
         return res();
       }
       const im = new Image(); im.crossOrigin = 'anonymous';
@@ -898,11 +902,11 @@ useEffect(() => {
     await drawAv(partner ? avatars[partner.user_id] : null, avX2, avY, avR);
     await drawAv(avatars[userId], avX1, avY, avR);
 
-    // Питомец по центру полароида
-    const petAreaTop = avY + avR + 20;
-    const petAreaBot = innerY + innerH - 20;
+    // Питомец — центрирован во внутренней зоне (с учётом плашек сверху)
+    const petAreaTop = avY + avR + 16;
+    const petAreaBot = innerY + innerH - 10;
     const petAreaH = petAreaBot - petAreaTop;
-    const petSize = Math.min(innerW - 40, petAreaH);
+    const petSize = Math.min(innerW - 30, petAreaH);
     const petX = innerX + (innerW - petSize) / 2;
     const petY = petAreaTop + (petAreaH - petSize) / 2;
 
@@ -918,53 +922,25 @@ useEffect(() => {
       im.src = `/pets/${petSrc?.idle || 'egg_1'}_frame.png`;
     });
 
-    // Имя крупно на белой нижней полосе
-    const nameY = p.y + p.h - padBot * 0.55;
-    ctx.font = 'bold 68px "Caveat", "Patrick Hand", cursive';
+    // Имя — на белой нижней полосе полароида
+    const whiteStripY = p.y + p.h - padBot;
+    const nameY = whiteStripY + padBot * 0.45;
+    ctx.font = 'bold 58px "Caveat", "Patrick Hand", cursive';
     ctx.fillStyle = bgConfig.textColor;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
+    ctx.textBaseline = 'middle';
     ctx.fillText(pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi'),
                  p.x + p.w / 2, nameY);
 
-    // Подпись
-    ctx.font = '32px "Caveat", "Patrick Hand", cursive';
+    // Подпись (мельче, ниже имени)
+    ctx.font = '26px "Caveat", "Patrick Hand", cursive';
     ctx.globalAlpha = 0.7;
     ctx.fillText(lang === 'ru'
       ? `${pair?.streak_days || 0} дней вместе 💕`
       : `${pair?.streak_days || 0} days together 💕`,
-      p.x + p.w / 2, nameY + 42);
+      p.x + p.w / 2, nameY + 38);
     ctx.globalAlpha = 1;
   };
-
-  // Открытка для Stories — фон 1080×1920 целиком + полароид с питомцем
-  const wrapPostcardForStory = () => new Promise((resolve, reject) => {
-    const STORY_W = 1080, STORY_H = 1920;
-    const canvas = document.createElement('canvas');
-    canvas.width = STORY_W; canvas.height = STORY_H;
-    const ctx = canvas.getContext('2d');
-
-    const bgConfig = (postcardBg && postcardBg.file)
-      ? postcardBg
-      : POSTCARD_BACKGROUNDS[0];
-
-    const bgImg = new Image();
-    bgImg.crossOrigin = 'anonymous';
-    bgImg.onload = async () => {
-      ctx.drawImage(bgImg, 0, 0, STORY_W, STORY_H);
-      await drawPolaroidContent(ctx, bgConfig);
-
-      // @ChumiPetBot в углу
-      ctx.font = '28px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.textAlign = 'right';
-      ctx.fillText('@ChumiPetBot', STORY_W - 32, STORY_H - 32);
-
-      resolve(canvas.toDataURL('image/png', 0.95));
-    };
-    bgImg.onerror = reject;
-    bgImg.src = bgConfig.file;
-  });
 
 
   // 💾 Сохранить на устройство
