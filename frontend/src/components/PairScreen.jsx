@@ -807,52 +807,58 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
   const I = bgConfig.inner;
   const N = bgConfig.nameStrip;
 
-  // ── Бейдж серии (верх-правый угол окна) ──
+  // Отступ от верхнего края цветной зоны, чтобы элементы не уходили на белую рамку
+  const TOP_PAD = 60;
+
+  // ── Бейдж серии (СЛЕВА сверху) ──
   const streakText = `🔥 ${pair?.streak_days || 0}`;
-  ctx.font = 'bold 40px -apple-system, system-ui, sans-serif';
-  const streakW = ctx.measureText(streakText).width + 32;
-  const streakH = 60;
-  const streakX = I.x + I.w - streakW - 14;
-  const streakY = I.y + 14;
+  ctx.font = 'bold 38px -apple-system, system-ui, sans-serif';
+  const streakW = ctx.measureText(streakText).width + 30;
+  const streakH = 58;
+  const streakX = I.x + 18;
+  const streakY = I.y + TOP_PAD;
   ctx.fillStyle = bgConfig.accent;
-  roundRect(ctx, streakX, streakY, streakW, streakH, 30);
+  roundRect(ctx, streakX, streakY, streakW, streakH, 28);
   ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
 
-  // ── Аватары (верх-левый угол окна) ──
-  const avR = 42;
-  const avY = I.y + 14 + avR;
-  const avX1 = I.x + 14 + avR;
-  const avX2 = avX1 + avR * 2 - 14;
+  // ── Аватары (СПРАВА сверху, на одной линии со streak) ──
+  const avR = 38;
+  const avY = streakY + streakH / 2;
+  const avX2 = I.x + I.w - 18 - avR;            // партнёр (внешний)
+  const avX1 = avX2 - avR * 2 + 14;             // я (под партнёром)
   await drawAvatarSafe(ctx, avatars?.[partner?.user_id], avX2, avY, avR);
   await drawAvatarSafe(ctx, avatars?.[userId], avX1, avY, avR);
 
-  // ── Питомец (центр окна) ──
-  const petTop = avY + avR + 24;
+  // ── Питомец (центр окна, ниже бейджа) ──
+  const petTop = streakY + streakH + 30;
   const petBot = I.y + I.h - 24;
   const petSize = Math.min(I.w - 60, petBot - petTop);
   const petX = I.x + (I.w - petSize) / 2;
   const petY = petTop + (petBot - petTop - petSize) / 2;
   await drawPetSafe(ctx, `/pets/${petSrc?.idle || 'egg_1'}_frame.png`, petX, petY, petSize);
 
-  // ── Имя на белой полосе ──
+  // ── Имя — строго по центру белой полосы ──
   ctx.fillStyle = bgConfig.textColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 68px "Caveat", "Patrick Hand", cursive';
-  const petName = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
-  ctx.fillText(petName, N.x + N.w / 2, N.y + N.h / 2 - 22);
+  const stripCenterX = N.x + N.w / 2;
+  const stripCenterY = N.y + N.h / 2;
 
-  // ── Подпись ──
-  ctx.font = '30px "Caveat", "Patrick Hand", cursive';
+  ctx.font = 'bold 64px "Caveat", "Patrick Hand", cursive';
+  const petName = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
+  ctx.fillText(petName, stripCenterX, stripCenterY - 18);
+
+  // ── Подпись под именем ──
+  ctx.font = '28px "Caveat", "Patrick Hand", cursive';
   ctx.globalAlpha = 0.7;
   const subtitle = lang === 'ru'
     ? `${pair?.streak_days || 0} дней вместе 💕`
     : `${pair?.streak_days || 0} days together 💕`;
-  ctx.fillText(subtitle, N.x + N.w / 2, N.y + N.h / 2 + 28);
+  ctx.fillText(subtitle, stripCenterX, stripCenterY + 26);
   ctx.globalAlpha = 1;
 };
 
@@ -1055,7 +1061,7 @@ const wrapPostcardForStory = () => new Promise((resolve) => {
     haptic('light');
     try {
       // 1) Оборачиваем открытку в формат 9:16 специально для Stories
-const storyDataUrl = postcardUrl; // открытка уже 1080×1920
+      const storyDataUrl = await wrapPostcardForStory();
 
       // 2) Загружаем её на сервер
       const res = await fetch(`${API}/upload-postcard`, {
