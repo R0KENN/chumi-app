@@ -755,6 +755,107 @@ useEffect(() => {
   };
 
 // Размер исходных PNG: 770×1024 (но рисуем в canvas 1080×1440 → координаты ниже масштабированы под 1080×1440)
+// Хелпер для рисования питомца с fallback
+const drawPetSafe = (ctx, url, x, y, size) => new Promise((resolve) => {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => { ctx.drawImage(img, x, y, size, size); resolve(); };
+  img.onerror = () => {
+    ctx.font = `${Math.floor(size * 0.55)}px -apple-system, system-ui, sans-serif`;
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐾', x + size / 2, y + size / 2);
+    resolve();
+  };
+  img.src = url;
+});
+
+// Хелпер для аватара с fallback на эмодзи
+const drawAvatarSafe = (ctx, url, x, y, r) => new Promise((resolve) => {
+  if (!url) {
+    // Серый кружок с эмодзи
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#e5e7eb';
+    ctx.fill();
+    ctx.font = `${Math.floor(r * 1.1)}px -apple-system, system-ui, sans-serif`;
+    ctx.fillStyle = '#9ca3af';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('👤', x, y);
+    ctx.restore();
+    // Белая обводка
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    resolve();
+    return;
+  }
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => { drawCircleAvatar(ctx, img, x, y, r); resolve(); };
+  img.onerror = () => { drawAvatarSafe(ctx, null, x, y, r).then(resolve); };
+  img.src = url;
+});
+
+// Рисуем контент внутри уже нарисованного полароида на фоне
+const drawPolaroidContent = async (ctx, bgConfig) => {
+  const I = bgConfig.inner;
+  const N = bgConfig.nameStrip;
+
+  // ── Бейдж серии (верх-правый угол окна) ──
+  const streakText = `🔥 ${pair?.streak_days || 0}`;
+  ctx.font = 'bold 40px -apple-system, system-ui, sans-serif';
+  const streakW = ctx.measureText(streakText).width + 32;
+  const streakH = 60;
+  const streakX = I.x + I.w - streakW - 14;
+  const streakY = I.y + 14;
+  ctx.fillStyle = bgConfig.accent;
+  roundRect(ctx, streakX, streakY, streakW, streakH, 30);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(streakText, streakX + streakW / 2, streakY + streakH / 2);
+
+  // ── Аватары (верх-левый угол окна) ──
+  const avR = 42;
+  const avY = I.y + 14 + avR;
+  const avX1 = I.x + 14 + avR;
+  const avX2 = avX1 + avR * 2 - 14;
+  await drawAvatarSafe(ctx, avatars?.[partner?.user_id], avX2, avY, avR);
+  await drawAvatarSafe(ctx, avatars?.[userId], avX1, avY, avR);
+
+  // ── Питомец (центр окна) ──
+  const petTop = avY + avR + 24;
+  const petBot = I.y + I.h - 24;
+  const petSize = Math.min(I.w - 60, petBot - petTop);
+  const petX = I.x + (I.w - petSize) / 2;
+  const petY = petTop + (petBot - petTop - petSize) / 2;
+  await drawPetSafe(ctx, `/pets/${petSrc?.idle || 'egg_1'}_frame.png`, petX, petY, petSize);
+
+  // ── Имя на белой полосе ──
+  ctx.fillStyle = bgConfig.textColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 68px "Caveat", "Patrick Hand", cursive';
+  const petName = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
+  ctx.fillText(petName, N.x + N.w / 2, N.y + N.h / 2 - 22);
+
+  // ── Подпись ──
+  ctx.font = '30px "Caveat", "Patrick Hand", cursive';
+  ctx.globalAlpha = 0.7;
+  const subtitle = lang === 'ru'
+    ? `${pair?.streak_days || 0} дней вместе 💕`
+    : `${pair?.streak_days || 0} days together 💕`;
+  ctx.fillText(subtitle, N.x + N.w / 2, N.y + N.h / 2 + 28);
+  ctx.globalAlpha = 1;
+};
+
 const POSTCARD_BACKGROUNDS = [
   {
     id:'sakura', label:'🌸', file:'/pets/postcard-bg-sakura.png',
@@ -793,18 +894,6 @@ const POSTCARD_BACKGROUNDS = [
     accent:'#B89DE8', textColor:'#f0e8ff'
   }
 ];
-
-  // ── Постcard: пресеты фона ──
-  const POSTCARD_BG_PRESETS = [
-    { id: 'default',  label: lang === 'ru' ? 'Авто' : 'Auto', colors: null },
-    { id: 'pink',     label: '🌸', colors: ['#FFE5EC', '#FFB3C6'] },
-    { id: 'mint',     label: '🌿', colors: ['#D4F4DD', '#A8E6B8'] },
-    { id: 'sky',      label: '☁️', colors: ['#E0F2FF', '#A8D5F0'] },
-    { id: 'sunset',   label: '🌅', colors: ['#FFD6A5', '#FFADAD'] },
-    { id: 'lavender', label: '💜', colors: ['#E8DFF5', '#C9B6E4'] },
-    { id: 'peach',    label: '🍑', colors: ['#FFE8D6', '#FFCBA4'] },
-    { id: 'night',    label: '🌙', colors: ['#2D3561', '#4A5491'] },
-  ];
 
   // Открытка 1080×1920 (тот же размер что и Stories) — фон + полароид
 const generatePostcard = () => new Promise((resolve) => {
