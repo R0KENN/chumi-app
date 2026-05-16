@@ -512,16 +512,45 @@ useEffect(() => {
   }, [pairId, pair?.is_dead, pair?.streak_recoveries_used, pair?.last_recovery_month]);
 
 
-  // ══════ Share to Story ══════
-  const handleShareToStory = () => {
-    if (!tg?.shareToStory) return;
-    const mediaUrl = `https://chumi-app.pages.dev/pets/story-promo.png`;
-    tg.shareToStory(mediaUrl, {
-      text: lang === 'ru'
-        ? `🐾 Заведи питомца с другом!\n\nРастим вместе, поддерживаем серию, открываем новые наряды 💕\n\n👉 https://t.me/${BOT_USERNAME}`
-        : `🐾 Get a pet with a friend!\n\nGrow together, keep your streak, unlock new outfits 💕\n\n👉 https://t.me/${BOT_USERNAME}`,
-      widget_link: { url: `https://t.me/${BOT_USERNAME}`, name: 'Chumi' },
-    });
+  // ══════ Публикация промо-карточки в Stories ══════
+  // Загружает сгенерированную карточку в Supabase Storage и публикует через tg.shareToStory
+  const handlePublishShareCardStory = async () => {
+    if (!shareCardUrl || shareCardSharing) return;
+    if (!tg?.shareToStory) {
+      if (tg?.showAlert) {
+        tg.showAlert(lang === 'ru'
+          ? 'Stories недоступны в этой версии Telegram'
+          : 'Stories not available in this Telegram version');
+      }
+      return;
+    }
+    setShareCardSharing(true);
+    haptic('light');
+    try {
+      // Заливаем картинку на сервер, чтобы получить публичный URL
+      const res = await fetch(`${API}/upload-postcard`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, imageDataUrl: shareCardUrl }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        tg.shareToStory(data.url, {
+          text: lang === 'ru'
+            ? `🐾 Заведи питомца с другом!\n\nРастим вместе, поддерживаем серию, открываем новые наряды 💕\n\n👉 https://t.me/${BOT_USERNAME}`
+            : `🐾 Get a pet with a friend!\n\nGrow together, keep your streak, unlock new outfits 💕\n\n👉 https://t.me/${BOT_USERNAME}`,
+          widget_link: { url: `https://t.me/${BOT_USERNAME}`, name: 'Chumi' },
+        });
+        haptic('success');
+        setShowShareCard(false);
+      } else if (tg?.showAlert) {
+        tg.showAlert(lang === 'ru' ? 'Не удалось загрузить картинку' : 'Failed to upload image');
+      }
+    } catch (e) {
+      if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Ошибка при публикации' : 'Failed to publish');
+    } finally {
+      setShareCardSharing(false);
+    }
   };
 
       // ── Список всех питомцев для случайной промо-карточки ──
@@ -1702,7 +1731,6 @@ const renderPet = () => (
   💌 {lang === 'ru' ? 'Открытка' : 'Postcard'}
 </button>
             <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
-            <button onClick={() => { handleShareToStory(); setShowMenu(false); }}>📸 {lang === 'ru' ? 'В сторис' : 'Share Story'}</button>
             <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
             <button onClick={() => { setShowPremium(true); setShowMenu(false); }}>⭐ {lang === 'ru' ? 'Премиум' : 'Premium'}</button>
             <button onClick={() => { const newLang = lang === 'ru' ? 'en' : 'ru'; setLang(newLang); setShowMenu(false); haptic('light'); }}>
@@ -2720,7 +2748,24 @@ calendarData.days.forEach(d => {
         🎲 {lang === 'ru' ? 'Другой питомец' : 'Another pet'}
       </button>
 
-      {/* Кнопка отправки */}
+      {/* Кнопка публикации в Stories */}
+      {tg?.shareToStory && (
+        <button
+          onClick={handlePublishShareCardStory}
+          disabled={shareCardGenerating || !shareCardUrl || shareCardSharing}
+          style={{
+            width: '100%', padding: '11px 0', borderRadius: 12, border: 'none',
+            background: '#3390EC',
+            color: '#fff', fontSize: 14, fontWeight: 600,
+            cursor: shareCardUrl ? 'pointer' : 'default',
+            opacity: shareCardUrl ? 1 : 0.6,
+          }}
+        >
+          📱 {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
+        </button>
+      )}
+
+      {/* Кнопка отправки в чат */}
       <button
         onClick={handleSendShareCard}
         disabled={shareCardGenerating || !shareCardUrl || shareCardSharing}
@@ -2734,7 +2779,7 @@ calendarData.days.forEach(d => {
       >
         📤 {shareCardSharing
           ? (lang === 'ru' ? 'Отправка...' : 'Sending...')
-          : (lang === 'ru' ? 'Поделиться' : 'Share')}
+          : (lang === 'ru' ? 'Отправить в чат' : 'Send to chat')}
       </button>
 
       <button
