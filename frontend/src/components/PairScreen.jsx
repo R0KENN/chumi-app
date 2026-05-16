@@ -307,28 +307,25 @@ useEffect(() => {
     try { tg.setBottomBarColor?.(isDark ? bgColors[1] : '#f5f5f5'); } catch (e) {}
   }, [tg, pair]);
 
-  // ══════ Сбрасываем ref при смене пары ══════
-useEffect(() => {
-  lastLevelUpShownRef.current = null;
-}, [pairId]);
-
 // ══════ Уведомление + Emoji Status при повышении уровня ══════
 useEffect(() => {
   if (!pair) return;
   const lv = getLevel(pair.growth_points || 0);
   const storageKey = `chumi_last_level_${pairId}_${userId}`;
-  const lastShownLevel = parseInt(localStorage.getItem(storageKey) || '-1', 10);
+  const stored = localStorage.getItem(storageKey);
+  const lastShownLevel = stored !== null ? parseInt(stored, 10) : null;
 
-  // Первый запуск для этой пары — просто запоминаем уровень
-  if (lastShownLevel === -1) {
+  // Первый запуск (в localStorage ничего нет) — просто запоминаем текущий уровень,
+  // popup не показываем
+  if (lastShownLevel === null) {
     localStorage.setItem(storageKey, String(lv.idx));
-    lastLevelUpShownRef.current = lv.idx;
     return;
   }
 
-  // Защита от двойного показа в рамках одной сессии
+  // Защита от двойного показа: если в этой сессии уже показывали для этого уровня — выходим
   if (lastLevelUpShownRef.current === lv.idx) return;
 
+  // Уровень вырос с прошлого зафиксированного значения — показываем popup
   if (lv.idx > lastShownLevel) {
     if (tg?.setEmojiStatus && lv.emojiId) {
       tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, () => {});
@@ -341,15 +338,16 @@ useEffect(() => {
     });
     localStorage.setItem(storageKey, String(lv.idx));
     lastLevelUpShownRef.current = lv.idx;
-  } else if (lv.idx < lastShownLevel) {
-    localStorage.setItem(storageKey, String(lv.idx));
-    lastLevelUpShownRef.current = lv.idx;
-  } else {
-    // Уровень тот же — фиксируем, чтобы не повторять
-    lastLevelUpShownRef.current = lv.idx;
+    return;
   }
+
+  // Уровень такой же или ниже — просто обновляем localStorage и ref, popup не показываем
+  if (lv.idx !== lastShownLevel) {
+    localStorage.setItem(storageKey, String(lv.idx));
+  }
+  lastLevelUpShownRef.current = lv.idx;
 // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [tg, pair?.growth_points, lang, pairId, userId]);
+}, [pair?.growth_points, pairId, userId]);
 
   // ══════ BottomButton — скрываем ══════
   useEffect(() => {
