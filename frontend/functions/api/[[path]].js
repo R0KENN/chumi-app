@@ -15,6 +15,12 @@ const TASK_POINTS = {
   add_to_home: 3,
 };
 
+// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку
+function escapeMd(s) {
+  return String(s || '').replace(/([_*`\[\]])/g, '\\$1');
+}
+
+
 // ────────── HELPERS ──────────
 function getSupabase(env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
@@ -28,7 +34,7 @@ function generateCode() {
 }
 
 async function generateUniqueCode(supabase) {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     const code = generateCode();
     const { data } = await supabase
       .from('pairs').select('code').eq('code', code).maybeSingle();
@@ -571,10 +577,13 @@ if (request.method === 'POST' && path === '/api/diary') {
         const partnerLang = ps?.lang || 'ru';
         const authorName = membership.display_name || (partnerLang === 'ru' ? 'Партнёр' : 'Partner');
         const petName = pairTz?.pet_name || 'Chumi';
+        const safeAuthor = escapeMd(authorName);
+        const safePet = escapeMd(petName);
+        const safeText = escapeMd(text);
 
         const notifyText = partnerLang === 'ru'
-          ? `📔 *${authorName}* оставил(а) запись в дневнике ${petName}!\n\n${emoji} _${text}_`
-          : `📔 *${authorName}* added a diary entry for ${petName}!\n\n${emoji} _${text}_`;
+          ? `📔 *${safeAuthor}* оставил(а) запись в дневнике ${safePet}!\n\n${emoji} _${safeText}_`
+          : `📔 *${safeAuthor}* added a diary entry for ${safePet}!\n\n${emoji} _${safeText}_`;
         const btnText = partnerLang === 'ru' ? '📖 Посмотреть' : '📖 View';
 
         await sendTelegramMessage(env, partner.user_id, notifyText, {
@@ -754,9 +763,10 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
           const partnerLang = ps?.lang || 'ru';
           const who = (displayName || '').toString().slice(0, 40)
             || (partnerLang === 'ru' ? 'Партнёр' : 'Someone');
+          const safeWho = escapeMd(who);
           const msg = partnerLang === 'ru'
-            ? `🎉 *${who}* присоединился к паре \`${code}\`!`
-            : `🎉 *${who}* joined pair \`${code}\`!`;
+            ? `🎉 *${safeWho}* присоединился к паре \`${code}\`!`
+            : `🎉 *${safeWho}* joined pair \`${code}\`!`;
           await sendTelegramMessage(env, m.user_id, msg);
         }
       }
@@ -1103,6 +1113,36 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         last_streak_date: today,
         last_pair_streak_date: today,
       }).eq('code', code).select().single();
+
+      // Уведомляем партнёра о воскрешении
+try {
+  const { data: allMembers } = await supabase
+    .from('pair_users').select('user_id, display_name')
+    .eq('pair_code', code);
+  const reviver = (allMembers || []).find(m => String(m.user_id) === String(userId));
+  const partners = (allMembers || []).filter(m => String(m.user_id) !== String(userId));
+  for (const p of partners) {
+    const { data: ps } = await supabase
+      .from('user_settings').select('lang')
+      .eq('telegram_user_id', p.user_id).maybeSingle();
+    const pLang = ps?.lang || 'ru';
+    const reviverName = reviver?.display_name || (pLang === 'ru' ? 'Партнёр' : 'Partner');
+    const petName = pair.pet_name || (pLang === 'ru' ? 'Питомец' : 'Pet');
+    const safeReviver = escapeMd(reviverName);
+    const safePet = escapeMd(petName);
+    const text = pLang === 'ru'
+      ? `✨ *${safeReviver}* воскресил(а) *${safePet}*! Серия (${pair.streak_days} дн.) сохранена 🐾\nОсталось воскрешений в этом месяце: ${5 - (used + 1)}/5.`
+      : `✨ *${safeReviver}* revived *${safePet}*! Streak (${pair.streak_days} days) preserved 🐾\nRevives left this month: ${5 - (used + 1)}/5.`;
+    const btnText = pLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+    await sendTelegramMessage(env, p.user_id, text, {
+      reply_markup: {
+        inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi-app.pages.dev' } }]],
+      },
+    });
+  }
+} catch (e) {
+  console.error('Revive notify error:', e);
+}
 
       return json({
         success: true,
@@ -1584,6 +1624,11 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
   const stickerFileId = (body.sticker_file_id || '').toString();
   if (!stickerFileId) return json({ error: 'sticker_file_id required' }, 400);
 
+  // Защита: принимаем только стикеры из нашего пакета @ChumiPetBot
+  if (!stickerFileId.startsWith('CAACAgIAAxUAAWoD')) {
+    return json({ error: 'Invalid sticker' }, 400);
+  }
+
   const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1698,6 +1743,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
 
     // ── POST /api/send-reminders (cron) ──
     if (request.method === 'POST' && path === '/api/send-reminders') {
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
 
       const { data: allPairs } = await supabase
         .from('pairs')
@@ -1736,13 +1782,14 @@ if (!opened) {
   if (alreadySent) continue;
 
   const petName = pair.pet_name || 'Chumi';
+  const safePet = escapeMd(petName);
   const { data: ms } = await supabase
     .from('user_settings').select('lang')
     .eq('telegram_user_id', member.user_id).maybeSingle();
   const mLang = ms?.lang || 'ru';
   const reminderText = mLang === 'ru'
-    ? `🔔 *${petName}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
-    : `🔔 *${petName}* is waiting! Streak: ${pair.streak_days} days 🔥\nDon't forget to come today!`;
+    ? `🔔 *${safePet}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
+    : `🔔 *${safePet}* is waiting! Streak: ${pair.streak_days} days 🔥\nDon't forget to come today!`;
   const btnText = mLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
   await sendTelegramMessage(env, member.user_id, reminderText, {
     reply_markup: {
@@ -1795,9 +1842,10 @@ if (!opened) {
               .eq('telegram_user_id', dm.user_id).maybeSingle();
             const dLang = ps?.lang || 'ru';
             const petName = pair.pet_name || (dLang === 'ru' ? 'Питомец' : 'Pet');
+            const safePet = escapeMd(petName);
             const text = dLang === 'ru'
-              ? `💀 *${petName}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.\nОсталось воскрешений в этом месяце: до 5.`
-              : `💀 *${petName}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue.\nUp to 5 revivals per month available.`;
+              ? `💀 *${safePet}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.\nОсталось воскрешений в этом месяце: до 5.`
+              : `💀 *${safePet}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue.\nUp to 5 revivals per month available.`;
             const dBtnText = dLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
             await sendTelegramMessage(env, dm.user_id, text, {
               reply_markup: {
@@ -1886,7 +1934,6 @@ if (!opened) {
 
       const now = new Date();
       const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-      const last24h = (col) => supabase.from('pairs').select(col, { count: 'exact', head: true });
 
       // ── Общие счётчики ──
       const { count: totalUsers } = await supabase
@@ -1989,6 +2036,7 @@ if (!opened) {
       const { data: pairRow } = await supabase
         .from('pairs').select('pet_name, streak_days').eq('code', code).maybeSingle();
       const petName = pairRow?.pet_name || 'Chumi';
+      const safePet = escapeMd(petName);
       const streak = pairRow?.streak_days || 0;
 
       const { data: members } = await supabase
@@ -1996,14 +2044,14 @@ if (!opened) {
 
       const WEBAPP_URL = 'https://chumi-app.pages.dev';
       const RU = [
-        `🐾 Привет! Не забывай про ${petName} — серия ${streak} дн.!`,
+        `🐾 Привет! Не забывай про ${safePet} — серия ${streak} дн.!`,
         `💌 Сообщение от партнёра по Chumi! Питомец растёт уже ${streak} дн. 🐾`,
-        `👋 ${petName} ждёт тебя! Серия: ${streak} дн. 🐾`,
+        `👋 ${safePet} ждёт тебя! Серия: ${streak} дн. 🐾`,
       ];
       const EN = [
-        `🐾 Hey! Don't forget about ${petName} — streak ${streak} days!`,
+        `🐾 Hey! Don't forget about ${safePet} — streak ${streak} days!`,
         `💌 Message from your Chumi partner! Pet is growing for ${streak} days 🐾`,
-        `👋 ${petName} is waiting! Streak: ${streak} days 🐾`,
+        `👋 ${safePet} is waiting! Streak: ${streak} days 🐾`,
       ];
 
       for (const m of (members || [])) {
@@ -2109,6 +2157,10 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
         .from('user_skins').select('id')
         .eq('user_id', partner.user_id).eq('skin_id', skinId).maybeSingle();
       if (alreadyOwned) return json({ error: 'Partner already owns this skin' }, 400);
+
+      // Если у партнёра активный Premium — все скины ему и так доступны
+      const recipientPremium = await isPremium(supabase, partner.user_id);
+      if (recipientPremium) return json({ error: 'Partner already owns this skin' }, 400);
 
       // Создаём инвойс с типом "gift" и id получателя
       // ВАЖНО: payload в Telegram имеет лимит 128 байт, поэтому используем короткие ключи

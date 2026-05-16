@@ -73,6 +73,11 @@ const MAX_PAIRS_BASE = 2;
 const WEBAPP_URL = 'https://chumi-app.pages.dev';
 const FIRE_EMOJI_ID = '5368324170671202286';
 
+// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку
+function escapeMd(s) {
+  return String(s || '').replace(/([_*`\[\]])/g, '\\$1');
+}
+
 // Команды для обычных пользователей
 const PUBLIC_COMMANDS = [
   { command: 'start', description: 'Начать работу с ботом' },
@@ -444,7 +449,7 @@ else productKey = payload.productId;
         }
         const skinName = buySkinId.charAt(0).toUpperCase() + buySkinId.slice(1);
         await sendMessage(env, update.message.chat.id,
-          lang === 'ru' ? `✅ Наряд *${skinName}* разблокирован! 🎨` : `✅ Outfit *${skinName}* unlocked! 🎨`,
+          lang === 'ru' ? `✅ Наряд *${escapeMd(skinName)}* разблокирован! 🎨` : `✅ Outfit *${escapeMd(skinName)}* unlocked! 🎨`,
           webAppButton
         );
 
@@ -453,9 +458,9 @@ else productKey = payload.productId;
         const buyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
         await notifyAdmins(env,
           `💰 *Покупка скина*\n\n` +
-          `Пользователь: ${buyerName} (${buyerUser})\n` +
+          `Пользователь: ${escapeMd(buyerName)} (${escapeMd(buyerUser)})\n` +
           `ID: \`${userId}\`\n` +
-          `Скин: *${skinName}*\n` +
+          `Скин: *${escapeMd(skinName)}*\n` +
           `Сумма: ⭐ ${payment.total_amount} Stars\n` +
           `Charge: \`${chargeId || '—'}\``
         );
@@ -493,8 +498,8 @@ else productKey = payload.productId;
         // Сообщение дарителю
         await sendMessage(env, update.message.chat.id,
           lang === 'ru'
-            ? `🎁 Подарок отправлен партнёру!\nНаряд *${skinName}* теперь у него 🎨`
-            : `🎁 Gift sent to your partner!\nThey now own outfit *${skinName}* 🎨`,
+            ? `🎁 Подарок отправлен партнёру!\nНаряд *${escapeMd(skinName)}* теперь у него 🎨`
+            : `🎁 Gift sent to your partner!\nThey now own outfit *${escapeMd(skinName)}* 🎨`,
           webAppButton
         );
 
@@ -503,18 +508,18 @@ else productKey = payload.productId;
         const giverDisplay = update.message?.from?.first_name || (recipientLang === 'ru' ? 'Партнёр' : 'Partner');
         await sendMessage(env, recipientId,
           recipientLang === 'ru'
-            ? `🎁 *${giverDisplay}* подарил тебе наряд *${skinName}*! 🎨\nОткрой Chumi и примерь его 🐾`
-            : `🎁 *${giverDisplay}* gifted you outfit *${skinName}*! 🎨\nOpen Chumi and try it on 🐾`,
+            ? `🎁 *${escapeMd(giverDisplay)}* подарил тебе наряд *${escapeMd(skinName)}*! 🎨\nОткрой Chumi и примерь его 🐾`
+            : `🎁 *${escapeMd(giverDisplay)}* gifted you outfit *${escapeMd(skinName)}*! 🎨\nOpen Chumi and try it on 🐾`,
           webAppButton
         );
 
         // Уведомление админу о подарке
         await notifyAdmins(env,
           `🎁 *Подарок скина*\n\n` +
-          `Даритель: ${giverName} (${giverUser})\n` +
+          `Даритель: ${escapeMd(giverName)} (${escapeMd(giverUser)})\n` +
           `ID: \`${userId}\`\n` +
           `Получатель ID: \`${recipientId}\`\n` +
-          `Скин: *${skinName}*\n` +
+          `Скин: *${escapeMd(skinName)}*\n` +
           `Сумма: ⭐ ${payment.total_amount} Stars\n` +
           `Charge: \`${chargeId || '—'}\``
         );
@@ -547,7 +552,7 @@ else productKey = payload.productId;
         const slotBuyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
         await notifyAdmins(env,
           `💰 *Покупка дополнительного слота*\n\n` +
-          `Пользователь: ${slotBuyer} (${slotBuyerUser})\n` +
+          `Пользователь: ${escapeMd(slotBuyer)} (${escapeMd(slotBuyerUser)})\n` +
           `ID: \`${userId}\`\n` +
           `Сумма: ⭐ ${payment.total_amount} Stars\n` +
           `Charge: \`${chargeId || '—'}\``
@@ -602,7 +607,7 @@ else productKey = payload.productId;
         const premBuyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
         await notifyAdmins(env,
           `⭐ *Покупка Premium*\n\n` +
-          `Пользователь: ${premBuyer} (${premBuyerUser})\n` +
+          `Пользователь: ${escapeMd(premBuyer)} (${escapeMd(premBuyerUser)})\n` +
           `ID: \`${userId}\`\n` +
           `Сумма: ⭐ ${payment.total_amount} Stars\n` +
           `Действует до: ${expiresAt.toLocaleDateString('ru-RU')}\n` +
@@ -655,8 +660,8 @@ else productKey = payload.productId;
               body: JSON.stringify({
                 chat_id: adminId,
                 text: `👤 *Новый пользователь!*\n\n` +
-                      `Имя: ${firstName}\n` +
-                      `Username: ${username ? '@' + username : '—'}\n` +
+                      `Имя: ${escapeMd(firstName)}\n` +
+                      `Username: ${username ? '@' + escapeMd(username) : '—'}\n` +
                       `ID: \`${userId}\`\n` +
                       `Язык: ${lang}`,
                 parse_mode: 'Markdown',
@@ -717,13 +722,13 @@ if (startParam.startsWith('ref_')) {
         for (const m of members || []) {
           if (m.user_id !== userId) {
             const partnerLang = await getUserLang(supabase, m.user_id);
-            await sendMessage(env, m.user_id, T[partnerLang].partnerJoined(firstName, joinCode), webAppButton);
+            await sendMessage(env, m.user_id, T[partnerLang].partnerJoined(escapeMd(firstName), joinCode), webAppButton);
           }
         }
         return new Response('OK');
       }
 
-      await sendMessage(env, chatId, T[lang].welcome(firstName), webAppButton);
+      await sendMessage(env, chatId, T[lang].welcome(escapeMd(firstName)), webAppButton);
       return new Response('OK');
     }
 
@@ -825,7 +830,7 @@ if (startParam.startsWith('ref_')) {
       for (const m of members || []) {
         if (m.user_id !== userId) {
           const partnerLang = await getUserLang(supabase, m.user_id);
-          await sendMessage(env, m.user_id, T[partnerLang].joinedNotify(firstName, code), webAppButton);
+          await sendMessage(env, m.user_id, T[partnerLang].joinedNotify(escapeMd(firstName), code), webAppButton);
         }
       }
       return new Response('OK');
@@ -915,7 +920,7 @@ if (startParam.startsWith('ref_')) {
 
       let msg = `👥 *Последние пользователи (${unique.length}):*\n\n`;
       for (const u of unique) {
-        msg += `• ${u.display_name || '—'} (${u.username ? '@' + u.username : 'no username'}) \`${u.user_id}\`\n`;
+        msg += `• ${escapeMd(u.display_name || '—')} (${u.username ? '@' + escapeMd(u.username) : 'no username'}) \`${u.user_id}\`\n`;
       }
       await sendMessage(env, chatId, msg.slice(0, 4000));
       return new Response('OK');

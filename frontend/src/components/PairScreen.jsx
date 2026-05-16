@@ -17,7 +17,7 @@ const CHUMI_STICKERS = [
   { id: 4,  emoji: '🤪', file_id: 'CAACAgIAAxUAAWoD5CLcOrCjNDTumTSNjpOqH9Y5AAI2lwACL2AhSC3GgAwjcF5dOwQ' },
   { id: 5,  emoji: '🫣', file_id: 'CAACAgIAAxUAAWoD5CLZcgIibJk5umX92Hc8pUXAAAIZmQAClbshSI1Sf7XWlVehOwQ' },
   { id: 6,  emoji: '😍', file_id: 'CAACAgIAAxUAAWoD5CLItQgTzOHFC_Pwylml9IC8AAJ4qAACFzAhSBGhAopaQkeEOwQ' },
-  { id: 7,  emoji: '🙂\u200d↕️', file_id: 'CAACAgIAAxUAAWoD5CJT6Z6J0WN4KbEbfJyvoY9LAALomwACzqohSPVRmmDkdRBQOwQ' },
+  { id: 7,  emoji: '🙂', file_id: 'CAACAgIAAxUAAWoD5CJT6Z6J0WN4KbEbfJyvoY9LAALomwACzqohSPVRmmDkdRBQOwQ' },
   { id: 8,  emoji: '😀', file_id: 'CAACAgIAAxUAAWoD5CIuxOa3Fye8qENeGfN1DHGwAAKipQAC75IgSMdLIq6aQtjxOwQ' },
   { id: 9,  emoji: '🥵', file_id: 'CAACAgIAAxUAAWoD5CJ-ws9r4db4vtjWKVo1SGihAALAlAACE1AhSFhdDULVl6PMOwQ' },
   { id: 10, emoji: '🥰', file_id: 'CAACAgIAAxUAAWoD5CJpg0Mww5B0lRSjhP173Bf5AAICkgACgfQgSBu4YAubf9m5OwQ' },
@@ -141,6 +141,7 @@ export default function PairScreen() {
   const [reviveError, setReviveError] = useState('');
   const [recoveriesLeft, setRecoveriesLeft] = useState(5);
   const idleVideoRef = useRef(null);
+  const lastLevelUpShownRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
   const rankingAvatarsRef = useRef({});
@@ -306,6 +307,11 @@ useEffect(() => {
     try { tg.setBottomBarColor?.(isDark ? bgColors[1] : '#f5f5f5'); } catch (e) {}
   }, [tg, pair]);
 
+  // ══════ Сбрасываем ref при смене пары ══════
+useEffect(() => {
+  lastLevelUpShownRef.current = null;
+}, [pairId]);
+
 // ══════ Уведомление + Emoji Status при повышении уровня ══════
 useEffect(() => {
   if (!pair) return;
@@ -313,13 +319,16 @@ useEffect(() => {
   const storageKey = `chumi_last_level_${pairId}_${userId}`;
   const lastShownLevel = parseInt(localStorage.getItem(storageKey) || '-1', 10);
 
-  // Первый запуск для этой пары — просто запоминаем уровень, popup не показываем
+  // Первый запуск для этой пары — просто запоминаем уровень
   if (lastShownLevel === -1) {
     localStorage.setItem(storageKey, String(lv.idx));
+    lastLevelUpShownRef.current = lv.idx;
     return;
   }
 
-  // Уровень действительно вырос с прошлого показа
+  // Защита от двойного показа в рамках одной сессии
+  if (lastLevelUpShownRef.current === lv.idx) return;
+
   if (lv.idx > lastShownLevel) {
     if (tg?.setEmojiStatus && lv.emojiId) {
       tg.setEmojiStatus(lv.emojiId, { duration: 3600 }, () => {});
@@ -331,12 +340,16 @@ useEffect(() => {
       pet: lv.pet,
     });
     localStorage.setItem(storageKey, String(lv.idx));
+    lastLevelUpShownRef.current = lv.idx;
   } else if (lv.idx < lastShownLevel) {
-    // Питомец перезапущен (сброс) — обновляем без popup
     localStorage.setItem(storageKey, String(lv.idx));
+    lastLevelUpShownRef.current = lv.idx;
+  } else {
+    // Уровень тот же — фиксируем, чтобы не повторять
+    lastLevelUpShownRef.current = lv.idx;
   }
-}, [tg, pair, lang, pairId, userId]);
-
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [tg, pair?.growth_points, lang, pairId, userId]);
 
   // ══════ BottomButton — скрываем ══════
   useEffect(() => {
@@ -621,25 +634,25 @@ useEffect(() => {
   };
 
   // Перегенерация при открытии или смене питомца
+useEffect(() => {
   if (showShareCard && shareCardPet && !shareCardGenerating && !shareCardUrl) {
     setShareCardGenerating(true);
-    setTimeout(() => {
-      generatePromoCard(shareCardPet)
-        .then(url => { setShareCardUrl(url); })
-        .catch(() => {})
-        .finally(() => setShareCardGenerating(false));
-    }, 0);
+    generatePromoCard(shareCardPet)
+      .then(url => setShareCardUrl(url))
+      .catch(() => {})
+      .finally(() => setShareCardGenerating(false));
   }
-    // Перегенерация открытки при открытии попапа или смене фона
+}, [showShareCard, shareCardPet, shareCardUrl, shareCardGenerating]);
+
+useEffect(() => {
   if (showPostcard && !postcardGenerating && !postcardUrl) {
     setPostcardGenerating(true);
-    setTimeout(() => {
-      generatePostcard()
-        .then(url => { setPostcardUrl(url); })
-        .catch(() => {})
-        .finally(() => setPostcardGenerating(false));
-    }, 0);
+    generatePostcard()
+      .then(url => setPostcardUrl(url))
+      .catch(() => {})
+      .finally(() => setPostcardGenerating(false));
   }
+}, [showPostcard, postcardUrl, postcardGenerating, postcardBg]);
 
   const handleSendShareCard = async () => {
     if (!shareCardUrl || shareCardSharing) return;
