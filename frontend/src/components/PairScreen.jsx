@@ -512,8 +512,45 @@ useEffect(() => {
   }, [pairId, pair?.is_dead, pair?.streak_recoveries_used, pair?.last_recovery_month]);
 
 
+  // ══════ Хелпер: оборачиваем квадратную карточку в формат Stories 9:16 ──
+  // Сама карточка остаётся 1080×1080, мы только подкладываем фон-расширение
+  // сверху и снизу, чтобы итоговая картинка была 1080×1920.
+  const wrapShareCardForStory = () => new Promise((resolve) => {
+    if (!shareCardUrl) { resolve(null); return; }
+    const W = 1080, H = 1920;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Фон-заливка: берём цвет фона текущего питомца
+    const bg = shareCardPet?.bg || ['#FDE8EC', '#FFB3C6'];
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, bg[0]);
+    grad.addColorStop(1, bg[1]);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Центрируем квадратную карточку по вертикали
+      const offsetY = (H - W) / 2; // 420
+      ctx.drawImage(img, 0, offsetY, W, W);
+
+      // Подпись внизу
+      ctx.font = '32px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.textAlign = 'center';
+      ctx.fillText('@ChumiPetBot', W / 2, H - 80);
+
+      resolve(canvas.toDataURL('image/png', 0.95));
+    };
+    img.onerror = () => resolve(shareCardUrl); // fallback — оригинал
+    img.src = shareCardUrl;
+  });
+
   // ══════ Публикация промо-карточки в Stories ══════
-  // Загружает сгенерированную карточку в Supabase Storage и публикует через tg.shareToStory
+  // Сначала оборачиваем квадратную карточку в 9:16, потом грузим и публикуем
   const handlePublishShareCardStory = async () => {
     if (!shareCardUrl || shareCardSharing) return;
     if (!tg?.shareToStory) {
@@ -527,11 +564,18 @@ useEffect(() => {
     setShareCardSharing(true);
     haptic('light');
     try {
-      // Заливаем картинку на сервер, чтобы получить публичный URL
+      // 1) Оборачиваем квадратную карточку в формат 9:16
+      const storyDataUrl = await wrapShareCardForStory();
+      if (!storyDataUrl) {
+        if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Ошибка при подготовке' : 'Failed to prepare');
+        return;
+      }
+
+      // 2) Заливаем результат на сервер
       const res = await fetch(`${API}/upload-postcard`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ userId, imageDataUrl: shareCardUrl }),
+        body: JSON.stringify({ userId, imageDataUrl: storyDataUrl }),
       });
       const data = await res.json();
       if (data.url) {
