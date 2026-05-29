@@ -4,35 +4,34 @@ export default {
     const headers = { 'Content-Type': 'application/json' };
     if (env.CRON_SECRET) headers['Authorization'] = `Bearer ${env.CRON_SECRET}`;
 
-    const now = new Date();
-    const hour = now.getUTCHours();
-    const minute = now.getUTCMinutes();
-    // Задачи "раз в день" должны срабатывать только в первом 30-минутном
-    // запуске часа (минуты 0–29), иначе при кроне */30 они выполнятся дважды.
-    const isFirstHalfOfHour = minute < 30;
+    // Какое именно расписание сработало (см. wrangler.toml).
+    // При ручном запуске через fetch() event.cron отсутствует — тогда
+    // выполняем только частые задачи (streaks + cleanup).
+    const cron = event?.cron || '';
 
-    // 1. Серии — каждый запуск
-    try {
-      const r1 = await fetch(`${baseUrl}/api/update-streaks`, { method: 'POST', headers });
-      console.log('Streaks:', await r1.json());
-    } catch (e) { console.error('Streak error:', e); }
+    // ── Частые задачи: streaks + cleanup (каждые 30 минут) ──
+    if (cron === '*/30 * * * *' || !cron) {
+      try {
+        const r1 = await fetch(`${baseUrl}/api/update-streaks`, { method: 'POST', headers });
+        console.log('Streaks:', await r1.json());
+      } catch (e) { console.error('Streak error:', e); }
 
-    // 2. Очистка — каждый запуск
-    try {
-      const r3 = await fetch(`${baseUrl}/api/cleanup-empty-pairs`, { method: 'POST', headers });
-      console.log('Cleanup:', await r3.json());
-    } catch (e) { console.error('Cleanup error:', e); }
+      try {
+        const r3 = await fetch(`${baseUrl}/api/cleanup-empty-pairs`, { method: 'POST', headers });
+        console.log('Cleanup:', await r3.json());
+      } catch (e) { console.error('Cleanup error:', e); }
+    }
 
-    // 3. Напоминания — ТОЛЬКО в 18:00 UTC (21:00 МСК), один раз
-    if (hour === 18 && isFirstHalfOfHour) {
+    // ── Напоминания: раз в день, 18:00 UTC ──
+    if (cron === '0 18 * * *') {
       try {
         const r2 = await fetch(`${baseUrl}/api/send-reminders`, { method: 'POST', headers });
         console.log('Reminders:', await r2.json());
       } catch (e) { console.error('Reminder error:', e); }
     }
 
-    // 4. Ежедневная сводка админу — в 9:00 UTC (12:00 МСК), один раз
-    if (hour === 9 && isFirstHalfOfHour) {
+    // ── Админ-сводка: раз в день, 9:00 UTC ──
+    if (cron === '0 9 * * *') {
       try {
         const r4 = await fetch(`${baseUrl}/api/admin-daily-summary`, { method: 'POST', headers });
         console.log('Daily summary:', await r4.json());
