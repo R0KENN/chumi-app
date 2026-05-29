@@ -15,9 +15,13 @@ const TASK_POINTS = {
   add_to_home: 3,
 };
 
-// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку
+// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку.
+// ВАЖНО: обратный слеш экранируем ПЕРВЫМ, иначе он испортит уже добавленные слеши.
+// Набор символов — под legacy parse_mode: 'Markdown' (_ * ` [ ]).
 function escapeMd(s) {
-  return String(s || '').replace(/([_*`\[\]])/g, '\\$1');
+  return String(s || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/([_*`\[\]])/g, '\\$1');
 }
 
 
@@ -898,20 +902,21 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       let pointsAdded = 0;
 
       if (partnerIds.length > 0) {
-        const partnerId = partnerIds[0];
-
-        // Проверяем, выполнил ли партнёр ту же задачу сегодня
-        // (после того как мы уже вставили свою запись — поэтому даже при
-        // одновременном заходе хотя бы один из двух запросов увидит обоих)
-        const { data: partnerDone } = await supabase
-          .from('daily_tasks').select('id')
+        // Считаем, сколько РАЗНЫХ участников пары выполнили эту задачу сегодня.
+        // Это устойчиво к гонке: к моменту подсчёта обе записи уже вставлены,
+        // поэтому хотя бы один из двух параллельных запросов увидит всех.
+        const memberIds = (members || []).map(m => String(m.user_id));
+        const { data: doneRows } = await supabase
+          .from('daily_tasks').select('user_id')
           .eq('pair_code', code)
-          .eq('user_id', partnerId)
           .eq('task_key', taskKey)
           .eq('task_date', today)
-          .maybeSingle();
+          .in('user_id', memberIds);
 
-        if (partnerDone) {
+        const doneUsers = new Set((doneRows || []).map(r => String(r.user_id)));
+        const allMembersDone = memberIds.length >= 2 && memberIds.every(id => doneUsers.has(id));
+
+        if (allMembersDone) {
           const { data: pair } = await supabase
             .from('pairs')
             .select('growth_points, streak_days, last_streak_date, last_pair_streak_date, hatched')
@@ -1825,6 +1830,13 @@ if (!opened) {
         const tz = pair.timezone || 'UTC';
         const today = getTodayDate(tz);
 
+        // Питомец живёт и умирает ТОЛЬКО в полной паре (2 участника).
+        // Неполные пары растить нельзя, поэтому их не убиваем —
+        // их подберёт cleanup-empty-pairs при длительной неактивности.
+        const { data: pairMembers } = await supabase
+          .from('pair_users').select('user_id').eq('pair_code', pair.code);
+        if (!pairMembers || pairMembers.length < 2) continue;
+
         // Питомец умирает только если ПОЛНЫЙ день пропущен.
         // Т.е. last_streak_date должен быть как минимум "позавчера".
         // Если last_streak_date == вчера — даём ещё день, чтобы успели зайти.
@@ -2291,17 +2303,28 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
         ? body.timezone : null;
       if (!tz) return json({ error: 'Invalid timezone' }, 400);
 
-await supabase.from('pair_users')
-  .update({ timezone: tz })
-  .eq('user_id', userId);
+      // Обновляем личную таймзону пользователя
+      await supabase.from('pair_users')
+        .update({ timezone: tz })
+        .eq('user_id', userId);
 
-
+      // Таймзона ПАРЫ (определяет "сегодня" для стрика) фиксируется по таймзоне
+      // того, кто был в паре один на момент установки — обычно создателя.
+      // Правило: обновляем pairs.timezone, только если
+      //   а) в паре пока 1 участник (партнёр ещё не присоединился), ИЛИ
+      //   б) у пары вообще не задана таймзона (бэкфилл старых/битых данных).
       const { data: myPairs } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);
       for (const up of (myPairs || [])) {
         const { data: members } = await supabase
           .from('pair_users').select('user_id').eq('pair_code', up.pair_code);
-        if ((members || []).length === 1) {
+        const { data: pairRow } = await supabase
+          .from('pairs').select('timezone').eq('code', up.pair_code).maybeSingle();
+
+        const isSolo = (members || []).length <= 1;
+        const pairHasNoTz = !pairRow?.timezone;
+
+        if (isSolo || pairHasNoTz) {
           await supabase.from('pairs').update({ timezone: tz }).eq('code', up.pair_code);
         }
       }

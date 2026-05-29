@@ -5,7 +5,5 @@ compatibility_flags = ["nodejs_compat"]
 
 [triggers]
 crons = [
-  "*/30 * * * *",   # частые задачи (streaks, cleanup, summary в 9 UTC)
-  "0 18 * * *"      # ежедневное напоминание — раз в сутки в 18:00 UTC
+  "*/30 * * * *"   # все задачи: streaks/cleanup каждые 30 мин; напоминания в 18:00 UTC и сводка в 9:00 UTC — один раз в день (логика внутри index.js)
 ]
-

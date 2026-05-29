@@ -6,6 +6,10 @@ export default {
 
     const now = new Date();
     const hour = now.getUTCHours();
+    const minute = now.getUTCMinutes();
+    // Задачи "раз в день" должны срабатывать только в первом 30-минутном
+    // запуске часа (минуты 0–29), иначе при кроне */30 они выполнятся дважды.
+    const isFirstHalfOfHour = minute < 30;
 
     // 1. Серии — каждый запуск
     try {
@@ -19,16 +23,16 @@ export default {
       console.log('Cleanup:', await r3.json());
     } catch (e) { console.error('Cleanup error:', e); }
 
-    // 3. Напоминания — ТОЛЬКО в 18:00 UTC (21:00 МСК)
-    if (hour === 18) {
+    // 3. Напоминания — ТОЛЬКО в 18:00 UTC (21:00 МСК), один раз
+    if (hour === 18 && isFirstHalfOfHour) {
       try {
         const r2 = await fetch(`${baseUrl}/api/send-reminders`, { method: 'POST', headers });
         console.log('Reminders:', await r2.json());
       } catch (e) { console.error('Reminder error:', e); }
     }
 
-    // 4. Ежедневная сводка админу — в 9:00 UTC (12:00 МСК)
-    if (hour === 9) {
+    // 4. Ежедневная сводка админу — в 9:00 UTC (12:00 МСК), один раз
+    if (hour === 9 && isFirstHalfOfHour) {
       try {
         const r4 = await fetch(`${baseUrl}/api/admin-daily-summary`, { method: 'POST', headers });
         console.log('Daily summary:', await r4.json());

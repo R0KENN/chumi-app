@@ -105,7 +105,7 @@ export default function PairScreen() {
   const { lang, setLang } = useLang();
   const { pairs, refreshPairs } = usePairs();
   const tg = window.Telegram?.WebApp;
-  const userId = String(tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || '713156118');
+  const userId = String(tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || 'guest');
   const isAdmin = ADMIN_IDS.includes(userId);
 
   const [pair, setPair] = useState(null);
@@ -1352,72 +1352,10 @@ const handleSendSticker = async (sticker) => {
     }
 
     // ─── send_sticker: открываем модалку выбора стикера ───
-if (task.key === 'send_sticker') {
-  setShowStickers(true);
-  return;
-}
-
-    // ─── send_sticker / send_media: prepared inline через выбор чата ───
-    const hint = task.key === 'send_sticker'
-      ? (lang === 'ru'
-          ? 'После отправки сообщения отправь партнёру любой стикер 🎨'
-          : 'After sending the message, send any sticker to your partner 🎨')
-      : (lang === 'ru'
-          ? 'После отправки сообщения отправь партнёру фото или видео 📸'
-          : 'After sending the message, send a photo or video to your partner 📸');
-
-    if (tg?.showAlert) {
-      await new Promise(resolve => tg.showAlert(hint, resolve));
-    } else {
-      alert(hint);
-    }
-
-    let preparedId = null;
-    try {
-      const res = await fetch(`${API}/prepare-task-message`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ userId, pairCode: pairId, taskKey: task.key, text }),
-      });
-      const data = await res.json();
-      if (data.prepared_message_id) preparedId = data.prepared_message_id;
-    } catch (e) {}
-
-    if (preparedId && tg?.shareMessage) {
-      tg.shareMessage(preparedId, (ok) => {
-        if (ok) {
-          haptic('success');
-          setCompleting(true);
-          completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
-        }
-      });
+    if (task.key === 'send_sticker') {
+      setShowStickers(true);
       return;
     }
-
-    // Fallback
-    const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
-    try {
-      if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
-      else window.open(shareUrl, '_blank');
-    } catch (e) {}
-
-    let counted = false;
-    const onHide = () => {
-      if (counted) return;
-      counted = true;
-      document.removeEventListener('visibilitychange', onHide);
-      try { tg?.offEvent?.('viewportChanged', onHide); } catch (e) {}
-      setCompleting(true);
-      completeTask(task.key).then(() => load()).finally(() => setCompleting(false));
-    };
-    document.addEventListener('visibilitychange', onHide);
-    try { tg?.onEvent?.('viewportChanged', onHide); } catch (e) {}
-    setTimeout(() => {
-      if (!counted) {
-        document.removeEventListener('visibilitychange', onHide);
-        try { tg?.offEvent?.('viewportChanged', onHide); } catch (e) {}
-      }
-    }, 60000);
   };
 
 

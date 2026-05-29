@@ -45,3 +45,22 @@ export function getLevel(totalPoints) {
     remaining: 0,
   };
 }
+
+// ─── Защита от рассинхрона с сервером ───
+// Пороги уровней ДОЛЖНЫ совпадать с frontend/functions/_levels.js.
+// Если меняешь maxPoints здесь — обнови и серверный файл, и наоборот.
+// Эта константа — «снимок» серверных порогов; при расхождении в dev
+// выводится предупреждение в консоль.
+const SERVER_MAX_POINTS = [33, 45, 63, 90, 135, 200];
+if (import.meta?.env?.DEV) {
+  const clientPoints = LEVELS.map(l => l.maxPoints);
+  const mismatch = clientPoints.length !== SERVER_MAX_POINTS.length
+    || clientPoints.some((p, i) => p !== SERVER_MAX_POINTS[i]);
+  if (mismatch) {
+    console.warn(
+      '[Chumi] Рассинхрон уровней! Клиент:', clientPoints,
+      'Ожидалось (сервер):', SERVER_MAX_POINTS,
+      '→ обнови frontend/functions/_levels.js или этот файл.'
+    );
+  }
+}

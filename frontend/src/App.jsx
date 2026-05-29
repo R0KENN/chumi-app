@@ -107,14 +107,22 @@ function App() {
         console.error('TG init error:', e);
       }
 
-      // Fallback: SDK не загрузился (прокси заблокировал telegram.org)
-      // или приложение открыто вне Telegram
+      // Если SDK именно УПАЛ (прокси/VPN заблокировал telegram.org) — НЕ выдаём
+      // гостевой доступ, а оставляем telegramUserId пустым: ниже отрисуется
+      // экран с инструкцией про прокси (window.__tgSdkFailed).
+      if (window.__tgSdkFailed) {
+        return;
+      }
+
+      // Fallback: приложение открыто просто вне Telegram (например, в браузере
+      // при локальной разработке) — работаем под нейтральным гостевым ID.
+      // ВАЖНО: НЕ админский ID, чтобы случайный пользователь не получил админ-права.
       try {
-        const testId = localStorage.getItem('chumi_test_uid') || '713156118';
+        const testId = localStorage.getItem('chumi_test_uid') || 'guest';
         localStorage.setItem('chumi_test_uid', testId);
         setTelegramUserId(testId);
       } catch {
-        setTelegramUserId('713156118');
+        setTelegramUserId('guest');
       }
     })();
 
@@ -146,9 +154,7 @@ function App() {
     } catch (e) {}
   }, [telegramUserId, initData]);
 
-  if (!telegramUserId) return <div className="sk-loading"><div className="sk-spinner" /></div>;
-
-    if (window.__tgSdkFailed) {
+  if (window.__tgSdkFailed) {
     return (
       <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif', maxWidth: 360, margin: '0 auto' }}>
         <div style={{ fontSize: 56, marginBottom: 16 }}>🌐</div>
@@ -167,6 +173,8 @@ function App() {
       </div>
     );
   }
+
+  if (!telegramUserId) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 
 
   return (

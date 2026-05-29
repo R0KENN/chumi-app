@@ -73,9 +73,13 @@ const MAX_PAIRS_BASE = 2;
 const WEBAPP_URL = 'https://chumi-app.pages.dev';
 const FIRE_EMOJI_ID = '5368324170671202286';
 
-// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку
+// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку.
+// ВАЖНО: обратный слеш экранируем ПЕРВЫМ, иначе он испортит уже добавленные слеши.
+// Набор символов — под legacy parse_mode: 'Markdown' (_ * ` [ ]).
 function escapeMd(s) {
-  return String(s || '').replace(/([_*`\[\]])/g, '\\$1');
+  return String(s || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/([_*`\[\]])/g, '\\$1');
 }
 
 // Команды для обычных пользователей
@@ -402,6 +406,13 @@ export async function onRequestPost(context) {
         return new Response('OK');
       }
 
+      // ── Единое чтение полей payload (поддержка короткого формата t/s/u/r
+      // и длинного type/skinId/userId/recipientId) ──
+      const pType = payload.type || payload.t || null;          // 'skin' | 'skin_gift' | undefined
+      const pSkinId = payload.skinId || payload.s || null;
+      const pRecipientId = payload.recipientId || payload.r || null;
+      const pProductId = payload.productId || null;             // 'extra_slot' | 'premium_monthly'
+
       // ── Sanity-check: проверяем что заплатили правильную сумму ──
       const EXPECTED_AMOUNT = {
         extra_slot: 50,
@@ -409,11 +420,13 @@ export async function onRequestPost(context) {
         skin: 25,
         skin_gift: 25,
       };
-let productKey;
-const payloadType = payload.type || payload.t;
-if (payloadType === 'skin') productKey = 'skin';
-else if (payloadType === 'skin_gift') productKey = 'skin_gift';
-else productKey = payload.productId;
+      // productKey определяется ОДИН раз и используется и для проверки суммы,
+      // и для дальнейшей обработки — они не могут разойтись.
+      let productKey;
+      if (pType === 'skin') productKey = 'skin';
+      else if (pType === 'skin_gift') productKey = 'skin_gift';
+      else productKey = pProductId;
+
       const expected = EXPECTED_AMOUNT[productKey];
       if (expected !== undefined && payment.total_amount !== expected) {
         console.error(`Payment amount mismatch: got ${payment.total_amount}, expected ${expected}`);
@@ -432,22 +445,20 @@ else productKey = payload.productId;
       }
 
       // ── Skin purchase ──
-      const buyType = payload.type || payload.t;
-      const buySkinId = payload.skinId || payload.s;
-      if (buyType === 'skin' && buySkinId) {
+      if (pType === 'skin' && pSkinId) {
         const { data: alreadyOwned } = await supabase
           .from('user_skins')
           .select('id')
           .eq('user_id', userId)
-          .eq('skin_id', buySkinId)
+          .eq('skin_id', pSkinId)
           .maybeSingle();
         if (!alreadyOwned) {
           await supabase.from('user_skins').insert({
             user_id: userId,
-            skin_id: buySkinId,
+            skin_id: pSkinId,
           });
         }
-        const skinName = buySkinId.charAt(0).toUpperCase() + buySkinId.slice(1);
+        const skinName = pSkinId.charAt(0).toUpperCase() + pSkinId.slice(1);
         await sendMessage(env, update.message.chat.id,
           lang === 'ru' ? `✅ Наряд *${escapeMd(skinName)}* разблокирован! 🎨` : `✅ Outfit *${escapeMd(skinName)}* unlocked! 🎨`,
           webAppButton
@@ -468,26 +479,21 @@ else productKey = payload.productId;
       }
 
       // ── Skin GIFT (подарок партнёру) ──
-      // Поддерживаем и новый короткий формат payload (t/s/u/r), и старый длинный
-      const giftType = payload.type || payload.t;
-      const giftSkinId = payload.skinId || payload.s;
-      const giftRecipientId = payload.recipientId || payload.r;
-
-      if (giftType === 'skin_gift' && giftSkinId && giftRecipientId) {
-        const recipientId = String(giftRecipientId);
-        const skinName = giftSkinId.charAt(0).toUpperCase() + giftSkinId.slice(1);
+      if (pType === 'skin_gift' && pSkinId && pRecipientId) {
+        const recipientId = String(pRecipientId);
+        const skinName = pSkinId.charAt(0).toUpperCase() + pSkinId.slice(1);
 
         // Проверяем, не владеет ли получатель уже этим скином
         const { data: alreadyOwned } = await supabase
           .from('user_skins')
           .select('id')
           .eq('user_id', recipientId)
-          .eq('skin_id', giftSkinId)
+          .eq('skin_id', pSkinId)
           .maybeSingle();
         if (!alreadyOwned) {
           await supabase.from('user_skins').insert({
             user_id: recipientId,
-            skin_id: giftSkinId,
+            skin_id: pSkinId,
           });
         }
 
@@ -528,7 +534,7 @@ else productKey = payload.productId;
 
 
       // ── Extra slot ──
-      if (payload.productId === 'extra_slot') {
+      if (pProductId === 'extra_slot') {
         // Атомарный upsert через RPC был бы лучше, но оставляем select+update/insert,
         // защищая дубль через unique-индекс на telegram_user_id
         const { data: existing } = await supabase
@@ -561,7 +567,7 @@ else productKey = payload.productId;
       }
 
       // ── Premium monthly ──
-      if (payload.productId === 'premium_monthly') {
+      if (pProductId === 'premium_monthly') {
         const now = new Date();
 
         // Берём максимум(текущая_активная_подписка.expires_at, now) + 30 дней

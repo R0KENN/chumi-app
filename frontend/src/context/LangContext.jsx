@@ -174,7 +174,7 @@ function getUserId() {
     const uid = tg?.initDataUnsafe?.user?.id?.toString();
     if (uid) return uid;
   } catch (e) {}
-  return localStorage.getItem('chumi_test_uid') || '713156118';
+  return localStorage.getItem('chumi_test_uid') || 'guest';
 }
 
 // CloudStorage helpers (Bot API 6.9+)
