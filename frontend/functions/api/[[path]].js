@@ -364,6 +364,12 @@ export async function onRequest(context) {
       const pairCode = parts[3];
       const userId = parts[4];
 
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (!(await isPairMember(supabase, pairCode, authedId))) {
+        return json({ error: 'Not a member' }, 403);
+      }
+
       const { data: pair } = await supabase
         .from('pairs').select('*').eq('code', pairCode).single();
       if (!pair) return json({ error: 'Pair not found' }, 404);
@@ -490,6 +496,12 @@ export async function onRequest(context) {
 if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
   const pairCode = path.split('/')[3];
   const monthParam = url.searchParams.get('month'); // YYYY-MM, опционально
+
+  const authedId = getAuthedUserId(request, env);
+  if (!authedId) return json({ error: 'Unauthorized' }, 401);
+  if (!(await isPairMember(supabase, pairCode, authedId))) {
+    return json({ error: 'Not a member' }, 403);
+  }
 
   const { data: pair } = await supabase
     .from('pairs').select('timezone, created_at').eq('code', pairCode).maybeSingle();
@@ -2312,6 +2324,13 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     // ── GET /api/recoveries-left/:pairCode ──
     if (request.method === 'GET' && path.match(/^\/api\/recoveries-left\/[^/]+$/)) {
       const pairCode = path.split('/')[3];
+
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (!(await isPairMember(supabase, pairCode, authedId))) {
+        return json({ error: 'Not a member' }, 403);
+      }
+
       const { data: pair } = await supabase
         .from('pairs')
         .select('streak_recoveries_used, last_recovery_month, timezone')
