@@ -428,7 +428,7 @@ useEffect(() => {
     if (isAdmin) { setMaxPairs(999); return; }
     (async () => {
       try {
-        const res = await fetch(`${API}/user-slots/${userId}`);
+        const res = await fetch(`${API}/user-slots/${userId}`, { headers: authGetHeaders() });
         const data = await res.json();
         if (data.maxPairs) setMaxPairs(data.maxPairs);
       } catch (e) {}
@@ -439,7 +439,7 @@ useEffect(() => {
     if (!pair?.members) return;
     pair.members.forEach(async (m) => {
       try {
-        const res = await fetch(`${API}/avatar/${m.user_id}`);
+        const res = await fetch(`${API}/avatar/${m.user_id}`, { headers: authGetHeaders() });
         const data = await res.json();
         if (data.avatar_url) setAvatars(prev => ({ ...prev, [m.user_id]: data.avatar_url }));
       } catch (e) {}
@@ -456,7 +456,7 @@ useEffect(() => {
     }
     (async () => {
       try {
-        const res = await fetch(`${API}/premium/${userId}`);
+        const res = await fetch(`${API}/premium/${userId}`, { headers: authGetHeaders() });
         const data = await res.json();
         setPremiumActive(data.premium || false);
         setPremiumExpires(data.expires_at || null);
@@ -471,7 +471,7 @@ useEffect(() => {
       if (rankingAvatarsRef.current[uid]) return;
       rankingAvatarsRef.current[uid] = true;
       try {
-        const r = await fetch(`${API}/avatar/${uid}`);
+        const r = await fetch(`${API}/avatar/${uid}`, { headers: authGetHeaders() });
         const d = await r.json();
         if (d.avatar_url) {
           rankingAvatarsRef.current[uid] = d.avatar_url;
@@ -484,7 +484,10 @@ useEffect(() => {
   const loadRanking = async () => {
     setRankingLoading(true);
     try {
-      const [topRes, rndRes] = await Promise.all([fetch(`${API}/ranking`), fetch(`${API}/ranking-random`)]);
+      const [topRes, rndRes] = await Promise.all([
+        fetch(`${API}/ranking`, { headers: authGetHeaders() }),
+        fetch(`${API}/ranking-random`, { headers: authGetHeaders() }),
+      ]);
       const topData = await topRes.json();
       const rndData = await rndRes.json();
       if (topData.ranking) { setRanking(topData.ranking); loadRankingAvatars(topData.ranking); }
@@ -513,7 +516,7 @@ useEffect(() => {
     setRecoveriesLeft(5); // сброс на дефолт при смене пары
     (async () => {
       try {
-        const res = await fetch(`${API}/recoveries-left/${pairId}`);
+        const res = await fetch(`${API}/recoveries-left/${pairId}`, { headers: authGetHeaders() });
         const data = await res.json();
         if (typeof data.remaining === 'number') setRecoveriesLeft(data.remaining);
       } catch (e) {}
