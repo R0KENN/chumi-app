@@ -210,6 +210,30 @@ function extractUserId(request, env, bodyUserId, opts = {}) {
   return null;
 }
 
+// Возвращает userId вызывающего ТОЛЬКО из проверенного initData (без dev-fallback по URL).
+// Для GET-эндпоинтов, где userId нельзя брать из тела/пути.
+function getAuthedUserId(request, env) {
+  const initData = request.headers.get('X-Telegram-Init-Data');
+  if (initData) {
+    const validated = validateInitData(initData, env.BOT_TOKEN);
+    if (validated) return validated.userId;
+  }
+  if (env.ALLOW_DEV_AUTH === '1') {
+    // В dev-режиме разрешаем читать как «гость» только при явном заголовке
+    const devId = request.headers.get('X-Dev-User-Id');
+    if (devId) return String(devId);
+  }
+  return null;
+}
+
+// Проверяет, что userId — участник пары pairCode.
+async function isPairMember(supabase, pairCode, userId) {
+  if (!pairCode || !userId) return false;
+  const { data } = await supabase
+    .from('pair_users').select('user_id')
+    .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+  return !!data;
+}
 
 function isCronAuthorized(request, env) {
   if (!env.CRON_SECRET) return false;
@@ -518,9 +542,14 @@ if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
 // Возвращает все записи дневника пары, сгруппированные по датам
 if (request.method === 'GET' && path.match(/^\/api\/diary\/[^/]+$/)) {
   const pairCode = path.split('/')[3];
-const { data: entries } = await supabase
-  .from('pair_diary')
-  .select('id, user_id, emoji, text, entry_date, created_at')
+  const authedId = getAuthedUserId(request, env);
+  if (!authedId) return json({ error: 'Unauthorized' }, 401);
+  if (!(await isPairMember(supabase, pairCode, authedId))) {
+    return json({ error: 'Not a member' }, 403);
+  }
+  const { data: entries } = await supabase
+    .from('pair_diary')
+    .select('id, user_id, emoji, text, entry_date, created_at')
     .eq('pair_code', pairCode)
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: true })
