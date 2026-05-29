@@ -1,6 +1,6 @@
 export default {
   async scheduled(event, env) {
-    const baseUrl = 'https://chumi-app.pages.dev';
+    const baseUrl = env.BASE_URL || 'https://chumi-app.pages.dev';
     const headers = { 'Content-Type': 'application/json' };
     if (env.CRON_SECRET) headers['Authorization'] = `Bearer ${env.CRON_SECRET}`;
 

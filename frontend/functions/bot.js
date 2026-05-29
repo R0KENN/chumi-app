@@ -936,7 +936,7 @@ if (startParam.startsWith('ref_')) {
       if (!ADMIN_IDS.includes(userId)) return new Response('OK');
 
       // Зовём эндпоинт с CRON_SECRET в заголовке
-      const r = await fetch(`https://chumi-app.pages.dev/api/admin-daily-summary`, {
+      const r = await fetch(`${env.BASE_URL || WEBAPP_URL}/api/admin-daily-summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

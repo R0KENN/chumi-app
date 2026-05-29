@@ -670,6 +670,11 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
     // ── GET /api/user-slots/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/user-slots\/[^/]+$/)) {
       const userId = path.split('/')[3];
+
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+
       const maxPairs = await getMaxPairs(supabase, userId);
       const { data: existing } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);
@@ -2134,6 +2139,11 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     // ── GET /api/skins/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/skins\/[^/]+$/)) {
       const userId = path.split('/')[3];
+
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+
       const { data: owned } = await supabase
         .from('user_skins').select('skin_id').eq('user_id', userId);
       const { data: referrals } = await supabase
@@ -2299,6 +2309,11 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     // ── GET /api/premium/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/premium\/[^/]+$/)) {
       const userId = path.split('/')[3];
+
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+
       const premium = await isPremium(supabase, userId);
       let expiresAt = null;
 
