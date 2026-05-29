@@ -47,7 +47,7 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
         body: JSON.stringify({ pairCode: createdCode }),
       });
       const data = await res.json();
-      const inviteLink = data.inviteLink || `https://t.me/chumi_pet_bot?start=join_${createdCode}`;
+      const inviteLink = data.inviteLink || `https://t.me/ChumiPetBot?start=join_${createdCode}`;
       const shareText = lang === 'ru'
         ? `Присоединяйся к моей паре в Chumi! 🔥\nКод: ${createdCode}`
         : `Join my pair in Chumi! 🔥\nCode: ${createdCode}`;

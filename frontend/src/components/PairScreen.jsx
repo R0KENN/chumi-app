@@ -186,7 +186,7 @@ const currentMonthStr = todayStr.slice(0, 7);
 const loadCalendar = useCallback(async (month) => {
   try {
     setCalendarData(null);
-    const res = await fetch(`${API}/streak-calendar/${pairId}?month=${month}`);
+    const res = await fetch(`${API}/streak-calendar/${pairId}?month=${month}`, { headers: authGetHeaders() });
     const data = await res.json();
     if (!data.error) setCalendarData(data);
   } catch (e) {}
@@ -211,7 +211,7 @@ const [diarySaving, setDiarySaving] = useState(false);
 const loadDiary = useCallback(async () => {
   setDiaryLoading(true);
   try {
-    const res = await fetch(`${API}/diary/${pairId}`);
+    const res = await fetch(`${API}/diary/${pairId}`, { headers: authGetHeaders() });
     const data = await res.json();
     setDiaryEntries(data.entries || []);
   } catch (e) {}
@@ -276,6 +276,15 @@ useEffect(() => {
 
   const authHeaders = () => {
     const headers = { 'Content-Type': 'application/json' };
+    const initData = getInitData();
+    if (initData) headers['X-Telegram-Init-Data'] = initData;
+    return headers;
+  };
+
+    // Заголовки для GET-запросов: только авторизация, без Content-Type
+  // (чтобы не провоцировать лишний CORS-preflight).
+  const authGetHeaders = () => {
+    const headers = {};
     const initData = getInitData();
     if (initData) headers['X-Telegram-Init-Data'] = initData;
     return headers;
@@ -391,7 +400,7 @@ useEffect(() => {
   const load = useCallback(async () => {
     try {
       setLoadError(false);
-      const res = await fetch(`${API}/pair/${pairId}/${userId}`);
+      const res = await fetch(`${API}/pair/${pairId}/${userId}`, { headers: authGetHeaders() });
       if (!res.ok) { setLoadError(true); setLoading(false); return; }
       const data = await res.json();
       if (data.error) { navigate('/'); return; }
@@ -401,7 +410,7 @@ useEffect(() => {
         const alreadyOpened = data.daily_tasks?.some(t => t.task_key === 'daily_open');
         if (!alreadyOpened) {
           await completeTask('daily_open');
-          const r2 = await fetch(`${API}/pair/${pairId}/${userId}`);
+          const r2 = await fetch(`${API}/pair/${pairId}/${userId}`, { headers: authGetHeaders() });
           const d2 = await r2.json();
           if (!d2.error) setPair(d2);
         }
