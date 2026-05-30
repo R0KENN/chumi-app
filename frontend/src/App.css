@@ -77,9 +77,10 @@ body {
 .sk-info-row {
   display: flex; align-items: center; justify-content: space-between;
   width: 100%;
-  padding-top: max(
-    108px,
-    calc(env(safe-area-inset-top) + var(--tg-content-safe-area-inset-top, 0px) + 24px)
+  padding-top: calc(
+    env(safe-area-inset-top, 0px) +
+    var(--tg-content-safe-area-inset-top, 0px) +
+    16px
   );
   padding-bottom: 8px;
 }
