@@ -965,30 +965,68 @@ if (startParam.startsWith('ref_')) {
       return new Response('OK');
     }
 
-    // /users — список последних пользователей (только для админа)
+    // /users — полный список всех пользователей (только для админа)
     if (text === '/users') {
       if (!ADMIN_IDS.includes(userId)) return new Response('OK');
 
-      const { data: users } = await supabase
-        .from('pair_users')
-        .select('user_id, display_name, username')
-        .order('user_id', { ascending: false })
-        .limit(50);
+      // Все, кто запускал бота (есть запись в user_settings), новые сверху
+      const { data: allUsers } = await supabase
+        .from('user_settings')
+        .select('telegram_user_id, lang, created_at')
+        .order('created_at', { ascending: false });
 
-      const seen = new Set();
-      const unique = (users || []).filter(u => {
-        if (seen.has(u.user_id)) return false;
-        seen.add(u.user_id);
-        return true;
+      const list = allUsers || [];
+      if (list.length === 0) {
+        await sendMessage(env, chatId, '👥 Пользователей пока нет.');
+        return new Response('OK');
+      }
+
+      // Подтягиваем имена/username из pair_users (у кого они есть)
+      const { data: named } = await supabase
+        .from('pair_users')
+        .select('user_id, display_name, username');
+
+      const nameMap = new Map();
+      for (const n of (named || [])) {
+        if (!nameMap.has(n.user_id)) {
+          nameMap.set(n.user_id, {
+            display_name: n.display_name || null,
+            username: n.username || null,
+          });
+        }
+      }
+
+      // Формируем строки
+      const lines = list.map((u, i) => {
+        const info = nameMap.get(u.telegram_user_id) || {};
+        const name = info.display_name ? escapeMd(info.display_name) : '—';
+        const uname = info.username ? '@' + escapeMd(info.username) : 'no username';
+        const date = u.created_at
+          ? new Date(u.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
+          : '—';
+        return `${i + 1}. ${name} (${uname}) \`${u.telegram_user_id}\` [${u.lang || '—'}] ${date}`;
       });
 
-      let msg = `👥 *Последние пользователи (${unique.length}):*\n\n`;
-      for (const u of unique) {
-        msg += `• ${escapeMd(u.display_name || '—')} (${u.username ? '@' + escapeMd(u.username) : 'no username'}) \`${u.user_id}\`\n`;
+      // Разбиваем на части по ~3500 символов, чтобы влезть в лимит Telegram
+      const header = `👥 *Всего пользователей: ${list.length}*\n\n`;
+      let chunk = header;
+      const chunks = [];
+      for (const line of lines) {
+        if ((chunk + line + '\n').length > 3500) {
+          chunks.push(chunk);
+          chunk = '';
+        }
+        chunk += line + '\n';
       }
-      await sendMessage(env, chatId, msg.slice(0, 4000));
+      if (chunk.trim()) chunks.push(chunk);
+
+      // Отправляем по частям
+      for (const part of chunks) {
+        await sendMessage(env, chatId, part);
+      }
       return new Response('OK');
     }
+
         // /summary — ручной запуск ежедневной сводки (только для админа)
     if (text === '/summary') {
       if (!ADMIN_IDS.includes(userId)) return new Response('OK');
