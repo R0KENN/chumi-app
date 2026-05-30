@@ -1619,7 +1619,7 @@ const handleGiftSkin = async (skinId) => {
 const renderEgg = () => (
   <video ref={eggVideoRef} key={`egg-${eggDay}`} autoPlay loop muted playsInline
     className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-    style={{width:260,height:340,objectFit:'contain',transform:'scale(1.4)',pointerEvents:'none',background:'transparent'}}>
+    style={{objectFit:'contain',transform:'scale(1.4)',pointerEvents:'none',background:'transparent'}}>
     <source src={`/pets/egg_${eggDay}_ios.mov`} type='video/mp4; codecs="hvc1"' />
     <source src={eggVideoSrc} type="video/webm" />
   </video>
@@ -1649,13 +1649,13 @@ const renderPet = () => (
   <>
     <video ref={idleVideoRef} autoPlay loop muted playsInline key={`idle-${petSrc.idle}`}
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-      style={{width:260,height:340,objectFit:'contain',transform:'scale(1.4)',pointerEvents:'none',display:petTapped?'none':'block',background:'transparent'}}>
+      style={{objectFit:'contain',transform:'scale(1.4)',pointerEvents:'none',display:petTapped?'none':'block',background:'transparent'}}>
       <source src={`/pets/${petSrc.idle}_ios.mov`} type='video/mp4; codecs="hvc1"' />
       <source src={`/pets/${petSrc.idle}.webm`} type="video/webm" />
     </video>
     <video ref={tapVideoRef} muted playsInline key={`tap-${petSrc.tap}`}
       className={`pet-animated ${petAnim ? 'tapped' : ''}`}
-      style={{width:260,height:340,objectFit:'contain',transform:'scale(1.4)',pointerEvents:'none',display:petTapped?'block':'none',background:'transparent'}}>
+      style={{objectFit:'contain',transform:'scale(1.4)',pointerEvents:'none',display:petTapped?'block':'none',background:'transparent'}}>
       <source src={`/pets/${petSrc.tap}_ios.mov`} type='video/mp4; codecs="hvc1"' />
       <source src={`/pets/${petSrc.tap}.webm`} type="video/webm" />
     </video>
