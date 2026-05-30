@@ -2039,7 +2039,7 @@ if (!opened) {
       let topStreaksText = '—';
       if (topStreaks && topStreaks.length > 0) {
         topStreaksText = topStreaks
-          .map((p, i) => `${i + 1}. ${p.pet_name || '—'} (${p.streak_days} дн.)`)
+          .map((p, i) => `${i + 1}. ${escapeMd(p.pet_name || '—')} (${p.streak_days} дн.)`)
           .join('\n');
       }
 

@@ -101,6 +101,7 @@ const ADMIN_COMMANDS = [
   { command: 'users', description: '👥 Последние пользователи' },
   { command: 'summary', description: '📅 Ежедневная сводка' },
   { command: 'grantbee', description: '🐝 Выдать наряд Пчёлка (USER_ID)' },
+  { command: 'grantslot', description: '➕ Выдать доп. слот (USER_ID)' },
   { command: 'setcommands', description: '🔧 Обновить список команд' },
 ];
 
@@ -446,6 +447,16 @@ export async function onRequestPost(context) {
 
       // ── Skin purchase ──
       if (pType === 'skin' && pSkinId) {
+        // Идемпотентность: платёж уже обработан — выходим
+        if (chargeId) {
+          const { data: dup } = await supabase
+            .from('processed_charges')
+            .select('charge_id')
+            .eq('charge_id', chargeId)
+            .maybeSingle();
+          if (dup) return new Response('OK');
+        }
+
         const { data: alreadyOwned } = await supabase
           .from('user_skins')
           .select('id')
@@ -458,6 +469,16 @@ export async function onRequestPost(context) {
             skin_id: pSkinId,
           });
         }
+
+        // Помечаем платёж обработанным
+        if (chargeId) {
+          await supabase.from('processed_charges').insert({
+            charge_id: chargeId,
+            user_id: userId,
+            product: 'skin',
+          }).then(() => {}, () => {});
+        }
+
         const skinName = pSkinId.charAt(0).toUpperCase() + pSkinId.slice(1);
         await sendMessage(env, update.message.chat.id,
           lang === 'ru' ? `✅ Наряд *${escapeMd(skinName)}* разблокирован! 🎨` : `✅ Outfit *${escapeMd(skinName)}* unlocked! 🎨`,
@@ -480,6 +501,16 @@ export async function onRequestPost(context) {
 
       // ── Skin GIFT (подарок партнёру) ──
       if (pType === 'skin_gift' && pSkinId && pRecipientId) {
+                // Идемпотентность: платёж уже обработан — выходим
+        if (chargeId) {
+          const { data: dup } = await supabase
+            .from('processed_charges')
+            .select('charge_id')
+            .eq('charge_id', chargeId)
+            .maybeSingle();
+          if (dup) return new Response('OK');
+        }
+
         const recipientId = String(pRecipientId);
         const skinName = pSkinId.charAt(0).toUpperCase() + pSkinId.slice(1);
 
@@ -495,6 +526,15 @@ export async function onRequestPost(context) {
             user_id: recipientId,
             skin_id: pSkinId,
           });
+        }
+
+                // Помечаем платёж обработанным
+        if (chargeId) {
+          await supabase.from('processed_charges').insert({
+            charge_id: chargeId,
+            user_id: userId,
+            product: 'skin_gift',
+          }).then(() => {}, () => {});
         }
 
         // Имя дарителя
@@ -535,8 +575,16 @@ export async function onRequestPost(context) {
 
       // ── Extra slot ──
       if (pProductId === 'extra_slot') {
-        // Атомарный upsert через RPC был бы лучше, но оставляем select+update/insert,
-        // защищая дубль через unique-индекс на telegram_user_id
+        // Идемпотентность: если этот платёж уже обработан — выходим
+        if (chargeId) {
+          const { data: dupSlot } = await supabase
+            .from('processed_charges')
+            .select('charge_id')
+            .eq('charge_id', chargeId)
+            .maybeSingle();
+          if (dupSlot) return new Response('OK');
+        }
+
         const { data: existing } = await supabase
           .from('user_slots')
           .select('extra_slots')
@@ -553,7 +601,17 @@ export async function onRequestPost(context) {
             .insert({ telegram_user_id: userId, extra_slots: 1 });
         }
         await sendMessage(env, update.message.chat.id, T[lang].slotBought, webAppButton);
-                // Уведомление админу
+
+        // Помечаем платёж обработанным
+        if (chargeId) {
+          await supabase.from('processed_charges').insert({
+            charge_id: chargeId,
+            user_id: userId,
+            product: 'extra_slot',
+          }).then(() => {}, () => {});
+        }
+
+        // Уведомление админу
         const slotBuyer = update.message.from.first_name || 'User';
         const slotBuyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
         await notifyAdmins(env,
@@ -851,7 +909,7 @@ if (startParam.startsWith('ref_')) {
         const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
         if (!pair) continue;
         const lv = getLevel(pair.growth_points || 0);
-        const name = pair.pet_name || lv.name;
+        const name = escapeMd(pair.pet_name || lv.name);
         msg += T[lang].pairLine(lv.emoji, name, lv.name, pair.code, pair.growth_points || 0, pair.streak_days || 0);
       }
       await sendMessage(env, chatId, msg, webAppButton);
@@ -868,7 +926,7 @@ if (startParam.startsWith('ref_')) {
         if (!pair) continue;
         const { data: members } = await supabase.from('pair_users').select('user_id, display_name').eq('pair_code', up.pair_code);
         const lv = getLevel(pair.growth_points || 0);
-        const name = pair.pet_name || lv.name;
+        const name = escapeMd(pair.pet_name || lv.name);
         const partner = members?.find(m => m.user_id !== userId);
         msg += T[lang].statusLine(
           lv.emoji, name, lv.name, pair.code,
@@ -1012,6 +1070,64 @@ if (startParam.startsWith('ref_')) {
 
       await sendMessage(env, chatId,
         `✅ Наряд *Пчёлка* выдан пользователю \`${targetId}\` и отправлено уведомление.`);
+      return new Response('OK');
+    }
+
+        // /grantslot USER_ID — только для админа, выдаёт бесплатный доп. слот
+    if (text.startsWith('/grantslot')) {
+      if (!ADMIN_IDS.includes(userId)) return new Response('OK');
+
+      const parts = text.split(/\s+/);
+      const targetId = (parts[1] || '').trim();
+      if (!targetId || !/^\d+$/.test(targetId)) {
+        await sendMessage(env, chatId, '⚠️ Использование: `/grantslot USER_ID`');
+        return new Response('OK');
+      }
+
+      // Прибавляем один слот: если запись есть — инкремент, иначе создаём
+      const { data: existing } = await supabase
+        .from('user_slots')
+        .select('extra_slots')
+        .eq('telegram_user_id', targetId)
+        .maybeSingle();
+
+      let newTotal;
+      if (existing) {
+        newTotal = (existing.extra_slots || 0) + 1;
+        const { error: updErr } = await supabase
+          .from('user_slots')
+          .update({ extra_slots: newTotal })
+          .eq('telegram_user_id', targetId);
+        if (updErr) {
+          await sendMessage(env, chatId, `❌ Ошибка: \`${updErr.message}\``);
+          return new Response('OK');
+        }
+      } else {
+        newTotal = 1;
+        const { error: insErr } = await supabase
+          .from('user_slots')
+          .insert({ telegram_user_id: targetId, extra_slots: 1 });
+        if (insErr) {
+          await sendMessage(env, chatId, `❌ Ошибка: \`${insErr.message}\``);
+          return new Response('OK');
+        }
+      }
+
+      // Уведомляем получателя на его языке
+      const targetLang = await getUserLang(supabase, targetId);
+      const notifyText = targetLang === 'ru'
+        ? `🎁 Тебе подарили дополнительный слот для пары!\n\nТеперь у тебя на 1 пару больше. Открой Chumi и создай новую пару 🐾`
+        : `🎁 You've been gifted an extra pair slot!\n\nYou can now create one more pair. Open Chumi and start a new one 🐾`;
+
+      try {
+        await sendMessage(env, targetId, notifyText, webAppButton);
+      } catch (e) {
+        await sendMessage(env, chatId, `⚠️ Слот выдан, но не удалось отправить уведомление: \`${e.message}\``);
+        return new Response('OK');
+      }
+
+      await sendMessage(env, chatId,
+        `✅ Дополнительный слот выдан пользователю \`${targetId}\`.\nВсего доп. слотов у него теперь: *${newTotal}*.`);
       return new Response('OK');
     }
 
