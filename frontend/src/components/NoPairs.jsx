@@ -12,7 +12,7 @@ export default function NoPairs({ onCreate, onJoin }) {
   return (
     <div style={{
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', minHeight:'100dvh',
+      minHeight:'100vh',
       padding: 20, paddingTop: 'max(40px, env(safe-area-inset-top))', paddingBottom: 'max(40px, env(safe-area-inset-bottom))',
       textAlign:'center',
       background:'linear-gradient(180deg, #FFF8E1 0%, #FFECB3 50%, #FFE082 100%)',

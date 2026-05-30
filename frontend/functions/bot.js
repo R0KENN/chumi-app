@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { LEVELS, getLevel } from './_levels.js';
-import { createClient } from '@supabase/supabase-js';
-import { LEVELS, getLevel } from './_levels.js';
 
 // ── Глобальные константы (объявлены до функций, которые их используют) ──
 const ADMIN_IDS = ['713156118'];

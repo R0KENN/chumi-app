@@ -385,12 +385,13 @@ useEffect(() => {
         body: JSON.stringify({ code: pairId, userId, taskKey }),
       });
       const data = await res.json();
-      // Если бэк сбросил пару из-за долгой неактивности — сигналим наверх
+      // Если бэк сбросил пару из-за долгой неактивности — перезагружаем данные
       if (data.reset) {
-        return { ok: false, reset: true };
+        await new Promise(r => setTimeout(r, 100));
+        return false;
       }
-      return { ok: !data.error, reset: false };
-    } catch (e) { return { ok: false, reset: false }; }
+      return !data.error;
+    } catch (e) { return false; }
   }, [pairId, userId]);
 
   const load = useCallback(async () => {
