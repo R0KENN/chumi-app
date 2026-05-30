@@ -79,8 +79,7 @@ body {
   width: 100%;
   padding-top: calc(
     env(safe-area-inset-top, 0px) +
-    var(--tg-content-safe-area-inset-top, 0px) +
-    16px
+    var(--chumi-top-pad, 16px)
   );
   padding-bottom: 8px;
 }

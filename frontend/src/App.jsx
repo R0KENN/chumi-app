@@ -96,6 +96,16 @@ function App() {
 
           if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
 
+          // ── Верхний отступ под плашку Telegram в зависимости от платформы ──
+          // На десктопе/вебе плашка отдельная — нужен маленький отступ.
+          // На мобильном в fullscreen плашка поверх контента — нужен большой.
+          try {
+            const platform = tg.platform || '';
+            const isMobilePlatform = platform === 'ios' || platform === 'android';
+            const topPad = isMobilePlatform ? '104px' : '16px';
+            document.documentElement.style.setProperty('--chumi-top-pad', topPad);
+          } catch (e) { /* ignore */ }
+
           try { tg.setHeaderColor?.('#FFF8E1'); } catch (e) { /* ignore */ }
           try { tg.setBackgroundColor?.('#FFF8E1'); } catch (e) { /* ignore */ }
           try { if (tg.setBottomBarColor) tg.setBottomBarColor('#FFF8E1'); } catch (e) { /* ignore */ }
