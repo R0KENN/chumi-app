@@ -1,5 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { LEVELS, getLevel } from './_levels.js';
+import { createClient } from '@supabase/supabase-js';
+import { LEVELS, getLevel } from './_levels.js';
+
+// ── Глобальные константы (объявлены до функций, которые их используют) ──
+const ADMIN_IDS = ['713156118'];
+const MAX_PAIRS_BASE = 2;
+const WEBAPP_URL = 'https://chumi-app.pages.dev';
+const FIRE_EMOJI_ID = '5368324170671202286';
 
 function getSupabase(env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
@@ -31,7 +39,6 @@ async function sendMessage(env, chatId, text, extra = {}) {
     ...extra,
   };
 
-  // Если кнопка не задана явно — добавляем стандартную «Открыть Chumi»
   if (!body.reply_markup) {
     body.reply_markup = {
       inline_keyboard: [[
@@ -43,11 +50,25 @@ async function sendMessage(env, chatId, text, extra = {}) {
     // — Telegram это принимает, оставляем как есть
   }
 
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      let desc = '';
+      try { const j = await res.json(); desc = j.description || ''; } catch {}
+      const blocked = res.status === 403 || /blocked|deactivated|chat not found/i.test(desc);
+      console.warn(`sendMessage failed (chat ${chatId}, status ${res.status})${blocked ? ' [blocked]' : ''}: ${desc}`);
+      return { ok: false, blocked, status: res.status, description: desc };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('sendMessage network error:', e);
+    return { ok: false, error: String(e) };
+  }
 }
 
 // Отправляет уведомление всем админам
@@ -67,11 +88,6 @@ async function notifyAdmins(env, text) {
     } catch (e) {}
   }
 }
-
-const ADMIN_IDS = ['713156118'];
-const MAX_PAIRS_BASE = 2;
-const WEBAPP_URL = 'https://chumi-app.pages.dev';
-const FIRE_EMOJI_ID = '5368324170671202286';
 
 // Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку.
 // ВАЖНО: обратный слеш экранируем ПЕРВЫМ, иначе он испортит уже добавленные слеши.

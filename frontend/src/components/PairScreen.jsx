@@ -378,8 +378,6 @@ useEffect(() => {
     tg.BackButton.hide();
   }, [tg]);
 
-
-
   const completeTask = useCallback(async (taskKey) => {
     try {
       const res = await fetch(`${API}/complete-task`, {
@@ -387,15 +385,13 @@ useEffect(() => {
         body: JSON.stringify({ code: pairId, userId, taskKey }),
       });
       const data = await res.json();
-      // Если бэк сбросил пару из-за долгой неактивности — перезагружаем данные
+      // Если бэк сбросил пару из-за долгой неактивности — сигналим наверх
       if (data.reset) {
-        await new Promise(r => setTimeout(r, 100));
-        return false;
+        return { ok: false, reset: true };
       }
-      return !data.error;
-    } catch (e) { return false; }
+      return { ok: !data.error, reset: false };
+    } catch (e) { return { ok: false, reset: false }; }
   }, [pairId, userId]);
-
 
   const load = useCallback(async () => {
     try {
@@ -1788,6 +1784,29 @@ const renderPet = () => (
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {pair.is_dead && !hasPartner && (
+        <div className="sk-overlay" style={{ zIndex: 200 }}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 64, textAlign: 'center', marginBottom: 12 }}>💀</div>
+            <h3 style={{ textAlign: 'center', color: '#e53e3e' }}>
+              {lang === 'ru' ? 'Питомец умер' : 'Your pet has died'}
+            </h3>
+            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
+              {lang === 'ru'
+                ? 'Партнёр покинул пару. Начни заново с нового яйца — серия обнулится.'
+                : 'Your partner left the pair. Start over with a new egg — the streak will reset.'}
+            </p>
+            <button
+              onClick={handleCreateNewEgg}
+              className="sk-btn-primary"
+              style={{ background: '#F5A623' }}
+            >
+              🥚 {lang === 'ru' ? 'Создать новое яйцо' : 'Create new egg'}
+            </button>
           </div>
         </div>
       )}

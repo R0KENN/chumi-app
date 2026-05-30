@@ -143,13 +143,25 @@ async function sendTelegramMessage(env, chatId, text, extra = {}) {
       };
     }
 
-    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+
+    // Проверяем ответ Telegram: если пользователь заблокировал бота
+    // (403) или чат не найден — логируем, но не падаем.
+    if (!res.ok) {
+      let desc = '';
+      try { const j = await res.json(); desc = j.description || ''; } catch {}
+      const blocked = res.status === 403 || /blocked|deactivated|chat not found/i.test(desc);
+      console.warn(`Telegram send failed (chat ${chatId}, status ${res.status})${blocked ? ' [blocked]' : ''}: ${desc}`);
+      return { ok: false, blocked, status: res.status, description: desc };
+    }
+    return { ok: true };
   } catch (e) {
     console.error('Telegram send error:', e);
+    return { ok: false, error: String(e) };
   }
 }
 
@@ -323,6 +335,11 @@ export async function onRequest(context) {
     if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
       const userId = path.split('/')[3];
 
+      // ── Авторизация: запросить пары можно только за самого себя ──
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+
       const { data: userPairs } = await supabase
         .from('pair_users')
         .select('pair_code')
@@ -477,6 +494,15 @@ export async function onRequest(context) {
       const parts = path.split('/');
       const pairCode = parts[3];
       const userId = parts[4];
+
+      // ── Авторизация: смотреть задачи может только участник пары,
+      // и только свои собственные (userId должен совпадать с авторизованным) ──
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+      if (!(await isPairMember(supabase, pairCode, authedId))) {
+        return json({ error: 'Not a member' }, 403);
+      }
 
       const { data: pairTz } = await supabase
         .from('pairs').select('timezone').eq('code', pairCode).maybeSingle();
@@ -1156,13 +1182,19 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       if (pair.last_recovery_month !== currentMonth) used = 0;
       if (used >= 5) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
 
-      // При воскрешении серия и XP сохраняются. Только оживаем и обновляем дату.
+      // При воскрешении серия и XP полностью сохраняются.
+      // last_streak_date = сегодня — питомец оживает «сегодня», cron его не убьёт.
+      // last_pair_streak_date = ВЧЕРА — это ключевой момент: когда оба партнёра
+      // сделают daily_open сегодня, в /api/complete-task разница дат будет ровно
+      // 1 день → серия продолжится (+1), а не сбросится. Если же сегодня зайдёт
+      // только один — день не засчитается (нужны оба), как ты и хотел.
+      const yesterday = getYesterdayDate(tz);
       const { data: updated } = await supabase.from('pairs').update({
         is_dead: false,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
         last_streak_date: today,
-        last_pair_streak_date: today,
+        last_pair_streak_date: yesterday,
       }).eq('code', code).select().single();
 
       // Уведомляем партнёра о воскрешении
@@ -2091,6 +2123,25 @@ if (!opened) {
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403);
 
+      // ── Rate-limit: не чаще 1 сообщения партнёру в час ──
+      // Находим партнёра заранее, чтобы залогировать отправку именно ему.
+      const { data: rlMembers } = await supabase
+        .from('pair_users').select('user_id').eq('pair_code', code);
+      const rlPartner = (rlMembers || []).find(m => String(m.user_id) !== String(userId));
+      if (rlPartner) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: recent } = await supabase
+          .from('notification_log')
+          .select('id')
+          .eq('sender_user_id', userId)
+          .eq('target_user_id', String(rlPartner.user_id))
+          .gte('sent_at', oneHourAgo)
+          .limit(1);
+        if (recent && recent.length > 0) {
+          return json({ error: 'Too many messages', retryAfter: 3600 }, 429);
+        }
+      }
+
       const { data: pairRow } = await supabase
         .from('pairs').select('pet_name, streak_days').eq('code', code).maybeSingle();
       const petName = pairRow?.pet_name || 'Chumi';
@@ -2132,6 +2183,13 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     reply_markup: { inline_keyboard: [[{ text: btnText, web_app: { url: WEBAPP_URL } }]] },
   }),
 });
+
+        // Записываем факт отправки — для rate-limit (1 раз в час)
+        await supabase.from('notification_log').insert({
+          sender_user_id: String(userId),
+          target_user_id: String(m.user_id),
+          sent_at: new Date().toISOString(),
+        });
       }
       return json({ success: true });
     }

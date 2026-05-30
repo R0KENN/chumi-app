@@ -176,6 +176,33 @@ function App() {
 
   if (!telegramUserId) return <div className="sk-loading"><div className="sk-spinner" /></div>;
 
+    // ── Гостевой режим: приложение открыто вне Telegram ──
+  // SDK не упал (иначе сработал бы __tgSdkFailed выше), но настоящего
+  // Telegram-пользователя нет → API вернёт 401 на всё. Показываем заглушку
+  // вместо неработающего UI.
+  const isRealTgUser = !!window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  if (!isRealTgUser) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif', maxWidth: 360, margin: '0 auto' }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>🐾</div>
+        <h3 style={{ marginBottom: 12 }}>Открой Chumi в Telegram</h3>
+        <p style={{ color: '#666', fontSize: 14, lineHeight: 1.5, marginBottom: 20 }}>
+          Это мини-приложение работает только внутри Telegram.
+          Найди бота и запусти его оттуда.
+        </p>
+        <a
+          href="https://t.me/ChumiPetBot"
+          style={{
+            display: 'inline-block', padding: '12px 24px', borderRadius: 12,
+            background: '#9B72CF', color: '#fff', fontSize: 15,
+            textDecoration: 'none', fontWeight: 600,
+          }}
+        >
+          Открыть @ChumiPetBot
+        </a>
+      </div>
+    );
+  }
 
   return (
     <ErrorBoundary>
