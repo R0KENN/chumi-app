@@ -102,7 +102,7 @@ function App() {
           try {
             const platform = tg.platform || '';
             const isMobilePlatform = platform === 'ios' || platform === 'android';
-            const topPad = isMobilePlatform ? '104px' : '16px';
+            const topPad = isMobilePlatform ? '96px' : '16px';
             document.documentElement.style.setProperty('--chumi-top-pad', topPad);
           } catch (e) { /* ignore */ }
 
