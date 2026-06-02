@@ -287,6 +287,9 @@ useEffect(() => {
     const headers = {};
     const initData = getInitData();
     if (initData) headers['X-Telegram-Init-Data'] = initData;
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      headers['X-Dev-User-Id'] = String(userId);
+    }
     return headers;
   };
 
@@ -2455,12 +2458,21 @@ calendarData.days.forEach(d => {
         <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
           {lang === 'ru' ? 'Запись дня (1 в день)' : "Today's entry (1 per day)"}
         </div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-          {['😊','🥰','😂','😍','🤗','😎','😴','🥺','😢','🔥','💖','✨','🌈','☀️','🌙'].map(e => (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: 6,
+          marginBottom: 8,
+        }}>
+          {['😊','🥰','😂','😍','🤗','😎','😴',
+            '🥺','😢','😋','😇','🤔','😤','🥳',
+            '🌙','🔥','💖','✨','🌈','☀️','💕'].map(e => (
             <button key={e} onClick={() => setDiaryEmoji(e)} style={{
               fontSize: 20, padding: 4, borderRadius: 8, border: 'none',
               background: diaryEmoji === e ? accentColor + '30' : 'transparent',
               cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              aspectRatio: '1 / 1',
             }}>{e}</button>
           ))}
         </div>

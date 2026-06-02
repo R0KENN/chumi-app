@@ -59,8 +59,14 @@ export function PairsProvider({ children, telegramUserId, initData }) {
     const ctrl = new AbortController();
     const timeoutId = setTimeout(() => ctrl.abort(), 15000);
     try {
+      const devHeaders = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        ? { 'X-Dev-User-Id': String(telegramUserId) }
+        : {};
       const res = await fetch(`${API_URL}/pairs/${telegramUserId}`, {
-        headers: initData ? { 'X-Telegram-Init-Data': initData } : {},
+        headers: {
+          ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
+          ...devHeaders,
+        },
         signal: ctrl.signal,
       });
       clearTimeout(timeoutId);

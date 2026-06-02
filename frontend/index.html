@@ -18,10 +18,74 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://chumi-app.pages.dev" />
 
-<script src="https://telegram.org/js/telegram-web-app.js" onerror="window.__tgSdkFailed=true"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+    <script>
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        window.Telegram = {
+          WebApp: {
+            initData: '',
+            initDataUnsafe: { user: { id: 713156118, first_name: 'Test', language_code: 'ru' } },
+            ready: () => {}, expand: () => {},
+            setHeaderColor: () => {}, setBackgroundColor: () => {}, setBottomBarColor: () => {},
+            disableVerticalSwipes: () => {},
+            isVersionAtLeast: () => false,
+            isFullscreen: false,
+            requestFullscreen: () => {},
+            HapticFeedback: { impactOccurred: () => {}, notificationOccurred: () => {} },
+            platform: 'web',
+            MainButton: { hide: () => {} },
+            SecondaryButton: { hide: () => {} },
+            BackButton: { hide: () => {} },
+            onEvent: () => {}, offEvent: () => {},
+            openInvoice: () => {}, openLink: () => {}, openTelegramLink: () => {},
+            showAlert: (msg) => alert(msg),
+            CloudStorage: null,
+            DeviceStorage: null,
+          },
+        };
+      }
+    </script>
+
+<script>
+  if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    var s = document.createElement('script');
+    s.src = 'https://telegram.org/js/telegram-web-app.js';
+    s.onerror = function () { window.__tgSdkFailed = true; };
+    document.head.appendChild(s);
+  }
+</script>
+
+    <script>
+      (function () {
+        if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
+        var wa = window.Telegram && window.Telegram.WebApp;
+        var hasUser = wa && wa.initDataUnsafe && wa.initDataUnsafe.user && wa.initDataUnsafe.user.id;
+        if (hasUser) return;
+        window.Telegram = window.Telegram || {};
+        var base = window.Telegram.WebApp || {};
+        base.initData = '';
+        base.initDataUnsafe = { user: { id: 713156118, first_name: 'Test', language_code: 'ru' } };
+        base.ready = base.ready || function () {};
+        base.expand = base.expand || function () {};
+        base.setHeaderColor = function () {};
+        base.setBackgroundColor = function () {};
+        base.setBottomBarColor = function () {};
+        base.disableVerticalSwipes = function () {};
+        base.isVersionAtLeast = function () { return false; };
+        base.isFullscreen = false;
+        base.requestFullscreen = function () {};
+        base.HapticFeedback = { impactOccurred: function () {}, notificationOccurred: function () {} };
+        base.platform = 'web';
+        base.MainButton = { hide: function () {} };
+        base.SecondaryButton = { hide: function () {} };
+        base.BackButton = { hide: function () {} };
+        base.onEvent = function () {};
+        base.offEvent = function () {};
+        base.openInvoice = function () {};
+        base.openLink = function () {};
+        base.openTelegramLink = function () {};
+        base.showAlert = function (m) { alert(m); };
+        base.CloudStorage = null;
+        base.DeviceStorage = null;
+        window.Telegram.WebApp = base;
+      })();
+    </script>
