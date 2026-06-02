@@ -1686,7 +1686,6 @@ const renderPet = () => (
               {partner && avatars[partner.user_id] ? <img src={avatars[partner.user_id]} alt="" onError={e => e.target.style.display='none'} /> : <span>👤</span>}
             </div>
           </div>
-          <button className="sk-topbar-btn" onClick={() => setShowMenu(!showMenu)}>•••</button>
         </div>
       </div>
 
@@ -1708,31 +1707,86 @@ const renderPet = () => (
         )}
       </div>
 
-      {showMenu && (
-        <div className="sk-menu-overlay" onClick={() => setShowMenu(false)}>
-          <div className="sk-menu glass-card" onClick={e => e.stopPropagation()}>
-            <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>🐾 {lang === 'ru' ? 'Мои пары' : 'My pairs'}</button>
-            <button onClick={() => { setShowCalendar(true); setShowMenu(false); }}>
-  📅 {lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}
-</button>
-<button onClick={() => { setShowDiary(true); setShowMenu(false); }}>
-  📔 {lang === 'ru' ? 'Дневник' : 'Diary'}
-</button>
-<button onClick={() => { setPostcardUrl(null); setShowPostcard(true); setShowMenu(false); }}>
-  💌 {lang === 'ru' ? 'Открытка' : 'Postcard'}
-</button>
-            <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</button>
-            <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>📤 {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
-            <button onClick={() => { setShowPremium(true); setShowMenu(false); }}>⭐ {lang === 'ru' ? 'Премиум' : 'Premium'}</button>
-            <button onClick={() => { const newLang = lang === 'ru' ? 'en' : 'ru'; setLang(newLang); setShowMenu(false); haptic('light'); }}>
-              🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
-            </button>
-            <button className="sk-menu-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
-              🗑️ {lang === 'ru' ? 'Удалить пару' : 'Delete pair'}
-            </button>
-          </div>
+{/* SVG-фильтр для liquid-glass refraction (рендерится один раз, невидим) */}
+<svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+  <filter id="lg-distortion" x="0%" y="0%" width="100%" height="100%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008"
+      numOctaves="2" seed="42" result="noise" />
+    <feGaussianBlur in="noise" stdDeviation="2" result="blurred" />
+    <feDisplacementMap in="SourceGraphic" in2="blurred"
+      scale="40" xChannelSelector="R" yChannelSelector="G" />
+  </filter>
+</svg>
+
+{/* ══════ Liquid Glass нижняя плашка ══════ */}
+{hasPartner && !showOutfits && (
+  <>
+    <nav className={`lg-dock ${isDark ? 'lg-dark' : ''}`}>
+      {[
+        { key: 'home',     ico: '🐾', label: lang === 'ru' ? 'Питомец'  : 'Pet' },
+        { key: 'calendar', ico: '📅', label: lang === 'ru' ? 'Календарь': 'Calendar' },
+        { key: 'diary',    ico: '📔', label: lang === 'ru' ? 'Дневник'  : 'Diary' },
+        { key: 'ranking',  ico: '🏆', label: lang === 'ru' ? 'Рейтинг'  : 'Rating' },
+        { key: 'more',     ico: '⋯',  label: lang === 'ru' ? 'Ещё'      : 'More' },
+      ].map(tab => {
+        const isActive =
+          (tab.key === 'calendar' && showCalendar) ||
+          (tab.key === 'diary'    && showDiary) ||
+          (tab.key === 'ranking'  && showRanking) ||
+          (tab.key === 'more'     && showMenu) ||
+          (tab.key === 'home'     && !showCalendar && !showDiary && !showRanking && !showMenu);
+        return (
+          <button
+            key={tab.key}
+            className={`lg-tab ${isActive ? 'lg-tab-active' : ''}`}
+            onClick={() => {
+              haptic('light');
+              // всегда закрываем всё перед открытием нужного
+              setShowCalendar(false); setShowDiary(false);
+              setShowRanking(false); setShowMenu(false);
+              if (tab.key === 'calendar') setShowCalendar(true);
+              else if (tab.key === 'diary') setShowDiary(true);
+              else if (tab.key === 'ranking') { loadRanking(); setShowRanking(true); }
+              else if (tab.key === 'more') setShowMenu(true);
+              // 'home' — просто всё закрыли выше
+            }}
+          >
+            {isActive && <span className="lg-pill" />}
+            <span className="lg-tab-ico">{tab.ico}</span>
+            <span className="lg-tab-label">{tab.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+
+    {/* мини-лист «Ещё» */}
+    {showMenu && (
+      <>
+        <div className="sk-menu-overlay" onClick={() => setShowMenu(false)} />
+        <div className="lg-more" onClick={e => e.stopPropagation()}>
+          <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>
+            🐾 {lang === 'ru' ? 'Мои пары' : 'My pairs'}
+          </button>
+          <button onClick={() => { setPostcardUrl(null); setShowPostcard(true); setShowMenu(false); }}>
+            💌 {lang === 'ru' ? 'Открытка' : 'Postcard'}
+          </button>
+          <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>
+            📤 {lang === 'ru' ? 'Поделиться' : 'Share'}
+          </button>
+          <button onClick={() => { setShowPremium(true); setShowMenu(false); }}>
+            ⭐ {lang === 'ru' ? 'Премиум' : 'Premium'}
+          </button>
+          <button onClick={() => { const nl = lang === 'ru' ? 'en' : 'ru'; setLang(nl); setShowMenu(false); haptic('light'); }}>
+            🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
+          </button>
+          <button className="lg-more-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
+            🗑️ {lang === 'ru' ? 'Удалить пару' : 'Delete pair'}
+          </button>
         </div>
-      )}
+      </>
+    )}
+  </>
+)}
 
       {pair.is_dead && hasPartner && (
         <div className="sk-overlay" style={{ zIndex: 200 }}>

@@ -70,7 +70,7 @@ body {
 /* ── Main ── */
 .sk {
   min-height: 100vh; display: flex; flex-direction: column; align-items: center;
-  padding: 0 16px 32px; transition: background 0.4s ease;
+  padding: 0 16px; transition: background 0.4s ease;
 }
 
 /* ── Info row — СДВИНУТО НИЖЕ чтобы не пересекалось с кнопками бота ── */
@@ -399,3 +399,122 @@ body {
   align-items: center; justify-content: center; padding: 32px;
   background: linear-gradient(180deg, #FFF8E1 0%, #FFECB3 100%);
 }
+/* ══════════════════════════════════════
+   Liquid Glass Bottom Bar (tab dock)
+   ══════════════════════════════════════ */
+.lg-dock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 30px;
+  /* frost */
+  background: rgba(255, 248, 225, 0.55);          /* тёплый кремовый тинт темы */
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  /* specular + lift */
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.14),
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.04);
+  /* refraction по краям через SVG-фильтр (см. <svg> в JSX) */
+}
+
+/* refraction только там, где фильтр поддержан (Safari/iOS лучше всего) */
+@supports (filter: url(#lg-distortion)) {
+  .lg-dock::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    filter: url(#lg-distortion);
+    z-index: -1;
+    pointer-events: none;
+  }
+}
+
+/* Фолбэк: нет backdrop-filter (часть Android-WebView в Telegram) */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lg-dock { background: rgba(255, 248, 225, 0.96); }
+}
+
+.lg-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 58px;
+  height: 50px;
+  border: none;
+  background: none;
+  border-radius: 24px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.55);
+  transition: color 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.lg-tab-ico { font-size: 21px; line-height: 1; transition: transform 0.25s ease; }
+.lg-tab-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1px; }
+.lg-tab:active .lg-tab-ico { transform: scale(0.88); }
+
+/* активная вкладка — «жидкая пилюля» */
+.lg-tab-active { color: #1a1a1a; }
+.lg-tab-active .lg-tab-ico { transform: scale(1.06); }
+.lg-pill {
+  position: absolute;
+  inset: 3px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: -1;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* тёмные уровни питомца — делаем плашку светлее текстом */
+.lg-dock.lg-dark .lg-tab { color: rgba(255, 255, 255, 0.6); }
+.lg-dock.lg-dark .lg-tab-active { color: #fff; }
+.lg-dock.lg-dark { background: rgba(40, 40, 50, 0.5); border-color: rgba(255,255,255,0.18); }
+.lg-dock.lg-dark .lg-pill { background: rgba(255,255,255,0.18); }
+
+/* мини-лист «Ещё» над плашкой */
+.lg-more {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
+  z-index: 1101;
+  width: min(320px, calc(100vw - 32px));
+  padding: 6px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255,255,255,0.9);
+  animation: slideUp 0.28s ease;
+}
+.lg-more button {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left;
+  padding: 13px 16px; border: none; background: none;
+  font-size: 15px; font-weight: 500; color: #333;
+  border-radius: 14px; cursor: pointer;
+}
+.lg-more button:active { background: rgba(0,0,0,0.05); }
+.lg-more .lg-more-danger { color: #e53935; }
+
+/* поднимаем нижний контент, чтобы плашка его не перекрывала */
+.sk { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
