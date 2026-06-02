@@ -6,9 +6,9 @@ var define_ROUTES_default = {
 };
 
 // node_modules/wrangler/templates/pages-dev-pipeline.ts
-import worker from "C:\\ChumiApp\\frontend\\.wrangler\\tmp\\pages-vyeKxg\\functionsWorker-0.44780194670623985.mjs";
+import worker from "C:\\ChumiApp\\frontend\\.wrangler\\tmp\\pages-i5gkVe\\functionsWorker-0.1255179365461837.mjs";
 import { isRoutingRuleMatch } from "C:\\ChumiApp\\frontend\\node_modules\\wrangler\\templates\\pages-dev-util.ts";
-export * from "C:\\ChumiApp\\frontend\\.wrangler\\tmp\\pages-vyeKxg\\functionsWorker-0.44780194670623985.mjs";
+export * from "C:\\ChumiApp\\frontend\\.wrangler\\tmp\\pages-i5gkVe\\functionsWorker-0.1255179365461837.mjs";
 var routes = define_ROUTES_default;
 var pages_dev_pipeline_default = {
   fetch(request, env, context) {
@@ -33,4 +33,4 @@ var pages_dev_pipeline_default = {
 export {
   pages_dev_pipeline_default as default
 };
-//# sourceMappingURL=ww9g2amgvt.js.map
+//# sourceMappingURL=2t52trpi45j.js.map

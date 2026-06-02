@@ -231,9 +231,15 @@ function getAuthedUserId(request, env) {
     if (validated) return validated.userId;
   }
   if (env.ALLOW_DEV_AUTH === '1') {
-    // В dev-режиме разрешаем читать как «гость» только при явном заголовке
+    // 1) Заголовок (если фронт его прислал)
     const devId = request.headers.get('X-Dev-User-Id');
     if (devId) return String(devId);
+    // 2) Query-параметр ?devUser=...
+    try {
+      const url = new URL(request.url);
+      const q = url.searchParams.get('devUser');
+      if (q) return String(q);
+    } catch {}
   }
   return null;
 }

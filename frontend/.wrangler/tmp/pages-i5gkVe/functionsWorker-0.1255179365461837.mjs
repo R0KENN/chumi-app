@@ -1,10 +1,934 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// .wrangler/tmp/pages-vyeKxg/functionsWorker-0.44780194670623985.mjs
-import { createHmac } from "node:crypto";
-var __defProp2 = Object.defineProperty;
-var __name2 = /* @__PURE__ */ __name((target, value) => __defProp2(target, "name", { value, configurable: true }), "__name");
+// ../node_modules/unenv/dist/runtime/_internal/utils.mjs
+// @__NO_SIDE_EFFECTS__
+function createNotImplementedError(name) {
+  return new Error(`[unenv] ${name} is not implemented yet!`);
+}
+__name(createNotImplementedError, "createNotImplementedError");
+// @__NO_SIDE_EFFECTS__
+function notImplemented(name) {
+  const fn = /* @__PURE__ */ __name(() => {
+    throw /* @__PURE__ */ createNotImplementedError(name);
+  }, "fn");
+  return Object.assign(fn, { __unenv__: true });
+}
+__name(notImplemented, "notImplemented");
+// @__NO_SIDE_EFFECTS__
+function notImplementedClass(name) {
+  return class {
+    __unenv__ = true;
+    constructor() {
+      throw new Error(`[unenv] ${name} is not implemented yet!`);
+    }
+  };
+}
+__name(notImplementedClass, "notImplementedClass");
+
+// ../node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
+var _timeOrigin = globalThis.performance?.timeOrigin ?? Date.now();
+var _performanceNow = globalThis.performance?.now ? globalThis.performance.now.bind(globalThis.performance) : () => Date.now() - _timeOrigin;
+var nodeTiming = {
+  name: "node",
+  entryType: "node",
+  startTime: 0,
+  duration: 0,
+  nodeStart: 0,
+  v8Start: 0,
+  bootstrapComplete: 0,
+  environment: 0,
+  loopStart: 0,
+  loopExit: 0,
+  idleTime: 0,
+  uvMetricsInfo: {
+    loopCount: 0,
+    events: 0,
+    eventsWaiting: 0
+  },
+  detail: void 0,
+  toJSON() {
+    return this;
+  }
+};
+var PerformanceEntry = class {
+  static {
+    __name(this, "PerformanceEntry");
+  }
+  __unenv__ = true;
+  detail;
+  entryType = "event";
+  name;
+  startTime;
+  constructor(name, options) {
+    this.name = name;
+    this.startTime = options?.startTime || _performanceNow();
+    this.detail = options?.detail;
+  }
+  get duration() {
+    return _performanceNow() - this.startTime;
+  }
+  toJSON() {
+    return {
+      name: this.name,
+      entryType: this.entryType,
+      startTime: this.startTime,
+      duration: this.duration,
+      detail: this.detail
+    };
+  }
+};
+var PerformanceMark = class PerformanceMark2 extends PerformanceEntry {
+  static {
+    __name(this, "PerformanceMark");
+  }
+  entryType = "mark";
+  constructor() {
+    super(...arguments);
+  }
+  get duration() {
+    return 0;
+  }
+};
+var PerformanceMeasure = class extends PerformanceEntry {
+  static {
+    __name(this, "PerformanceMeasure");
+  }
+  entryType = "measure";
+};
+var PerformanceResourceTiming = class extends PerformanceEntry {
+  static {
+    __name(this, "PerformanceResourceTiming");
+  }
+  entryType = "resource";
+  serverTiming = [];
+  connectEnd = 0;
+  connectStart = 0;
+  decodedBodySize = 0;
+  domainLookupEnd = 0;
+  domainLookupStart = 0;
+  encodedBodySize = 0;
+  fetchStart = 0;
+  initiatorType = "";
+  name = "";
+  nextHopProtocol = "";
+  redirectEnd = 0;
+  redirectStart = 0;
+  requestStart = 0;
+  responseEnd = 0;
+  responseStart = 0;
+  secureConnectionStart = 0;
+  startTime = 0;
+  transferSize = 0;
+  workerStart = 0;
+  responseStatus = 0;
+};
+var PerformanceObserverEntryList = class {
+  static {
+    __name(this, "PerformanceObserverEntryList");
+  }
+  __unenv__ = true;
+  getEntries() {
+    return [];
+  }
+  getEntriesByName(_name, _type) {
+    return [];
+  }
+  getEntriesByType(type) {
+    return [];
+  }
+};
+var Performance = class {
+  static {
+    __name(this, "Performance");
+  }
+  __unenv__ = true;
+  timeOrigin = _timeOrigin;
+  eventCounts = /* @__PURE__ */ new Map();
+  _entries = [];
+  _resourceTimingBufferSize = 0;
+  navigation = void 0;
+  timing = void 0;
+  timerify(_fn, _options) {
+    throw createNotImplementedError("Performance.timerify");
+  }
+  get nodeTiming() {
+    return nodeTiming;
+  }
+  eventLoopUtilization() {
+    return {};
+  }
+  markResourceTiming() {
+    return new PerformanceResourceTiming("");
+  }
+  onresourcetimingbufferfull = null;
+  now() {
+    if (this.timeOrigin === _timeOrigin) {
+      return _performanceNow();
+    }
+    return Date.now() - this.timeOrigin;
+  }
+  clearMarks(markName) {
+    this._entries = markName ? this._entries.filter((e) => e.name !== markName) : this._entries.filter((e) => e.entryType !== "mark");
+  }
+  clearMeasures(measureName) {
+    this._entries = measureName ? this._entries.filter((e) => e.name !== measureName) : this._entries.filter((e) => e.entryType !== "measure");
+  }
+  clearResourceTimings() {
+    this._entries = this._entries.filter((e) => e.entryType !== "resource" || e.entryType !== "navigation");
+  }
+  getEntries() {
+    return this._entries;
+  }
+  getEntriesByName(name, type) {
+    return this._entries.filter((e) => e.name === name && (!type || e.entryType === type));
+  }
+  getEntriesByType(type) {
+    return this._entries.filter((e) => e.entryType === type);
+  }
+  mark(name, options) {
+    const entry = new PerformanceMark(name, options);
+    this._entries.push(entry);
+    return entry;
+  }
+  measure(measureName, startOrMeasureOptions, endMark) {
+    let start;
+    let end;
+    if (typeof startOrMeasureOptions === "string") {
+      start = this.getEntriesByName(startOrMeasureOptions, "mark")[0]?.startTime;
+      end = this.getEntriesByName(endMark, "mark")[0]?.startTime;
+    } else {
+      start = Number.parseFloat(startOrMeasureOptions?.start) || this.now();
+      end = Number.parseFloat(startOrMeasureOptions?.end) || this.now();
+    }
+    const entry = new PerformanceMeasure(measureName, {
+      startTime: start,
+      detail: {
+        start,
+        end
+      }
+    });
+    this._entries.push(entry);
+    return entry;
+  }
+  setResourceTimingBufferSize(maxSize) {
+    this._resourceTimingBufferSize = maxSize;
+  }
+  addEventListener(type, listener, options) {
+    throw createNotImplementedError("Performance.addEventListener");
+  }
+  removeEventListener(type, listener, options) {
+    throw createNotImplementedError("Performance.removeEventListener");
+  }
+  dispatchEvent(event) {
+    throw createNotImplementedError("Performance.dispatchEvent");
+  }
+  toJSON() {
+    return this;
+  }
+};
+var PerformanceObserver = class {
+  static {
+    __name(this, "PerformanceObserver");
+  }
+  __unenv__ = true;
+  static supportedEntryTypes = [];
+  _callback = null;
+  constructor(callback) {
+    this._callback = callback;
+  }
+  takeRecords() {
+    return [];
+  }
+  disconnect() {
+    throw createNotImplementedError("PerformanceObserver.disconnect");
+  }
+  observe(options) {
+    throw createNotImplementedError("PerformanceObserver.observe");
+  }
+  bind(fn) {
+    return fn;
+  }
+  runInAsyncScope(fn, thisArg, ...args) {
+    return fn.call(thisArg, ...args);
+  }
+  asyncId() {
+    return 0;
+  }
+  triggerAsyncId() {
+    return 0;
+  }
+  emitDestroy() {
+    return this;
+  }
+};
+var performance = globalThis.performance && "addEventListener" in globalThis.performance ? globalThis.performance : new Performance();
+
+// ../node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
+if (!("__unenv__" in performance)) {
+  const proto = Performance.prototype;
+  for (const key of Object.getOwnPropertyNames(proto)) {
+    if (key !== "constructor" && !(key in performance)) {
+      const desc = Object.getOwnPropertyDescriptor(proto, key);
+      if (desc) {
+        Object.defineProperty(performance, key, desc);
+      }
+    }
+  }
+}
+globalThis.performance = performance;
+globalThis.Performance = Performance;
+globalThis.PerformanceEntry = PerformanceEntry;
+globalThis.PerformanceMark = PerformanceMark;
+globalThis.PerformanceMeasure = PerformanceMeasure;
+globalThis.PerformanceObserver = PerformanceObserver;
+globalThis.PerformanceObserverEntryList = PerformanceObserverEntryList;
+globalThis.PerformanceResourceTiming = PerformanceResourceTiming;
+
+// ../node_modules/unenv/dist/runtime/node/console.mjs
+import { Writable } from "node:stream";
+
+// ../node_modules/unenv/dist/runtime/mock/noop.mjs
+var noop_default = Object.assign(() => {
+}, { __unenv__: true });
+
+// ../node_modules/unenv/dist/runtime/node/console.mjs
+var _console = globalThis.console;
+var _ignoreErrors = true;
+var _stderr = new Writable();
+var _stdout = new Writable();
+var log = _console?.log ?? noop_default;
+var info = _console?.info ?? log;
+var trace = _console?.trace ?? info;
+var debug = _console?.debug ?? log;
+var table = _console?.table ?? log;
+var error = _console?.error ?? log;
+var warn = _console?.warn ?? error;
+var createTask = _console?.createTask ?? /* @__PURE__ */ notImplemented("console.createTask");
+var clear = _console?.clear ?? noop_default;
+var count = _console?.count ?? noop_default;
+var countReset = _console?.countReset ?? noop_default;
+var dir = _console?.dir ?? noop_default;
+var dirxml = _console?.dirxml ?? noop_default;
+var group = _console?.group ?? noop_default;
+var groupEnd = _console?.groupEnd ?? noop_default;
+var groupCollapsed = _console?.groupCollapsed ?? noop_default;
+var profile = _console?.profile ?? noop_default;
+var profileEnd = _console?.profileEnd ?? noop_default;
+var time = _console?.time ?? noop_default;
+var timeEnd = _console?.timeEnd ?? noop_default;
+var timeLog = _console?.timeLog ?? noop_default;
+var timeStamp = _console?.timeStamp ?? noop_default;
+var Console = _console?.Console ?? /* @__PURE__ */ notImplementedClass("console.Console");
+var _times = /* @__PURE__ */ new Map();
+var _stdoutErrorHandler = noop_default;
+var _stderrErrorHandler = noop_default;
+
+// ../node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
+var workerdConsole = globalThis["console"];
+var {
+  assert,
+  clear: clear2,
+  // @ts-expect-error undocumented public API
+  context,
+  count: count2,
+  countReset: countReset2,
+  // @ts-expect-error undocumented public API
+  createTask: createTask2,
+  debug: debug2,
+  dir: dir2,
+  dirxml: dirxml2,
+  error: error2,
+  group: group2,
+  groupCollapsed: groupCollapsed2,
+  groupEnd: groupEnd2,
+  info: info2,
+  log: log2,
+  profile: profile2,
+  profileEnd: profileEnd2,
+  table: table2,
+  time: time2,
+  timeEnd: timeEnd2,
+  timeLog: timeLog2,
+  timeStamp: timeStamp2,
+  trace: trace2,
+  warn: warn2
+} = workerdConsole;
+Object.assign(workerdConsole, {
+  Console,
+  _ignoreErrors,
+  _stderr,
+  _stderrErrorHandler,
+  _stdout,
+  _stdoutErrorHandler,
+  _times
+});
+var console_default = workerdConsole;
+
+// ../node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
+globalThis.console = console_default;
+
+// ../node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
+var hrtime = /* @__PURE__ */ Object.assign(/* @__PURE__ */ __name(function hrtime2(startTime) {
+  const now = Date.now();
+  const seconds = Math.trunc(now / 1e3);
+  const nanos = now % 1e3 * 1e6;
+  if (startTime) {
+    let diffSeconds = seconds - startTime[0];
+    let diffNanos = nanos - startTime[0];
+    if (diffNanos < 0) {
+      diffSeconds = diffSeconds - 1;
+      diffNanos = 1e9 + diffNanos;
+    }
+    return [diffSeconds, diffNanos];
+  }
+  return [seconds, nanos];
+}, "hrtime"), { bigint: /* @__PURE__ */ __name(function bigint() {
+  return BigInt(Date.now() * 1e6);
+}, "bigint") });
+
+// ../node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+import { EventEmitter } from "node:events";
+
+// ../node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
+var ReadStream = class {
+  static {
+    __name(this, "ReadStream");
+  }
+  fd;
+  isRaw = false;
+  isTTY = false;
+  constructor(fd) {
+    this.fd = fd;
+  }
+  setRawMode(mode) {
+    this.isRaw = mode;
+    return this;
+  }
+};
+
+// ../node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
+var WriteStream = class {
+  static {
+    __name(this, "WriteStream");
+  }
+  fd;
+  columns = 80;
+  rows = 24;
+  isTTY = false;
+  constructor(fd) {
+    this.fd = fd;
+  }
+  clearLine(dir3, callback) {
+    callback && callback();
+    return false;
+  }
+  clearScreenDown(callback) {
+    callback && callback();
+    return false;
+  }
+  cursorTo(x, y, callback) {
+    callback && typeof callback === "function" && callback();
+    return false;
+  }
+  moveCursor(dx, dy, callback) {
+    callback && callback();
+    return false;
+  }
+  getColorDepth(env2) {
+    return 1;
+  }
+  hasColors(count3, env2) {
+    return false;
+  }
+  getWindowSize() {
+    return [this.columns, this.rows];
+  }
+  write(str, encoding, cb) {
+    if (str instanceof Uint8Array) {
+      str = new TextDecoder().decode(str);
+    }
+    try {
+      console.log(str);
+    } catch {
+    }
+    cb && typeof cb === "function" && cb();
+    return false;
+  }
+};
+
+// ../node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
+var NODE_VERSION = "22.14.0";
+
+// ../node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+var Process = class _Process extends EventEmitter {
+  static {
+    __name(this, "Process");
+  }
+  env;
+  hrtime;
+  nextTick;
+  constructor(impl) {
+    super();
+    this.env = impl.env;
+    this.hrtime = impl.hrtime;
+    this.nextTick = impl.nextTick;
+    for (const prop of [...Object.getOwnPropertyNames(_Process.prototype), ...Object.getOwnPropertyNames(EventEmitter.prototype)]) {
+      const value = this[prop];
+      if (typeof value === "function") {
+        this[prop] = value.bind(this);
+      }
+    }
+  }
+  // --- event emitter ---
+  emitWarning(warning, type, code) {
+    console.warn(`${code ? `[${code}] ` : ""}${type ? `${type}: ` : ""}${warning}`);
+  }
+  emit(...args) {
+    return super.emit(...args);
+  }
+  listeners(eventName) {
+    return super.listeners(eventName);
+  }
+  // --- stdio (lazy initializers) ---
+  #stdin;
+  #stdout;
+  #stderr;
+  get stdin() {
+    return this.#stdin ??= new ReadStream(0);
+  }
+  get stdout() {
+    return this.#stdout ??= new WriteStream(1);
+  }
+  get stderr() {
+    return this.#stderr ??= new WriteStream(2);
+  }
+  // --- cwd ---
+  #cwd = "/";
+  chdir(cwd2) {
+    this.#cwd = cwd2;
+  }
+  cwd() {
+    return this.#cwd;
+  }
+  // --- dummy props and getters ---
+  arch = "";
+  platform = "";
+  argv = [];
+  argv0 = "";
+  execArgv = [];
+  execPath = "";
+  title = "";
+  pid = 200;
+  ppid = 100;
+  get version() {
+    return `v${NODE_VERSION}`;
+  }
+  get versions() {
+    return { node: NODE_VERSION };
+  }
+  get allowedNodeEnvironmentFlags() {
+    return /* @__PURE__ */ new Set();
+  }
+  get sourceMapsEnabled() {
+    return false;
+  }
+  get debugPort() {
+    return 0;
+  }
+  get throwDeprecation() {
+    return false;
+  }
+  get traceDeprecation() {
+    return false;
+  }
+  get features() {
+    return {};
+  }
+  get release() {
+    return {};
+  }
+  get connected() {
+    return false;
+  }
+  get config() {
+    return {};
+  }
+  get moduleLoadList() {
+    return [];
+  }
+  constrainedMemory() {
+    return 0;
+  }
+  availableMemory() {
+    return 0;
+  }
+  uptime() {
+    return 0;
+  }
+  resourceUsage() {
+    return {};
+  }
+  // --- noop methods ---
+  ref() {
+  }
+  unref() {
+  }
+  // --- unimplemented methods ---
+  umask() {
+    throw createNotImplementedError("process.umask");
+  }
+  getBuiltinModule() {
+    return void 0;
+  }
+  getActiveResourcesInfo() {
+    throw createNotImplementedError("process.getActiveResourcesInfo");
+  }
+  exit() {
+    throw createNotImplementedError("process.exit");
+  }
+  reallyExit() {
+    throw createNotImplementedError("process.reallyExit");
+  }
+  kill() {
+    throw createNotImplementedError("process.kill");
+  }
+  abort() {
+    throw createNotImplementedError("process.abort");
+  }
+  dlopen() {
+    throw createNotImplementedError("process.dlopen");
+  }
+  setSourceMapsEnabled() {
+    throw createNotImplementedError("process.setSourceMapsEnabled");
+  }
+  loadEnvFile() {
+    throw createNotImplementedError("process.loadEnvFile");
+  }
+  disconnect() {
+    throw createNotImplementedError("process.disconnect");
+  }
+  cpuUsage() {
+    throw createNotImplementedError("process.cpuUsage");
+  }
+  setUncaughtExceptionCaptureCallback() {
+    throw createNotImplementedError("process.setUncaughtExceptionCaptureCallback");
+  }
+  hasUncaughtExceptionCaptureCallback() {
+    throw createNotImplementedError("process.hasUncaughtExceptionCaptureCallback");
+  }
+  initgroups() {
+    throw createNotImplementedError("process.initgroups");
+  }
+  openStdin() {
+    throw createNotImplementedError("process.openStdin");
+  }
+  assert() {
+    throw createNotImplementedError("process.assert");
+  }
+  binding() {
+    throw createNotImplementedError("process.binding");
+  }
+  // --- attached interfaces ---
+  permission = { has: /* @__PURE__ */ notImplemented("process.permission.has") };
+  report = {
+    directory: "",
+    filename: "",
+    signal: "SIGUSR2",
+    compact: false,
+    reportOnFatalError: false,
+    reportOnSignal: false,
+    reportOnUncaughtException: false,
+    getReport: /* @__PURE__ */ notImplemented("process.report.getReport"),
+    writeReport: /* @__PURE__ */ notImplemented("process.report.writeReport")
+  };
+  finalization = {
+    register: /* @__PURE__ */ notImplemented("process.finalization.register"),
+    unregister: /* @__PURE__ */ notImplemented("process.finalization.unregister"),
+    registerBeforeExit: /* @__PURE__ */ notImplemented("process.finalization.registerBeforeExit")
+  };
+  memoryUsage = Object.assign(() => ({
+    arrayBuffers: 0,
+    rss: 0,
+    external: 0,
+    heapTotal: 0,
+    heapUsed: 0
+  }), { rss: /* @__PURE__ */ __name(() => 0, "rss") });
+  // --- undefined props ---
+  mainModule = void 0;
+  domain = void 0;
+  // optional
+  send = void 0;
+  exitCode = void 0;
+  channel = void 0;
+  getegid = void 0;
+  geteuid = void 0;
+  getgid = void 0;
+  getgroups = void 0;
+  getuid = void 0;
+  setegid = void 0;
+  seteuid = void 0;
+  setgid = void 0;
+  setgroups = void 0;
+  setuid = void 0;
+  // internals
+  _events = void 0;
+  _eventsCount = void 0;
+  _exiting = void 0;
+  _maxListeners = void 0;
+  _debugEnd = void 0;
+  _debugProcess = void 0;
+  _fatalException = void 0;
+  _getActiveHandles = void 0;
+  _getActiveRequests = void 0;
+  _kill = void 0;
+  _preload_modules = void 0;
+  _rawDebug = void 0;
+  _startProfilerIdleNotifier = void 0;
+  _stopProfilerIdleNotifier = void 0;
+  _tickCallback = void 0;
+  _disconnect = void 0;
+  _handleQueue = void 0;
+  _pendingMessage = void 0;
+  _channel = void 0;
+  _send = void 0;
+  _linkedBinding = void 0;
+};
+
+// ../node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
+var globalProcess = globalThis["process"];
+var getBuiltinModule = globalProcess.getBuiltinModule;
+var workerdProcess = getBuiltinModule("node:process");
+var unenvProcess = new Process({
+  env: globalProcess.env,
+  hrtime,
+  // `nextTick` is available from workerd process v1
+  nextTick: workerdProcess.nextTick
+});
+var { exit, features, platform } = workerdProcess;
+var {
+  _channel,
+  _debugEnd,
+  _debugProcess,
+  _disconnect,
+  _events,
+  _eventsCount,
+  _exiting,
+  _fatalException,
+  _getActiveHandles,
+  _getActiveRequests,
+  _handleQueue,
+  _kill,
+  _linkedBinding,
+  _maxListeners,
+  _pendingMessage,
+  _preload_modules,
+  _rawDebug,
+  _send,
+  _startProfilerIdleNotifier,
+  _stopProfilerIdleNotifier,
+  _tickCallback,
+  abort,
+  addListener,
+  allowedNodeEnvironmentFlags,
+  arch,
+  argv,
+  argv0,
+  assert: assert2,
+  availableMemory,
+  binding,
+  channel,
+  chdir,
+  config,
+  connected,
+  constrainedMemory,
+  cpuUsage,
+  cwd,
+  debugPort,
+  disconnect,
+  dlopen,
+  domain,
+  emit,
+  emitWarning,
+  env,
+  eventNames,
+  execArgv,
+  execPath,
+  exitCode,
+  finalization,
+  getActiveResourcesInfo,
+  getegid,
+  geteuid,
+  getgid,
+  getgroups,
+  getMaxListeners,
+  getuid,
+  hasUncaughtExceptionCaptureCallback,
+  hrtime: hrtime3,
+  initgroups,
+  kill,
+  listenerCount,
+  listeners,
+  loadEnvFile,
+  mainModule,
+  memoryUsage,
+  moduleLoadList,
+  nextTick,
+  off,
+  on,
+  once,
+  openStdin,
+  permission,
+  pid,
+  ppid,
+  prependListener,
+  prependOnceListener,
+  rawListeners,
+  reallyExit,
+  ref,
+  release,
+  removeAllListeners,
+  removeListener,
+  report,
+  resourceUsage,
+  send,
+  setegid,
+  seteuid,
+  setgid,
+  setgroups,
+  setMaxListeners,
+  setSourceMapsEnabled,
+  setuid,
+  setUncaughtExceptionCaptureCallback,
+  sourceMapsEnabled,
+  stderr,
+  stdin,
+  stdout,
+  throwDeprecation,
+  title,
+  traceDeprecation,
+  umask,
+  unref,
+  uptime,
+  version,
+  versions
+} = unenvProcess;
+var _process = {
+  abort,
+  addListener,
+  allowedNodeEnvironmentFlags,
+  hasUncaughtExceptionCaptureCallback,
+  setUncaughtExceptionCaptureCallback,
+  loadEnvFile,
+  sourceMapsEnabled,
+  arch,
+  argv,
+  argv0,
+  chdir,
+  config,
+  connected,
+  constrainedMemory,
+  availableMemory,
+  cpuUsage,
+  cwd,
+  debugPort,
+  dlopen,
+  disconnect,
+  emit,
+  emitWarning,
+  env,
+  eventNames,
+  execArgv,
+  execPath,
+  exit,
+  finalization,
+  features,
+  getBuiltinModule,
+  getActiveResourcesInfo,
+  getMaxListeners,
+  hrtime: hrtime3,
+  kill,
+  listeners,
+  listenerCount,
+  memoryUsage,
+  nextTick,
+  on,
+  off,
+  once,
+  pid,
+  platform,
+  ppid,
+  prependListener,
+  prependOnceListener,
+  rawListeners,
+  release,
+  removeAllListeners,
+  removeListener,
+  report,
+  resourceUsage,
+  setMaxListeners,
+  setSourceMapsEnabled,
+  stderr,
+  stdin,
+  stdout,
+  title,
+  throwDeprecation,
+  traceDeprecation,
+  umask,
+  uptime,
+  version,
+  versions,
+  // @ts-expect-error old API
+  domain,
+  initgroups,
+  moduleLoadList,
+  reallyExit,
+  openStdin,
+  assert: assert2,
+  binding,
+  send,
+  exitCode,
+  channel,
+  getegid,
+  geteuid,
+  getgid,
+  getgroups,
+  getuid,
+  setegid,
+  seteuid,
+  setgid,
+  setgroups,
+  setuid,
+  permission,
+  mainModule,
+  _events,
+  _eventsCount,
+  _exiting,
+  _maxListeners,
+  _debugEnd,
+  _debugProcess,
+  _fatalException,
+  _getActiveHandles,
+  _getActiveRequests,
+  _kill,
+  _preload_modules,
+  _rawDebug,
+  _startProfilerIdleNotifier,
+  _stopProfilerIdleNotifier,
+  _tickCallback,
+  _disconnect,
+  _handleQueue,
+  _pendingMessage,
+  _channel,
+  _send,
+  _linkedBinding
+};
+var process_default = _process;
+
+// ../node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
+globalThis.process = process_default;
+
+// ../node_modules/tslib/tslib.es6.mjs
 function __rest(s, e) {
   var t = {};
   for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
@@ -17,7 +941,6 @@ function __rest(s, e) {
   return t;
 }
 __name(__rest, "__rest");
-__name2(__rest, "__rest");
 function __awaiter(thisArg, _arguments, P, generator) {
   function adopt(value) {
     return value instanceof P ? value : new P(function(resolve) {
@@ -25,7 +948,6 @@ function __awaiter(thisArg, _arguments, P, generator) {
     });
   }
   __name(adopt, "adopt");
-  __name2(adopt, "adopt");
   return new (P || (P = Promise))(function(resolve, reject) {
     function fulfilled(value) {
       try {
@@ -35,7 +957,6 @@ function __awaiter(thisArg, _arguments, P, generator) {
       }
     }
     __name(fulfilled, "fulfilled");
-    __name2(fulfilled, "fulfilled");
     function rejected(value) {
       try {
         step(generator["throw"](value));
@@ -44,34 +965,32 @@ function __awaiter(thisArg, _arguments, P, generator) {
       }
     }
     __name(rejected, "rejected");
-    __name2(rejected, "rejected");
     function step(result) {
       result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     __name(step, "step");
-    __name2(step, "step");
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
 }
 __name(__awaiter, "__awaiter");
-__name2(__awaiter, "__awaiter");
-var resolveFetch = /* @__PURE__ */ __name2((customFetch) => {
+
+// ../node_modules/@supabase/functions-js/dist/module/helper.js
+var resolveFetch = /* @__PURE__ */ __name((customFetch) => {
   if (customFetch) {
     return (...args) => customFetch(...args);
   }
   return (...args) => fetch(...args);
 }, "resolveFetch");
+
+// ../node_modules/@supabase/functions-js/dist/module/types.js
 var FunctionsError = class extends Error {
   static {
     __name(this, "FunctionsError");
   }
-  static {
-    __name2(this, "FunctionsError");
-  }
-  constructor(message, name = "FunctionsError", context) {
+  constructor(message, name = "FunctionsError", context2) {
     super(message);
     this.name = name;
-    this.context = context;
+    this.context = context2;
   }
   toJSON() {
     return {
@@ -85,33 +1004,24 @@ var FunctionsFetchError = class extends FunctionsError {
   static {
     __name(this, "FunctionsFetchError");
   }
-  static {
-    __name2(this, "FunctionsFetchError");
-  }
-  constructor(context) {
-    super("Failed to send a request to the Edge Function", "FunctionsFetchError", context);
+  constructor(context2) {
+    super("Failed to send a request to the Edge Function", "FunctionsFetchError", context2);
   }
 };
 var FunctionsRelayError = class extends FunctionsError {
   static {
     __name(this, "FunctionsRelayError");
   }
-  static {
-    __name2(this, "FunctionsRelayError");
-  }
-  constructor(context) {
-    super("Relay Error invoking the Edge Function", "FunctionsRelayError", context);
+  constructor(context2) {
+    super("Relay Error invoking the Edge Function", "FunctionsRelayError", context2);
   }
 };
 var FunctionsHttpError = class extends FunctionsError {
   static {
     __name(this, "FunctionsHttpError");
   }
-  static {
-    __name2(this, "FunctionsHttpError");
-  }
-  constructor(context) {
-    super("Edge Function returned a non-2xx status code", "FunctionsHttpError", context);
+  constructor(context2) {
+    super("Edge Function returned a non-2xx status code", "FunctionsHttpError", context2);
   }
 };
 var FunctionRegion;
@@ -132,12 +1042,11 @@ var FunctionRegion;
   FunctionRegion2["UsWest1"] = "us-west-1";
   FunctionRegion2["UsWest2"] = "us-west-2";
 })(FunctionRegion || (FunctionRegion = {}));
+
+// ../node_modules/@supabase/functions-js/dist/module/FunctionsClient.js
 var FunctionsClient = class {
   static {
     __name(this, "FunctionsClient");
-  }
-  static {
-    __name2(this, "FunctionsClient");
   }
   /**
    * Creates a new Functions client bound to an Edge Functions URL.
@@ -391,11 +1300,11 @@ var FunctionsClient = class {
           data = yield response.text();
         }
         return { data, error: null, response };
-      } catch (error) {
+      } catch (error3) {
         return {
           data: null,
-          error,
-          response: error instanceof FunctionsHttpError || error instanceof FunctionsRelayError ? error.context : void 0
+          error: error3,
+          response: error3 instanceof FunctionsHttpError || error3 instanceof FunctionsRelayError ? error3.context : void 0
         };
       } finally {
         if (timeoutId) {
@@ -405,8 +1314,10 @@ var FunctionsClient = class {
     });
   }
 };
+
+// ../node_modules/@supabase/postgrest-js/dist/index.mjs
 var DEFAULT_MAX_RETRIES = 3;
-var getRetryDelay = /* @__PURE__ */ __name2((attemptIndex) => Math.min(1e3 * 2 ** attemptIndex, 3e4), "getRetryDelay");
+var getRetryDelay = /* @__PURE__ */ __name((attemptIndex) => Math.min(1e3 * 2 ** attemptIndex, 3e4), "getRetryDelay");
 var RETRYABLE_STATUS_CODES = [520, 503];
 var RETRYABLE_METHODS = [
   "GET",
@@ -416,9 +1327,6 @@ var RETRYABLE_METHODS = [
 var PostgrestError = class extends Error {
   static {
     __name(this, "PostgrestError");
-  }
-  static {
-    __name2(this, "PostgrestError");
   }
   /**
   * @example
@@ -433,12 +1341,12 @@ var PostgrestError = class extends Error {
   * })
   * ```
   */
-  constructor(context) {
-    super(context.message);
+  constructor(context2) {
+    super(context2.message);
     this.name = "PostgrestError";
-    this.details = context.details;
-    this.hint = context.hint;
-    this.code = context.code;
+    this.details = context2.details;
+    this.hint = context2.hint;
+    this.code = context2.code;
   }
   toJSON() {
     return {
@@ -465,12 +1373,10 @@ function sleep(ms, signal) {
       resolve();
     }
     __name(onAbort, "onAbort");
-    __name2(onAbort, "onAbort");
     signal === null || signal === void 0 || signal.addEventListener("abort", onAbort);
   });
 }
 __name(sleep, "sleep");
-__name2(sleep, "sleep");
 function shouldRetry(method, status, attemptCount, retryEnabled) {
   if (!retryEnabled || attemptCount >= DEFAULT_MAX_RETRIES) return false;
   if (!RETRYABLE_METHODS.includes(method)) return false;
@@ -478,13 +1384,9 @@ function shouldRetry(method, status, attemptCount, retryEnabled) {
   return true;
 }
 __name(shouldRetry, "shouldRetry");
-__name2(shouldRetry, "shouldRetry");
 var PostgrestBuilder = class {
   static {
     __name(this, "PostgrestBuilder");
-  }
-  static {
-    __name2(this, "PostgrestBuilder");
   }
   /**
   * Creates a builder configured for a specific PostgREST request.
@@ -641,7 +1543,7 @@ var PostgrestBuilder = class {
       else if (!currentAccept || currentAccept === "application/json") this.headers.set("Accept", "application/vnd.pgrst.array+json;nulls=stripped");
     }
     const _fetch = this.fetch;
-    const executeWithRetry = /* @__PURE__ */ __name2(async () => {
+    const executeWithRetry = /* @__PURE__ */ __name(async () => {
       let attemptCount = 0;
       while (true) {
         const requestHeaders = new Headers(_this.headers);
@@ -730,9 +1632,9 @@ ${cause.stack}`;
   */
   async processResponse(res) {
     var _this2 = this;
-    let error = null;
+    let error3 = null;
     let data = null;
-    let count = null;
+    let count3 = null;
     let status = res.status;
     let statusText = res.statusText;
     if (res.ok) {
@@ -747,16 +1649,16 @@ ${cause.stack}`;
       }
       const countHeader = (_this$headers$get2 = _this2.headers.get("Prefer")) === null || _this$headers$get2 === void 0 ? void 0 : _this$headers$get2.match(/count=(exact|planned|estimated)/);
       const contentRange = (_res$headers$get2 = res.headers.get("content-range")) === null || _res$headers$get2 === void 0 ? void 0 : _res$headers$get2.split("/");
-      if (countHeader && contentRange && contentRange.length > 1) count = parseInt(contentRange[1]);
+      if (countHeader && contentRange && contentRange.length > 1) count3 = parseInt(contentRange[1]);
       if (_this2.isMaybeSingle && Array.isArray(data)) if (data.length > 1) {
-        error = {
+        error3 = {
           code: "PGRST116",
           details: `Results contain ${data.length} rows, application/vnd.pgrst.object+json requires 1 row`,
           hint: null,
           message: "JSON object requested, multiple (or no) rows returned"
         };
         data = null;
-        count = null;
+        count3 = null;
         status = 406;
         statusText = "Not Acceptable";
       } else if (data.length === 1) data = data[0];
@@ -764,10 +1666,10 @@ ${cause.stack}`;
     } else {
       const body = await res.text();
       try {
-        error = JSON.parse(body);
-        if (Array.isArray(error) && res.status === 404) {
+        error3 = JSON.parse(body);
+        if (Array.isArray(error3) && res.status === 404) {
           data = [];
-          error = null;
+          error3 = null;
           status = 200;
           statusText = "OK";
         }
@@ -775,15 +1677,15 @@ ${cause.stack}`;
         if (res.status === 404 && body === "") {
           status = 204;
           statusText = "No Content";
-        } else error = { message: body };
+        } else error3 = { message: body };
       }
-      if (error && _this2.shouldThrowOnError) throw new PostgrestError(error);
+      if (error3 && _this2.shouldThrowOnError) throw new PostgrestError(error3);
     }
     return {
-      success: error === null,
-      error,
+      success: error3 === null,
+      error: error3,
       data,
-      count,
+      count: count3,
       status,
       statusText
     };
@@ -899,9 +1801,6 @@ ${cause.stack}`;
 var PostgrestTransformBuilder = class extends PostgrestBuilder {
   static {
     __name(this, "PostgrestTransformBuilder");
-  }
-  static {
-    __name2(this, "PostgrestTransformBuilder");
   }
   /**
   * Perform a SELECT on the query result.
@@ -1251,9 +2150,9 @@ var PostgrestTransformBuilder = class extends PostgrestBuilder {
   * }
   * ```
   */
-  limit(count, { foreignTable, referencedTable = foreignTable } = {}) {
+  limit(count3, { foreignTable, referencedTable = foreignTable } = {}) {
     const key = typeof referencedTable === "undefined" ? "limit" : `${referencedTable}.limit`;
-    this.url.searchParams.set(key, `${count}`);
+    this.url.searchParams.set(key, `${count3}`);
     return this;
   }
   /**
@@ -1703,9 +2602,6 @@ var PostgrestReservedCharsRegexp = /* @__PURE__ */ new RegExp("[,()]");
 var PostgrestFilterBuilder = class extends PostgrestTransformBuilder {
   static {
     __name(this, "PostgrestFilterBuilder");
-  }
-  static {
-    __name2(this, "PostgrestFilterBuilder");
   }
   /**
   * Match only rows where `column` is equal to `value`.
@@ -3075,12 +3971,12 @@ var PostgrestFilterBuilder = class extends PostgrestTransformBuilder {
   *   })
   * ```
   */
-  textSearch(column, query, { config, type } = {}) {
+  textSearch(column, query, { config: config2, type } = {}) {
     let typePart = "";
     if (type === "plain") typePart = "pl";
     else if (type === "phrase") typePart = "ph";
     else if (type === "websearch") typePart = "w";
-    const configPart = config === void 0 ? "" : `(${config})`;
+    const configPart = config2 === void 0 ? "" : `(${config2})`;
     this.url.searchParams.append(column, `${typePart}fts${configPart}.${query}`);
     return this;
   }
@@ -3470,9 +4366,6 @@ var PostgrestFilterBuilder = class extends PostgrestTransformBuilder {
 var PostgrestQueryBuilder = class {
   static {
     __name(this, "PostgrestQueryBuilder");
-  }
-  static {
-    __name2(this, "PostgrestQueryBuilder");
   }
   /**
   * Creates a query builder scoped to a Postgres table or view.
@@ -4294,7 +5187,7 @@ var PostgrestQueryBuilder = class {
   * ```
   */
   select(columns, options) {
-    const { head: head2 = false, count } = options !== null && options !== void 0 ? options : {};
+    const { head: head2 = false, count: count3 } = options !== null && options !== void 0 ? options : {};
     const method = head2 ? "HEAD" : "GET";
     let quoted = false;
     const cleanedColumns = (columns !== null && columns !== void 0 ? columns : "*").split("").map((c) => {
@@ -4304,7 +5197,7 @@ var PostgrestQueryBuilder = class {
     }).join("");
     const { url, headers } = this.cloneRequestState();
     url.searchParams.set("select", cleanedColumns);
-    if (count) headers.append("Prefer", `count=${count}`);
+    if (count3) headers.append("Prefer", `count=${count3}`);
     return new PostgrestFilterBuilder({
       method,
       url,
@@ -4426,11 +5319,11 @@ var PostgrestQueryBuilder = class {
   * }
   * ```
   */
-  insert(values, { count, defaultToNull = true } = {}) {
+  insert(values, { count: count3, defaultToNull = true } = {}) {
     var _this$fetch;
     const method = "POST";
     const { url, headers } = this.cloneRequestState();
-    if (count) headers.append("Prefer", `count=${count}`);
+    if (count3) headers.append("Prefer", `count=${count3}`);
     if (!defaultToNull) headers.append("Prefer", `missing=default`);
     if (Array.isArray(values)) {
       const columns = values.reduce((acc, x) => acc.concat(Object.keys(x)), []);
@@ -4658,13 +5551,13 @@ var PostgrestQueryBuilder = class {
   * }
   * ```
   */
-  upsert(values, { onConflict, ignoreDuplicates = false, count, defaultToNull = true } = {}) {
+  upsert(values, { onConflict, ignoreDuplicates = false, count: count3, defaultToNull = true } = {}) {
     var _this$fetch2;
     const method = "POST";
     const { url, headers } = this.cloneRequestState();
     headers.append("Prefer", `resolution=${ignoreDuplicates ? "ignore" : "merge"}-duplicates`);
     if (onConflict !== void 0) url.searchParams.set("on_conflict", onConflict);
-    if (count) headers.append("Prefer", `count=${count}`);
+    if (count3) headers.append("Prefer", `count=${count3}`);
     if (!defaultToNull) headers.append("Prefer", "missing=default");
     if (Array.isArray(values)) {
       const columns = values.reduce((acc, x) => acc.concat(Object.keys(x)), []);
@@ -4823,11 +5716,11 @@ var PostgrestQueryBuilder = class {
   * }
   * ```
   */
-  update(values, { count } = {}) {
+  update(values, { count: count3 } = {}) {
     var _this$fetch3;
     const method = "PATCH";
     const { url, headers } = this.cloneRequestState();
-    if (count) headers.append("Prefer", `count=${count}`);
+    if (count3) headers.append("Prefer", `count=${count3}`);
     return new PostgrestFilterBuilder({
       method,
       url,
@@ -4957,11 +5850,11 @@ var PostgrestQueryBuilder = class {
   * }
   * ```
   */
-  delete({ count } = {}) {
+  delete({ count: count3 } = {}) {
     var _this$fetch4;
     const method = "DELETE";
     const { url, headers } = this.cloneRequestState();
-    if (count) headers.append("Prefer", `count=${count}`);
+    if (count3) headers.append("Prefer", `count=${count3}`);
     return new PostgrestFilterBuilder({
       method,
       url,
@@ -4982,7 +5875,6 @@ function _typeof(o) {
   }, _typeof(o);
 }
 __name(_typeof, "_typeof");
-__name2(_typeof, "_typeof");
 function toPrimitive(t, r) {
   if ("object" != _typeof(t) || !t) return t;
   var e = t[Symbol.toPrimitive];
@@ -4994,13 +5886,11 @@ function toPrimitive(t, r) {
   return ("string" === r ? String : Number)(t);
 }
 __name(toPrimitive, "toPrimitive");
-__name2(toPrimitive, "toPrimitive");
 function toPropertyKey(t) {
   var i = toPrimitive(t, "string");
   return "symbol" == _typeof(i) ? i : i + "";
 }
 __name(toPropertyKey, "toPropertyKey");
-__name2(toPropertyKey, "toPropertyKey");
 function _defineProperty(e, r, t) {
   return (r = toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
     value: t,
@@ -5010,7 +5900,6 @@ function _defineProperty(e, r, t) {
   }) : e[r] = t, e;
 }
 __name(_defineProperty, "_defineProperty");
-__name2(_defineProperty, "_defineProperty");
 function ownKeys(e, r) {
   var t = Object.keys(e);
   if (Object.getOwnPropertySymbols) {
@@ -5022,7 +5911,6 @@ function ownKeys(e, r) {
   return t;
 }
 __name(ownKeys, "ownKeys");
-__name2(ownKeys, "ownKeys");
 function _objectSpread2(e) {
   for (var r = 1; r < arguments.length; r++) {
     var t = null != arguments[r] ? arguments[r] : {};
@@ -5035,13 +5923,9 @@ function _objectSpread2(e) {
   return e;
 }
 __name(_objectSpread2, "_objectSpread2");
-__name2(_objectSpread2, "_objectSpread2");
 var PostgrestClient = class PostgrestClient2 {
   static {
-    __name(this, "PostgrestClient2");
-  }
-  static {
-    __name2(this, "PostgrestClient");
+    __name(this, "PostgrestClient");
   }
   /**
   * Creates a PostgREST client.
@@ -5111,7 +5995,7 @@ var PostgrestClient = class PostgrestClient2 {
           clearTimeout(timeoutId);
           return originalFetch(input, init);
         }
-        const abortHandler = /* @__PURE__ */ __name2(() => {
+        const abortHandler = /* @__PURE__ */ __name(() => {
           clearTimeout(timeoutId);
           controller.abort();
         }, "abortHandler");
@@ -5326,12 +6210,12 @@ var PostgrestClient = class PostgrestClient2 {
   * }
   * ```
   */
-  rpc(fn, args = {}, { head: head2 = false, get: get2 = false, count } = {}) {
+  rpc(fn, args = {}, { head: head2 = false, get: get2 = false, count: count3 } = {}) {
     var _this$fetch;
     let method;
     const url = new URL(`${this.url}/rpc/${fn}`);
     let body;
-    const _isObject = /* @__PURE__ */ __name2((v) => v !== null && typeof v === "object" && (!Array.isArray(v) || v.some(_isObject)), "_isObject");
+    const _isObject = /* @__PURE__ */ __name((v) => v !== null && typeof v === "object" && (!Array.isArray(v) || v.some(_isObject)), "_isObject");
     const _hasObjectArg = head2 && Object.values(args).some(_isObject);
     if (_hasObjectArg) {
       method = "POST";
@@ -5346,8 +6230,8 @@ var PostgrestClient = class PostgrestClient2 {
       body = args;
     }
     const headers = new Headers(this.headers);
-    if (_hasObjectArg) headers.set("Prefer", count ? `count=${count},return=minimal` : "return=minimal");
-    else if (count) headers.set("Prefer", `count=${count}`);
+    if (_hasObjectArg) headers.set("Prefer", count3 ? `count=${count3},return=minimal` : "return=minimal");
+    else if (count3) headers.set("Prefer", `count=${count3}`);
     return new PostgrestFilterBuilder({
       method,
       url,
@@ -5360,12 +6244,11 @@ var PostgrestClient = class PostgrestClient2 {
     });
   }
 };
+
+// ../node_modules/@supabase/realtime-js/dist/module/lib/websocket-factory.js
 var WebSocketFactory = class {
   static {
     __name(this, "WebSocketFactory");
-  }
-  static {
-    __name2(this, "WebSocketFactory");
   }
   /**
    * Static-only utility – prevent instantiation.
@@ -5397,9 +6280,9 @@ var WebSocketFactory = class {
         workaround: "Use serverless functions or a different deployment target for WebSocket functionality."
       };
     }
-    const _process = globalThis["process"];
-    if (_process) {
-      const processVersions = _process["versions"];
+    const _process2 = globalThis["process"];
+    if (_process2) {
+      const processVersions = _process2["versions"];
       if (processVersions && processVersions["node"]) {
         const versionString = processVersions["node"];
         const nodeVersion = parseInt(versionString.replace(/^v/, "").split(".")[0]);
@@ -5442,15 +6325,15 @@ var WebSocketFactory = class {
    * ```
    */
   static getWebSocketConstructor() {
-    const env = this.detectEnvironment();
-    if (env.constructor) {
-      return env.constructor;
+    const env2 = this.detectEnvironment();
+    if (env2.constructor) {
+      return env2.constructor;
     }
-    let errorMessage = env.error || "WebSocket not supported in this environment.";
-    if (env.workaround) {
+    let errorMessage = env2.error || "WebSocket not supported in this environment.";
+    if (env2.workaround) {
       errorMessage += `
 
-Suggested solution: ${env.workaround}`;
+Suggested solution: ${env2.workaround}`;
     }
     throw new Error(errorMessage);
   }
@@ -5469,16 +6352,20 @@ Suggested solution: ${env.workaround}`;
    */
   static isWebSocketSupported() {
     try {
-      const env = this.detectEnvironment();
-      return env.type === "native" || env.type === "ws";
+      const env2 = this.detectEnvironment();
+      return env2.type === "native" || env2.type === "ws";
     } catch (_a) {
       return false;
     }
   }
 };
 var websocket_factory_default = WebSocketFactory;
-var version = "2.103.3";
-var DEFAULT_VERSION = `realtime-js/${version}`;
+
+// ../node_modules/@supabase/realtime-js/dist/module/lib/version.js
+var version2 = "2.103.3";
+
+// ../node_modules/@supabase/realtime-js/dist/module/lib/constants.js
+var DEFAULT_VERSION = `realtime-js/${version2}`;
 var VSN_1_0_0 = "1.0.0";
 var VSN_2_0_0 = "2.0.0";
 var DEFAULT_VSN = VSN_2_0_0;
@@ -5505,12 +6392,11 @@ var CONNECTION_STATE = {
   closing: "closing",
   closed: "closed"
 };
+
+// ../node_modules/@supabase/realtime-js/dist/module/lib/serializer.js
 var Serializer = class {
   static {
     __name(this, "Serializer");
-  }
-  static {
-    __name2(this, "Serializer");
   }
   constructor(allowedMetadataKeys) {
     this.HEADER_LENGTH = 1;
@@ -5552,7 +6438,7 @@ var Serializer = class {
   _encodeUserBroadcastPush(message, encodingType, encodedPayload) {
     var _a, _b;
     const topic = message.topic;
-    const ref = (_a = message.ref) !== null && _a !== void 0 ? _a : "";
+    const ref2 = (_a = message.ref) !== null && _a !== void 0 ? _a : "";
     const joinRef = (_b = message.join_ref) !== null && _b !== void 0 ? _b : "";
     const userEvent = message.payload.event;
     const rest = this.allowedMetadataKeys ? this._pick(message.payload, this.allowedMetadataKeys) : {};
@@ -5560,8 +6446,8 @@ var Serializer = class {
     if (joinRef.length > 255) {
       throw new Error(`joinRef length ${joinRef.length} exceeds maximum of 255`);
     }
-    if (ref.length > 255) {
-      throw new Error(`ref length ${ref.length} exceeds maximum of 255`);
+    if (ref2.length > 255) {
+      throw new Error(`ref length ${ref2.length} exceeds maximum of 255`);
     }
     if (topic.length > 255) {
       throw new Error(`topic length ${topic.length} exceeds maximum of 255`);
@@ -5572,19 +6458,19 @@ var Serializer = class {
     if (metadata.length > 255) {
       throw new Error(`metadata length ${metadata.length} exceeds maximum of 255`);
     }
-    const metaLength = this.USER_BROADCAST_PUSH_META_LENGTH + joinRef.length + ref.length + topic.length + userEvent.length + metadata.length;
+    const metaLength = this.USER_BROADCAST_PUSH_META_LENGTH + joinRef.length + ref2.length + topic.length + userEvent.length + metadata.length;
     const header = new ArrayBuffer(this.HEADER_LENGTH + metaLength);
     let view = new DataView(header);
     let offset = 0;
     view.setUint8(offset++, this.KINDS.userBroadcastPush);
     view.setUint8(offset++, joinRef.length);
-    view.setUint8(offset++, ref.length);
+    view.setUint8(offset++, ref2.length);
     view.setUint8(offset++, topic.length);
     view.setUint8(offset++, userEvent.length);
     view.setUint8(offset++, metadata.length);
     view.setUint8(offset++, encodingType);
     Array.from(joinRef, (char) => view.setUint8(offset++, char.charCodeAt(0)));
-    Array.from(ref, (char) => view.setUint8(offset++, char.charCodeAt(0)));
+    Array.from(ref2, (char) => view.setUint8(offset++, char.charCodeAt(0)));
     Array.from(topic, (char) => view.setUint8(offset++, char.charCodeAt(0)));
     Array.from(userEvent, (char) => view.setUint8(offset++, char.charCodeAt(0)));
     Array.from(metadata, (char) => view.setUint8(offset++, char.charCodeAt(0)));
@@ -5600,8 +6486,8 @@ var Serializer = class {
     }
     if (typeof rawPayload === "string") {
       const jsonPayload = JSON.parse(rawPayload);
-      const [join_ref, ref, topic, event, payload] = jsonPayload;
-      return callback({ join_ref, ref, topic, event, payload });
+      const [join_ref, ref2, topic, event, payload] = jsonPayload;
+      return callback({ join_ref, ref: ref2, topic, event, payload });
     }
     return callback({});
   }
@@ -5649,6 +6535,8 @@ var Serializer = class {
     return Object.fromEntries(Object.entries(obj).filter(([key]) => keys.includes(key)));
   }
 };
+
+// ../node_modules/@supabase/realtime-js/dist/module/lib/transformers.js
 var PostgresTypes;
 (function(PostgresTypes2) {
   PostgresTypes2["abstime"] = "abstime";
@@ -5676,7 +6564,7 @@ var PostgresTypes;
   PostgresTypes2["tsrange"] = "tsrange";
   PostgresTypes2["tstzrange"] = "tstzrange";
 })(PostgresTypes || (PostgresTypes = {}));
-var convertChangeData = /* @__PURE__ */ __name2((columns, record, options = {}) => {
+var convertChangeData = /* @__PURE__ */ __name((columns, record, options = {}) => {
   var _a;
   const skipTypes = (_a = options.skipTypes) !== null && _a !== void 0 ? _a : [];
   if (!record) {
@@ -5687,7 +6575,7 @@ var convertChangeData = /* @__PURE__ */ __name2((columns, record, options = {}) 
     return acc;
   }, {});
 }, "convertChangeData");
-var convertColumn = /* @__PURE__ */ __name2((columnName, columns, record, skipTypes) => {
+var convertColumn = /* @__PURE__ */ __name((columnName, columns, record, skipTypes) => {
   const column = columns.find((x) => x.name === columnName);
   const colType = column === null || column === void 0 ? void 0 : column.type;
   const value = record[columnName];
@@ -5696,7 +6584,7 @@ var convertColumn = /* @__PURE__ */ __name2((columnName, columns, record, skipTy
   }
   return noop(value);
 }, "convertColumn");
-var convertCell = /* @__PURE__ */ __name2((type, value) => {
+var convertCell = /* @__PURE__ */ __name((type, value) => {
   if (type.charAt(0) === "_") {
     const dataType = type.slice(1, type.length);
     return toArray(value, dataType);
@@ -5742,10 +6630,10 @@ var convertCell = /* @__PURE__ */ __name2((type, value) => {
       return noop(value);
   }
 }, "convertCell");
-var noop = /* @__PURE__ */ __name2((value) => {
+var noop = /* @__PURE__ */ __name((value) => {
   return value;
 }, "noop");
-var toBoolean = /* @__PURE__ */ __name2((value) => {
+var toBoolean = /* @__PURE__ */ __name((value) => {
   switch (value) {
     case "t":
       return true;
@@ -5755,7 +6643,7 @@ var toBoolean = /* @__PURE__ */ __name2((value) => {
       return value;
   }
 }, "toBoolean");
-var toNumber = /* @__PURE__ */ __name2((value) => {
+var toNumber = /* @__PURE__ */ __name((value) => {
   if (typeof value === "string") {
     const parsedValue = parseFloat(value);
     if (!Number.isNaN(parsedValue)) {
@@ -5764,7 +6652,7 @@ var toNumber = /* @__PURE__ */ __name2((value) => {
   }
   return value;
 }, "toNumber");
-var toJson = /* @__PURE__ */ __name2((value) => {
+var toJson = /* @__PURE__ */ __name((value) => {
   if (typeof value === "string") {
     try {
       return JSON.parse(value);
@@ -5774,7 +6662,7 @@ var toJson = /* @__PURE__ */ __name2((value) => {
   }
   return value;
 }, "toJson");
-var toArray = /* @__PURE__ */ __name2((value, type) => {
+var toArray = /* @__PURE__ */ __name((value, type) => {
   if (typeof value !== "string") {
     return value;
   }
@@ -5793,13 +6681,13 @@ var toArray = /* @__PURE__ */ __name2((value, type) => {
   }
   return value;
 }, "toArray");
-var toTimestampString = /* @__PURE__ */ __name2((value) => {
+var toTimestampString = /* @__PURE__ */ __name((value) => {
   if (typeof value === "string") {
     return value.replace(" ", "T");
   }
   return value;
 }, "toTimestampString");
-var httpEndpointURL = /* @__PURE__ */ __name2((socketUrl) => {
+var httpEndpointURL = /* @__PURE__ */ __name((socketUrl) => {
   const wsUrl = new URL(socketUrl);
   wsUrl.protocol = wsUrl.protocol.replace(/^ws/i, "http");
   wsUrl.pathname = wsUrl.pathname.replace(/\/+$/, "").replace(/\/socket\/websocket$/i, "").replace(/\/socket$/i, "").replace(/\/websocket$/i, "");
@@ -5810,14 +6698,16 @@ var httpEndpointURL = /* @__PURE__ */ __name2((socketUrl) => {
   }
   return wsUrl.href;
 }, "httpEndpointURL");
-var closure = /* @__PURE__ */ __name2((value) => {
+
+// ../node_modules/@supabase/phoenix/priv/static/phoenix.mjs
+var closure = /* @__PURE__ */ __name((value) => {
   if (typeof value === "function") {
     return (
       /** @type {() => T} */
       value
     );
   } else {
-    let closure2 = /* @__PURE__ */ __name2(function() {
+    let closure2 = /* @__PURE__ */ __name(function() {
       return value;
     }, "closure2");
     return closure2;
@@ -5871,9 +6761,6 @@ var Push = class {
   static {
     __name(this, "Push");
   }
-  static {
-    __name2(this, "Push");
-  }
   /**
    * Initializes the Push
    * @param {Channel} channel - The Channel
@@ -5881,8 +6768,8 @@ var Push = class {
    * @param {() => Record<string, unknown>} payload - The payload, for example `{user_id: 123}`
    * @param {number} timeout - The push timeout in milliseconds
    */
-  constructor(channel, event, payload, timeout) {
-    this.channel = channel;
+  constructor(channel2, event, payload, timeout) {
+    this.channel = channel2;
     this.event = event;
     this.payload = payload || function() {
       return {};
@@ -5992,9 +6879,6 @@ var Timer = class {
   static {
     __name(this, "Timer");
   }
-  static {
-    __name2(this, "Timer");
-  }
   /**
   * @param {() => void} callback
   * @param {(tries: number) => number} timerCalc
@@ -6023,9 +6907,6 @@ var Timer = class {
 var Channel = class {
   static {
     __name(this, "Channel");
-  }
-  static {
-    __name2(this, "Channel");
   }
   /**
    * @param {string} topic
@@ -6097,8 +6978,8 @@ var Channel = class {
         this.rejoinTimer.scheduleTimeout();
       }
     });
-    this.on(CHANNEL_EVENTS2.reply, (payload, ref) => {
-      this.trigger(this.replyEventName(ref), payload);
+    this.on(CHANNEL_EVENTS2.reply, (payload, ref2) => {
+      this.trigger(this.replyEventName(ref2), payload);
     });
   }
   /**
@@ -6162,9 +7043,9 @@ var Channel = class {
    * @returns {number} ref
    */
   on(event, callback) {
-    let ref = this.bindingRef++;
-    this.bindings.push({ event, ref, callback });
-    return ref;
+    let ref2 = this.bindingRef++;
+    this.bindings.push({ event, ref: ref2, callback });
+    return ref2;
   }
   /**
    * Unsubscribes off of channel events
@@ -6184,9 +7065,9 @@ var Channel = class {
    * @param {string} event
    * @param {number} [ref]
    */
-  off(event, ref) {
+  off(event, ref2) {
     this.bindings = this.bindings.filter((bind) => {
-      return !(bind.event === event && (typeof ref === "undefined" || ref === bind.ref));
+      return !(bind.event === event && (typeof ref2 === "undefined" || ref2 === bind.ref));
     });
   }
   /**
@@ -6247,7 +7128,7 @@ var Channel = class {
     this.rejoinTimer.reset();
     this.joinPush.cancelTimeout();
     this.state = CHANNEL_STATES2.leaving;
-    let onClose = /* @__PURE__ */ __name2(() => {
+    let onClose = /* @__PURE__ */ __name(() => {
       if (this.socket.hasLogger()) this.socket.log("channel", `leave ${this.topic}`);
       this.trigger(CHANNEL_EVENTS2.close, "leave");
     }, "onClose");
@@ -6312,22 +7193,22 @@ var Channel = class {
    * @param {?string} [ref]
    * @param {?string} [joinRef]
    */
-  trigger(event, payload, ref, joinRef) {
-    let handledPayload = this.onMessage(event, payload, ref, joinRef);
+  trigger(event, payload, ref2, joinRef) {
+    let handledPayload = this.onMessage(event, payload, ref2, joinRef);
     if (payload && !handledPayload) {
       throw new Error("channel onMessage callbacks must return the payload, modified or unmodified");
     }
-    let eventBindings = this.bindings.filter((bind) => bind.event === event && this.filterBindings(bind, payload, ref));
+    let eventBindings = this.bindings.filter((bind) => bind.event === event && this.filterBindings(bind, payload, ref2));
     for (let i = 0; i < eventBindings.length; i++) {
       let bind = eventBindings[i];
-      bind.callback(handledPayload, ref, joinRef || this.joinRef());
+      bind.callback(handledPayload, ref2, joinRef || this.joinRef());
     }
   }
   /**
   * @param {string} ref
   */
-  replyEventName(ref) {
-    return `chan_reply_${ref}`;
+  replyEventName(ref2) {
+    return `chan_reply_${ref2}`;
   }
   isClosed() {
     return this.state === CHANNEL_STATES2.closed;
@@ -6348,9 +7229,6 @@ var Channel = class {
 var Ajax = class {
   static {
     __name(this, "Ajax");
-  }
-  static {
-    __name2(this, "Ajax");
   }
   static request(method, endPoint, headers, body, timeout, ontimeout, callback) {
     if (global2.XDomainRequest) {
@@ -6455,7 +7333,7 @@ var Ajax = class {
     return `${url}${prefix}${this.serialize(params)}`;
   }
 };
-var arrayBufferToBase64 = /* @__PURE__ */ __name2((buffer) => {
+var arrayBufferToBase64 = /* @__PURE__ */ __name((buffer) => {
   let binary = "";
   let bytes = new Uint8Array(buffer);
   let len = bytes.byteLength;
@@ -6467,9 +7345,6 @@ var arrayBufferToBase64 = /* @__PURE__ */ __name2((buffer) => {
 var LongPoll = class {
   static {
     __name(this, "LongPoll");
-  }
-  static {
-    __name2(this, "LongPoll");
   }
   constructor(endPoint, protocols) {
     if (protocols && protocols.length === 2 && protocols[1].startsWith(AUTH_TOKEN_PREFIX)) {
@@ -6607,7 +7482,7 @@ var LongPoll = class {
   }
   ajax(method, headers, body, onCallerTimeout, callback) {
     let req;
-    let ontimeout = /* @__PURE__ */ __name2(() => {
+    let ontimeout = /* @__PURE__ */ __name(() => {
       this.reqs.delete(req);
       onCallerTimeout();
     }, "ontimeout");
@@ -6624,27 +7499,24 @@ var Presence = class _Presence {
   static {
     __name(this, "_Presence");
   }
-  static {
-    __name2(this, "_Presence");
-  }
   /**
    * Initializes the Presence
    * @param {Channel} channel - The Channel
    * @param {PresenceOptions} [opts] - The options, for example `{events: {state: "state", diff: "diff"}}`
    */
-  constructor(channel, opts = {}) {
+  constructor(channel2, opts = {}) {
     let events = opts.events || /** @type {PresenceEvents} */
     { state: "presence_state", diff: "presence_diff" };
     this.state = {};
     this.pendingDiffs = [];
-    this.channel = channel;
+    this.channel = channel2;
     this.joinRef = null;
     this.caller = {
-      onJoin: /* @__PURE__ */ __name2(function() {
+      onJoin: /* @__PURE__ */ __name(function() {
       }, "onJoin"),
-      onLeave: /* @__PURE__ */ __name2(function() {
+      onLeave: /* @__PURE__ */ __name(function() {
       }, "onLeave"),
-      onSync: /* @__PURE__ */ __name2(function() {
+      onSync: /* @__PURE__ */ __name(function() {
       }, "onSync")
     };
     this.channel.on(events.state, (newState) => {
@@ -6760,11 +7632,11 @@ var Presence = class _Presence {
   static syncDiff(state, diff, onJoin, onLeave) {
     let { joins, leaves } = this.clone(diff);
     if (!onJoin) {
-      onJoin = /* @__PURE__ */ __name2(function() {
+      onJoin = /* @__PURE__ */ __name(function() {
       }, "onJoin");
     }
     if (!onLeave) {
-      onLeave = /* @__PURE__ */ __name2(function() {
+      onLeave = /* @__PURE__ */ __name(function() {
       }, "onLeave");
     }
     this.map(joins, (key, newPresence) => {
@@ -6804,7 +7676,7 @@ var Presence = class _Presence {
    */
   static list(presences, chooser) {
     if (!chooser) {
-      chooser = /* @__PURE__ */ __name2(function(key, pres) {
+      chooser = /* @__PURE__ */ __name(function(key, pres) {
         return pres;
       }, "chooser");
     }
@@ -6858,24 +7730,24 @@ var serializer_default = {
     if (rawPayload.constructor === ArrayBuffer) {
       return callback(this.binaryDecode(rawPayload));
     } else {
-      let [join_ref, ref, topic, event, payload] = JSON.parse(rawPayload);
-      return callback({ join_ref, ref, topic, event, payload });
+      let [join_ref, ref2, topic, event, payload] = JSON.parse(rawPayload);
+      return callback({ join_ref, ref: ref2, topic, event, payload });
     }
   },
   /** @private */
   binaryEncode(message) {
-    let { join_ref, ref, event, topic, payload } = message;
-    let metaLength = this.META_LENGTH + join_ref.length + ref.length + topic.length + event.length;
+    let { join_ref, ref: ref2, event, topic, payload } = message;
+    let metaLength = this.META_LENGTH + join_ref.length + ref2.length + topic.length + event.length;
     let header = new ArrayBuffer(this.HEADER_LENGTH + metaLength);
     let view = new DataView(header);
     let offset = 0;
     view.setUint8(offset++, this.KINDS.push);
     view.setUint8(offset++, join_ref.length);
-    view.setUint8(offset++, ref.length);
+    view.setUint8(offset++, ref2.length);
     view.setUint8(offset++, topic.length);
     view.setUint8(offset++, event.length);
     Array.from(join_ref, (char) => view.setUint8(offset++, char.charCodeAt(0)));
-    Array.from(ref, (char) => view.setUint8(offset++, char.charCodeAt(0)));
+    Array.from(ref2, (char) => view.setUint8(offset++, char.charCodeAt(0)));
     Array.from(topic, (char) => view.setUint8(offset++, char.charCodeAt(0)));
     Array.from(event, (char) => view.setUint8(offset++, char.charCodeAt(0)));
     var combined = new Uint8Array(header.byteLength + payload.byteLength);
@@ -6923,7 +7795,7 @@ var serializer_default = {
     let offset = this.HEADER_LENGTH + this.META_LENGTH;
     let joinRef = decoder.decode(buffer.slice(offset, offset + joinRefSize));
     offset = offset + joinRefSize;
-    let ref = decoder.decode(buffer.slice(offset, offset + refSize));
+    let ref2 = decoder.decode(buffer.slice(offset, offset + refSize));
     offset = offset + refSize;
     let topic = decoder.decode(buffer.slice(offset, offset + topicSize));
     offset = offset + topicSize;
@@ -6931,7 +7803,7 @@ var serializer_default = {
     offset = offset + eventSize;
     let data = buffer.slice(offset, buffer.byteLength);
     let payload = { status: event, response: data };
-    return { join_ref: joinRef, ref, topic, event: CHANNEL_EVENTS2.reply, payload };
+    return { join_ref: joinRef, ref: ref2, topic, event: CHANNEL_EVENTS2.reply, payload };
   },
   /** @private */
   decodeBroadcast(buffer, view, decoder) {
@@ -6949,9 +7821,6 @@ var serializer_default = {
 var Socket = class {
   static {
     __name(this, "Socket");
-  }
-  static {
-    __name2(this, "Socket");
   }
   /** Initializes the Socket *
    *
@@ -7175,9 +8044,9 @@ var Socket = class {
    * @param {SocketOnOpen} callback
    */
   onOpen(callback) {
-    let ref = this.makeRef();
-    this.stateChangeCallbacks.open.push([ref, callback]);
-    return ref;
+    let ref2 = this.makeRef();
+    this.stateChangeCallbacks.open.push([ref2, callback]);
+    return ref2;
   }
   /**
    * Registers callbacks for connection close events
@@ -7185,9 +8054,9 @@ var Socket = class {
    * @returns {string}
    */
   onClose(callback) {
-    let ref = this.makeRef();
-    this.stateChangeCallbacks.close.push([ref, callback]);
-    return ref;
+    let ref2 = this.makeRef();
+    this.stateChangeCallbacks.close.push([ref2, callback]);
+    return ref2;
   }
   /**
    * Registers callbacks for connection error events
@@ -7198,9 +8067,9 @@ var Socket = class {
    * @returns {string}
    */
   onError(callback) {
-    let ref = this.makeRef();
-    this.stateChangeCallbacks.error.push([ref, callback]);
-    return ref;
+    let ref2 = this.makeRef();
+    this.stateChangeCallbacks.error.push([ref2, callback]);
+    return ref2;
   }
   /**
    * Registers callbacks for connection message events
@@ -7208,9 +8077,9 @@ var Socket = class {
    * @returns {string}
    */
   onMessage(callback) {
-    let ref = this.makeRef();
-    this.stateChangeCallbacks.message.push([ref, callback]);
-    return ref;
+    let ref2 = this.makeRef();
+    this.stateChangeCallbacks.message.push([ref2, callback]);
+    return ref2;
   }
   /**
    * Sets a callback that receives lifecycle events for internal heartbeat messages.
@@ -7230,11 +8099,11 @@ var Socket = class {
     if (!this.isConnected()) {
       return false;
     }
-    let ref = this.makeRef();
+    let ref2 = this.makeRef();
     let startTime = Date.now();
-    this.push({ topic: "phoenix", event: "heartbeat", payload: {}, ref });
+    this.push({ topic: "phoenix", event: "heartbeat", payload: {}, ref: ref2 });
     let onMsgRef = this.onMessage((msg) => {
-      if (msg.ref === ref) {
+      if (msg.ref === ref2) {
         this.off([onMsgRef]);
         callback(Date.now() - startTime);
       }
@@ -7268,7 +8137,7 @@ var Socket = class {
     this.conn.binaryType = this.binaryType;
     this.conn.timeout = this.longpollerTimeout;
     this.conn.onopen = () => this.onConnOpen();
-    this.conn.onerror = (error) => this.onConnError(error);
+    this.conn.onerror = (error3) => this.onConnError(error3);
     this.conn.onmessage = (event) => this.onConnMessage(event);
     this.conn.onclose = (event) => this.onConnClose(event);
   }
@@ -7284,7 +8153,7 @@ var Socket = class {
     let primaryTransport = true;
     let openRef, errorRef;
     let fallbackTransportName = this.transportName(fallbackTransport);
-    let fallback = /* @__PURE__ */ __name2((reason) => {
+    let fallback = /* @__PURE__ */ __name((reason) => {
       this.log("transport", `falling back to ${fallbackTransportName}...`, reason);
       this.off([openRef, errorRef]);
       primaryTransport = false;
@@ -7431,11 +8300,11 @@ var Socket = class {
    * @private
    * @param {Event} error
    */
-  onConnError(error) {
-    if (this.hasLogger()) this.log("transport", error);
+  onConnError(error3) {
+    if (this.hasLogger()) this.log("transport", error3);
     let transportBefore = this.transport;
     let establishedBefore = this.establishedConnections;
-    this.triggerStateCallbacks("error", error, transportBefore, establishedBefore);
+    this.triggerStateCallbacks("error", error3, transportBefore, establishedBefore);
     if (transportBefore === this.transport || establishedBefore > 0) {
       this.triggerChanError();
     }
@@ -7444,9 +8313,9 @@ var Socket = class {
    * @private
    */
   triggerChanError() {
-    this.channels.forEach((channel) => {
-      if (!(channel.isErrored() || channel.isLeaving() || channel.isClosed())) {
-        channel.trigger(CHANNEL_EVENTS2.error);
+    this.channels.forEach((channel2) => {
+      if (!(channel2.isErrored() || channel2.isLeaving() || channel2.isClosed())) {
+        channel2.trigger(CHANNEL_EVENTS2.error);
       }
     });
   }
@@ -7475,9 +8344,9 @@ var Socket = class {
    *
    * @param {Channel} channel
    */
-  remove(channel) {
-    this.off(channel.stateChangeRefs);
-    this.channels = this.channels.filter((c) => c !== channel);
+  remove(channel2) {
+    this.off(channel2.stateChangeRefs);
+    this.channels = this.channels.filter((c) => c !== channel2);
   }
   /**
    * Removes `onOpen`, `onClose`, `onError,` and `onMessage` registrations.
@@ -7487,8 +8356,8 @@ var Socket = class {
    */
   off(refs) {
     for (let key in this.stateChangeCallbacks) {
-      this.stateChangeCallbacks[key] = this.stateChangeCallbacks[key].filter(([ref]) => {
-        return refs.indexOf(ref) === -1;
+      this.stateChangeCallbacks[key] = this.stateChangeCallbacks[key].filter(([ref2]) => {
+        return refs.indexOf(ref2) === -1;
       });
     }
   }
@@ -7509,8 +8378,8 @@ var Socket = class {
    */
   push(data) {
     if (this.hasLogger()) {
-      let { topic, event, payload, ref, join_ref } = data;
-      this.log("push", `${topic} ${event} (${join_ref}, ${ref})`, payload);
+      let { topic, event, payload, ref: ref2, join_ref } = data;
+      this.log("push", `${topic} ${event} (${join_ref}, ${ref2})`, payload);
     }
     if (this.isConnected()) {
       this.encode(data, (result) => this.conn.send(result));
@@ -7565,8 +8434,8 @@ var Socket = class {
   */
   onConnMessage(rawMessage) {
     this.decode(rawMessage.data, (msg) => {
-      let { topic, event, payload, ref, join_ref } = msg;
-      if (ref && ref === this.pendingHeartbeatRef) {
+      let { topic, event, payload, ref: ref2, join_ref } = msg;
+      if (ref2 && ref2 === this.pendingHeartbeatRef) {
         const latency = this.heartbeatSentAt ? Date.now() - this.heartbeatSentAt : void 0;
         this.clearHeartbeats();
         try {
@@ -7580,13 +8449,13 @@ var Socket = class {
           this.heartbeatTimer = setTimeout(() => this.sendHeartbeat(), this.heartbeatIntervalMs);
         }
       }
-      if (this.hasLogger()) this.log("receive", `${payload.status || ""} ${topic} ${event} ${ref && "(" + ref + ")" || ""}`.trim(), payload);
+      if (this.hasLogger()) this.log("receive", `${payload.status || ""} ${topic} ${event} ${ref2 && "(" + ref2 + ")" || ""}`.trim(), payload);
       for (let i = 0; i < this.channels.length; i++) {
-        const channel = this.channels[i];
-        if (!channel.isMember(topic, event, payload, join_ref)) {
+        const channel2 = this.channels[i];
+        if (!channel2.isMember(topic, event, payload, join_ref)) {
           continue;
         }
-        channel.trigger(event, payload, ref, join_ref);
+        channel2.trigger(event, payload, ref2, join_ref);
       }
       this.triggerStateCallbacks("message", msg);
     });
@@ -7619,26 +8488,25 @@ var Socket = class {
     }
   }
 };
+
+// ../node_modules/@supabase/realtime-js/dist/module/phoenix/presenceAdapter.js
 var PresenceAdapter = class _PresenceAdapter {
   static {
-    __name(this, "_PresenceAdapter");
+    __name(this, "PresenceAdapter");
   }
-  static {
-    __name2(this, "PresenceAdapter");
-  }
-  constructor(channel, opts) {
+  constructor(channel2, opts) {
     const phoenixOptions = phoenixPresenceOptions(opts);
-    this.presence = new Presence(channel.getChannel(), phoenixOptions);
+    this.presence = new Presence(channel2.getChannel(), phoenixOptions);
     this.presence.onJoin((key, currentPresence, newPresence) => {
       const onJoinPayload = _PresenceAdapter.onJoinPayload(key, currentPresence, newPresence);
-      channel.getChannel().trigger("presence", onJoinPayload);
+      channel2.getChannel().trigger("presence", onJoinPayload);
     });
     this.presence.onLeave((key, currentPresence, leftPresence) => {
       const onLeavePayload = _PresenceAdapter.onLeavePayload(key, currentPresence, leftPresence);
-      channel.getChannel().trigger("presence", onLeavePayload);
+      channel2.getChannel().trigger("presence", onLeavePayload);
     });
     this.presence.onSync(() => {
-      channel.getChannel().trigger("presence", { event: "sync" });
+      channel2.getChannel().trigger("presence", { event: "sync" });
     });
   }
   get state() {
@@ -7705,22 +8573,20 @@ function transformState(presences) {
   });
 }
 __name(transformState, "transformState");
-__name2(transformState, "transformState");
 function cloneState(state) {
   return JSON.parse(JSON.stringify(state));
 }
 __name(cloneState, "cloneState");
-__name2(cloneState, "cloneState");
 function phoenixPresenceOptions(opts) {
   return (opts === null || opts === void 0 ? void 0 : opts.events) && { events: opts.events };
 }
 __name(phoenixPresenceOptions, "phoenixPresenceOptions");
-__name2(phoenixPresenceOptions, "phoenixPresenceOptions");
 function parseCurrentPresences(currentPresences) {
   return (currentPresences === null || currentPresences === void 0 ? void 0 : currentPresences.metas) ? transformState(currentPresences) : [];
 }
 __name(parseCurrentPresences, "parseCurrentPresences");
-__name2(parseCurrentPresences, "parseCurrentPresences");
+
+// ../node_modules/@supabase/realtime-js/dist/module/RealtimePresence.js
 var REALTIME_PRESENCE_LISTEN_EVENTS;
 (function(REALTIME_PRESENCE_LISTEN_EVENTS2) {
   REALTIME_PRESENCE_LISTEN_EVENTS2["SYNC"] = "sync";
@@ -7730,9 +8596,6 @@ var REALTIME_PRESENCE_LISTEN_EVENTS;
 var RealtimePresence = class {
   static {
     __name(this, "RealtimePresence");
-  }
-  static {
-    __name2(this, "RealtimePresence");
   }
   get state() {
     return this.presenceAdapter.state;
@@ -7754,17 +8617,16 @@ var RealtimePresence = class {
    * })
    * ```
    */
-  constructor(channel, opts) {
-    this.channel = channel;
+  constructor(channel2, opts) {
+    this.channel = channel2;
     this.presenceAdapter = new PresenceAdapter(this.channel.channelAdapter, opts);
   }
 };
+
+// ../node_modules/@supabase/realtime-js/dist/module/phoenix/channelAdapter.js
 var ChannelAdapter = class {
   static {
     __name(this, "ChannelAdapter");
-  }
-  static {
-    __name2(this, "ChannelAdapter");
   }
   constructor(socket, topic, params) {
     const phoenixParams = phoenixChannelParams(params);
@@ -7811,7 +8673,7 @@ var ChannelAdapter = class {
     let push;
     try {
       push = this.channel.push(event, payload, timeout);
-    } catch (error) {
+    } catch (error3) {
       throw new Error(`tried to push '${event}' to '${this.channel.topic}' before joining. Use channel.subscribe() before pushing events`);
     }
     if (this.channel.pushBuffer.length > MAX_PUSH_BUFFER_SIZE) {
@@ -7863,7 +8725,8 @@ function phoenixChannelParams(options) {
   };
 }
 __name(phoenixChannelParams, "phoenixChannelParams");
-__name2(phoenixChannelParams, "phoenixChannelParams");
+
+// ../node_modules/@supabase/realtime-js/dist/module/RealtimeChannel.js
 var REALTIME_POSTGRES_CHANGES_LISTEN_EVENT;
 (function(REALTIME_POSTGRES_CHANGES_LISTEN_EVENT2) {
   REALTIME_POSTGRES_CHANGES_LISTEN_EVENT2["ALL"] = "*";
@@ -7887,10 +8750,7 @@ var REALTIME_SUBSCRIBE_STATES;
 })(REALTIME_SUBSCRIBE_STATES || (REALTIME_SUBSCRIBE_STATES = {}));
 var RealtimeChannel = class _RealtimeChannel {
   static {
-    __name(this, "_RealtimeChannel");
-  }
-  static {
-    __name2(this, "RealtimeChannel");
+    __name(this, "RealtimeChannel");
   }
   get state() {
     return this.channelAdapter.state;
@@ -7966,7 +8826,7 @@ var RealtimeChannel = class _RealtimeChannel {
       const postgres_changes = (_b = (_a = this.bindings.postgres_changes) === null || _a === void 0 ? void 0 : _a.map((r) => r.filter)) !== null && _b !== void 0 ? _b : [];
       const presence_enabled = !!this.bindings[REALTIME_LISTEN_TYPES.PRESENCE] && this.bindings[REALTIME_LISTEN_TYPES.PRESENCE].length > 0 || ((_c = this.params.config.presence) === null || _c === void 0 ? void 0 : _c.enabled) === true;
       const accessTokenPayload = {};
-      const config = {
+      const config2 = {
         broadcast,
         presence: Object.assign(Object.assign({}, presence), { enabled: presence_enabled }),
         postgres_changes,
@@ -7979,7 +8839,7 @@ var RealtimeChannel = class _RealtimeChannel {
         callback === null || callback === void 0 ? void 0 : callback(REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR, reason);
       });
       this._onClose(() => callback === null || callback === void 0 ? void 0 : callback(REALTIME_SUBSCRIBE_STATES.CLOSED));
-      this.updateJoinPayload(Object.assign({ config }, accessTokenPayload));
+      this.updateJoinPayload(Object.assign({ config: config2 }, accessTokenPayload));
       this._updateFilterMessage();
       this.channelAdapter.subscribe(timeout).receive("ok", async ({ postgres_changes: postgres_changes2 }) => {
         if (!this.socket._isManualToken()) {
@@ -7990,9 +8850,9 @@ var RealtimeChannel = class _RealtimeChannel {
           return;
         }
         this._updatePostgresBindings(postgres_changes2, callback);
-      }).receive("error", (error) => {
+      }).receive("error", (error3) => {
         this.state = CHANNEL_STATES.errored;
-        callback === null || callback === void 0 ? void 0 : callback(REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR, new Error(JSON.stringify(Object.values(error).join(", ") || "error")));
+        callback === null || callback === void 0 ? void 0 : callback(REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR, new Error(JSON.stringify(Object.values(error3).join(", ") || "error")));
       }).receive("timeout", () => {
         callback === null || callback === void 0 ? void 0 : callback(REALTIME_SUBSCRIBE_STATES.TIMED_OUT);
       });
@@ -8006,9 +8866,9 @@ var RealtimeChannel = class _RealtimeChannel {
     const newPostgresBindings = [];
     for (let i = 0; i < bindingsLen; i++) {
       const clientPostgresBinding = clientPostgresBindings[i];
-      const { filter: { event, schema, table, filter } } = clientPostgresBinding;
+      const { filter: { event, schema, table: table3, filter } } = clientPostgresBinding;
       const serverPostgresFilter = postgres_changes && postgres_changes[i];
-      if (serverPostgresFilter && serverPostgresFilter.event === event && _RealtimeChannel.isFilterValueEqual(serverPostgresFilter.schema, schema) && _RealtimeChannel.isFilterValueEqual(serverPostgresFilter.table, table) && _RealtimeChannel.isFilterValueEqual(serverPostgresFilter.filter, filter)) {
+      if (serverPostgresFilter && serverPostgresFilter.event === event && _RealtimeChannel.isFilterValueEqual(serverPostgresFilter.schema, schema) && _RealtimeChannel.isFilterValueEqual(serverPostgresFilter.table, table3) && _RealtimeChannel.isFilterValueEqual(serverPostgresFilter.filter, filter)) {
         newPostgresBindings.push(Object.assign(Object.assign({}, clientPostgresBinding), { id: serverPostgresFilter.id }));
       } else {
         this.unsubscribe();
@@ -8348,8 +9208,8 @@ var RealtimeChannel = class _RealtimeChannel {
         const response = await this._fetchWithTimeout(this.broadcastEndpointURL, options, (_a = opts.timeout) !== null && _a !== void 0 ? _a : this.timeout);
         await ((_b = response.body) === null || _b === void 0 ? void 0 : _b.cancel());
         return response.ok ? "ok" : "error";
-      } catch (error) {
-        if (error.name === "AbortError") {
+      } catch (error3) {
+        if (error3.name === "AbortError") {
           return "timed out";
         } else {
           return "error";
@@ -8412,17 +9272,17 @@ var RealtimeChannel = class _RealtimeChannel {
   /** @internal */
   _on(type, filter, callback) {
     const typeLower = type.toLocaleLowerCase();
-    const ref = this.channelAdapter.on(type, callback);
-    const binding = {
+    const ref2 = this.channelAdapter.on(type, callback);
+    const binding2 = {
       type: typeLower,
       filter,
       callback,
-      ref
+      ref: ref2
     };
     if (this.bindings[typeLower]) {
-      this.bindings[typeLower].push(binding);
+      this.bindings[typeLower].push(binding2);
     } else {
-      this.bindings[typeLower] = [binding];
+      this.bindings[typeLower] = [binding2];
     }
     this._updateFilterMessage();
     return this;
@@ -8445,13 +9305,13 @@ var RealtimeChannel = class _RealtimeChannel {
   }
   /** @internal */
   _updateFilterMessage() {
-    this.channelAdapter.updateFilterBindings((binding, payload, ref) => {
+    this.channelAdapter.updateFilterBindings((binding2, payload, ref2) => {
       var _a, _b, _c, _d, _e, _f, _g;
-      const typeLower = binding.event.toLocaleLowerCase();
-      if (this._notThisChannelEvent(typeLower, ref)) {
+      const typeLower = binding2.event.toLocaleLowerCase();
+      if (this._notThisChannelEvent(typeLower, ref2)) {
         return false;
       }
-      const bind = (_a = this.bindings[typeLower]) === null || _a === void 0 ? void 0 : _a.find((bind2) => bind2.ref === binding.ref);
+      const bind = (_a = this.bindings[typeLower]) === null || _a === void 0 ? void 0 : _a.find((bind2) => bind2.ref === binding2.ref);
       if (!bind) {
         return true;
       }
@@ -8470,20 +9330,20 @@ var RealtimeChannel = class _RealtimeChannel {
     });
   }
   /** @internal */
-  _notThisChannelEvent(event, ref) {
-    const { close, error, leave, join } = CHANNEL_EVENTS;
-    const events = [close, error, leave, join];
-    return ref && events.includes(event) && ref !== this.joinPush.ref;
+  _notThisChannelEvent(event, ref2) {
+    const { close, error: error3, leave, join } = CHANNEL_EVENTS;
+    const events = [close, error3, leave, join];
+    return ref2 && events.includes(event) && ref2 !== this.joinPush.ref;
   }
   /** @internal */
   _updateFilterTransform() {
-    this.channelAdapter.updatePayloadTransform((event, payload, ref) => {
+    this.channelAdapter.updatePayloadTransform((event, payload, ref2) => {
       if (typeof payload === "object" && "ids" in payload) {
         const postgresChanges = payload.data;
-        const { schema, table, commit_timestamp, type, errors } = postgresChanges;
+        const { schema, table: table3, commit_timestamp, type, errors } = postgresChanges;
         const enrichedPayload = {
           schema,
-          table,
+          table: table3,
           commit_timestamp,
           eventType: type,
           new: {},
@@ -8500,8 +9360,8 @@ var RealtimeChannel = class _RealtimeChannel {
       throw new Error("cannot copy bindings into joined channel");
     }
     for (const kind in other.bindings) {
-      for (const binding of other.bindings[kind]) {
-        this._on(binding.type, binding.filter, binding.callback);
+      for (const binding2 of other.bindings[kind]) {
+        this._on(binding2.type, binding2.filter, binding2.callback);
       }
     }
   }
@@ -8530,12 +9390,11 @@ var RealtimeChannel = class _RealtimeChannel {
     return records;
   }
 };
+
+// ../node_modules/@supabase/realtime-js/dist/module/phoenix/socketAdapter.js
 var SocketAdapter = class {
   static {
     __name(this, "SocketAdapter");
-  }
-  static {
-    __name2(this, "SocketAdapter");
   }
   constructor(endPoint, options) {
     this.socket = new Socket(endPoint, options);
@@ -8643,6 +9502,8 @@ var SocketAdapter = class {
     return this.socket;
   }
 };
+
+// ../node_modules/@supabase/realtime-js/dist/module/RealtimeClient.js
 var CONNECTION_TIMEOUTS = {
   HEARTBEAT_INTERVAL: 25e3,
   RECONNECT_DELAY: 10,
@@ -8659,9 +9520,6 @@ var WORKER_SCRIPT = `
 var RealtimeClient = class {
   static {
     __name(this, "RealtimeClient");
-  }
-  static {
-    __name2(this, "RealtimeClient");
   }
   get endPoint() {
     return this.socketAdapter.endPoint;
@@ -8788,8 +9646,8 @@ var RealtimeClient = class {
     this._setupConnectionHandlers();
     try {
       this.socketAdapter.connect();
-    } catch (error) {
-      const errorMessage = error.message;
+    } catch (error3) {
+      const errorMessage = error3.message;
       if (errorMessage.includes("Node.js")) {
         throw new Error(`${errorMessage}
 
@@ -8850,10 +9708,10 @@ Option 2: Install and provide the "ws" package:
    *
    * @category Realtime
    */
-  async removeChannel(channel) {
-    const status = await channel.unsubscribe();
+  async removeChannel(channel2) {
+    const status = await channel2.unsubscribe();
     if (status === "ok") {
-      channel.teardown();
+      channel2.teardown();
     }
     if (this.channels.length === 0) {
       this.disconnect();
@@ -8866,9 +9724,9 @@ Option 2: Install and provide the "ws" package:
    * @category Realtime
    */
   async removeAllChannels() {
-    const promises = this.channels.map(async (channel) => {
-      const result2 = await channel.unsubscribe();
-      channel.teardown();
+    const promises = this.channels.map(async (channel2) => {
+      const result2 = await channel2.unsubscribe();
+      channel2.teardown();
       return result2;
     });
     const result = await Promise.all(promises);
@@ -9017,8 +9875,8 @@ Option 2: Install and provide the "ws" package:
    *
    * @internal
    */
-  _remove(channel) {
-    this.channels = this.channels.filter((c) => c.topic !== channel.topic);
+  _remove(channel2) {
+    this.channels = this.channels.filter((c) => c.topic !== channel2.topic);
   }
   /**
    * Perform the actual auth operation
@@ -9047,14 +9905,14 @@ Option 2: Install and provide the "ws" package:
     }
     if (this.accessTokenValue != tokenToSend) {
       this.accessTokenValue = tokenToSend;
-      this.channels.forEach((channel) => {
+      this.channels.forEach((channel2) => {
         const payload = {
           access_token: tokenToSend,
           version: DEFAULT_VERSION
         };
-        tokenToSend && channel.updateJoinPayload(payload);
-        if (channel.joinedOnce && channel.channelAdapter.isJoined()) {
-          channel.channelAdapter.push(CHANNEL_EVENTS.access_token, {
+        tokenToSend && channel2.updateJoinPayload(payload);
+        if (channel2.joinedOnce && channel2.channelAdapter.isJoined()) {
+          channel2.channelAdapter.push(CHANNEL_EVENTS.access_token, {
             access_token: tokenToSend
           });
         }
@@ -9074,10 +9932,10 @@ Option 2: Install and provide the "ws" package:
    * Safely call setAuth with standardized error handling
    * @internal
    */
-  _setAuthSafely(context = "general") {
+  _setAuthSafely(context2 = "general") {
     if (!this._isManualToken()) {
       this.setAuth().catch((e) => {
-        this.log("error", `Error setting auth in ${context}`, e);
+        this.log("error", `Error setting auth in ${context2}`, e);
       });
     }
   }
@@ -9127,8 +9985,8 @@ Option 2: Install and provide the "ws" package:
     }
     const objectUrl = this._workerObjectUrl(this.workerUrl);
     this.workerRef = new Worker(objectUrl);
-    this.workerRef.onerror = (error) => {
-      this.log("worker", "worker error", error.message);
+    this.workerRef.onerror = (error3) => {
+      this.log("worker", "worker error", error3.message);
       this._terminateWorker();
       this.disconnect();
     };
@@ -9187,10 +10045,10 @@ Option 2: Install and provide the "ws" package:
     const vsn = (_g = options === null || options === void 0 ? void 0 : options.vsn) !== null && _g !== void 0 ? _g : DEFAULT_VSN;
     switch (vsn) {
       case VSN_1_0_0:
-        defaultEncode = /* @__PURE__ */ __name2((payload, callback) => {
+        defaultEncode = /* @__PURE__ */ __name((payload, callback) => {
           return callback(JSON.stringify(payload));
         }, "defaultEncode");
-        defaultDecode = /* @__PURE__ */ __name2((payload, callback) => {
+        defaultDecode = /* @__PURE__ */ __name((payload, callback) => {
           return callback(JSON.parse(payload));
         }, "defaultDecode");
         break;
@@ -9226,12 +10084,11 @@ Option 2: Install and provide the "ws" package:
     }
   }
 };
+
+// ../node_modules/iceberg-js/dist/index.mjs
 var IcebergError = class extends Error {
   static {
     __name(this, "IcebergError");
-  }
-  static {
-    __name2(this, "IcebergError");
   }
   constructor(message, opts) {
     super(message);
@@ -9273,7 +10130,6 @@ function buildUrl(baseUrl, path, query) {
   return url.toString();
 }
 __name(buildUrl, "buildUrl");
-__name2(buildUrl, "buildUrl");
 async function buildAuthHeaders(auth) {
   if (!auth || auth.type === "none") {
     return {};
@@ -9290,7 +10146,6 @@ async function buildAuthHeaders(auth) {
   return {};
 }
 __name(buildAuthHeaders, "buildAuthHeaders");
-__name2(buildAuthHeaders, "buildAuthHeaders");
 function createFetchClient(options) {
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
   return {
@@ -9333,18 +10188,13 @@ function createFetchClient(options) {
   };
 }
 __name(createFetchClient, "createFetchClient");
-__name2(createFetchClient, "createFetchClient");
 function namespaceToPath(namespace) {
   return namespace.join("");
 }
 __name(namespaceToPath, "namespaceToPath");
-__name2(namespaceToPath, "namespaceToPath");
 var NamespaceOperations = class {
   static {
     __name(this, "NamespaceOperations");
-  }
-  static {
-    __name2(this, "NamespaceOperations");
   }
   constructor(client, prefix = "") {
     this.client = client;
@@ -9393,21 +10243,21 @@ var NamespaceOperations = class {
         path: `${this.prefix}/namespaces/${namespaceToPath(id.namespace)}`
       });
       return true;
-    } catch (error) {
-      if (error instanceof IcebergError && error.status === 404) {
+    } catch (error3) {
+      if (error3 instanceof IcebergError && error3.status === 404) {
         return false;
       }
-      throw error;
+      throw error3;
     }
   }
   async createNamespaceIfNotExists(id, metadata) {
     try {
       return await this.createNamespace(id, metadata);
-    } catch (error) {
-      if (error instanceof IcebergError && error.status === 409) {
+    } catch (error3) {
+      if (error3 instanceof IcebergError && error3.status === 409) {
         return;
       }
-      throw error;
+      throw error3;
     }
   }
 };
@@ -9415,13 +10265,9 @@ function namespaceToPath2(namespace) {
   return namespace.join("");
 }
 __name(namespaceToPath2, "namespaceToPath2");
-__name2(namespaceToPath2, "namespaceToPath2");
 var TableOperations = class {
   static {
     __name(this, "TableOperations");
-  }
-  static {
-    __name2(this, "TableOperations");
   }
   constructor(client, prefix = "", accessDelegation) {
     this.client = client;
@@ -9490,30 +10336,27 @@ var TableOperations = class {
         headers
       });
       return true;
-    } catch (error) {
-      if (error instanceof IcebergError && error.status === 404) {
+    } catch (error3) {
+      if (error3 instanceof IcebergError && error3.status === 404) {
         return false;
       }
-      throw error;
+      throw error3;
     }
   }
   async createTableIfNotExists(namespace, request) {
     try {
       return await this.createTable(namespace, request);
-    } catch (error) {
-      if (error instanceof IcebergError && error.status === 409) {
+    } catch (error3) {
+      if (error3 instanceof IcebergError && error3.status === 409) {
         return await this.loadTable({ namespace: namespace.namespace, name: request.name });
       }
-      throw error;
+      throw error3;
     }
   }
 };
 var IcebergRestCatalog = class {
   static {
     __name(this, "IcebergRestCatalog");
-  }
-  static {
-    __name2(this, "IcebergRestCatalog");
   }
   /**
    * Creates a new Iceberg REST Catalog client.
@@ -9791,6 +10634,8 @@ var IcebergRestCatalog = class {
     return this.tableOps.createTableIfNotExists(namespace, request);
   }
 };
+
+// ../node_modules/@supabase/storage-js/dist/index.mjs
 function _typeof2(o) {
   "@babel/helpers - typeof";
   return _typeof2 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
@@ -9799,8 +10644,7 @@ function _typeof2(o) {
     return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
   }, _typeof2(o);
 }
-__name(_typeof2, "_typeof2");
-__name2(_typeof2, "_typeof");
+__name(_typeof2, "_typeof");
 function toPrimitive2(t, r) {
   if ("object" != _typeof2(t) || !t) return t;
   var e = t[Symbol.toPrimitive];
@@ -9811,14 +10655,12 @@ function toPrimitive2(t, r) {
   }
   return ("string" === r ? String : Number)(t);
 }
-__name(toPrimitive2, "toPrimitive2");
-__name2(toPrimitive2, "toPrimitive");
+__name(toPrimitive2, "toPrimitive");
 function toPropertyKey2(t) {
   var i = toPrimitive2(t, "string");
   return "symbol" == _typeof2(i) ? i : i + "";
 }
-__name(toPropertyKey2, "toPropertyKey2");
-__name2(toPropertyKey2, "toPropertyKey");
+__name(toPropertyKey2, "toPropertyKey");
 function _defineProperty2(e, r, t) {
   return (r = toPropertyKey2(r)) in e ? Object.defineProperty(e, r, {
     value: t,
@@ -9827,8 +10669,7 @@ function _defineProperty2(e, r, t) {
     writable: true
   }) : e[r] = t, e;
 }
-__name(_defineProperty2, "_defineProperty2");
-__name2(_defineProperty2, "_defineProperty");
+__name(_defineProperty2, "_defineProperty");
 function ownKeys2(e, r) {
   var t = Object.keys(e);
   if (Object.getOwnPropertySymbols) {
@@ -9839,8 +10680,7 @@ function ownKeys2(e, r) {
   }
   return t;
 }
-__name(ownKeys2, "ownKeys2");
-__name2(ownKeys2, "ownKeys");
+__name(ownKeys2, "ownKeys");
 function _objectSpread22(e) {
   for (var r = 1; r < arguments.length; r++) {
     var t = null != arguments[r] ? arguments[r] : {};
@@ -9852,14 +10692,10 @@ function _objectSpread22(e) {
   }
   return e;
 }
-__name(_objectSpread22, "_objectSpread22");
-__name2(_objectSpread22, "_objectSpread2");
+__name(_objectSpread22, "_objectSpread2");
 var StorageError = class extends Error {
   static {
     __name(this, "StorageError");
-  }
-  static {
-    __name2(this, "StorageError");
   }
   constructor(message, namespace = "storage", status, statusCode) {
     super(message);
@@ -9878,17 +10714,13 @@ var StorageError = class extends Error {
     };
   }
 };
-function isStorageError(error) {
-  return typeof error === "object" && error !== null && "__isStorageError" in error;
+function isStorageError(error3) {
+  return typeof error3 === "object" && error3 !== null && "__isStorageError" in error3;
 }
 __name(isStorageError, "isStorageError");
-__name2(isStorageError, "isStorageError");
 var StorageApiError = class extends StorageError {
   static {
     __name(this, "StorageApiError");
-  }
-  static {
-    __name2(this, "StorageApiError");
   }
   constructor(message, status, statusCode, namespace = "storage") {
     super(message, namespace, status, statusCode);
@@ -9904,25 +10736,22 @@ var StorageUnknownError = class extends StorageError {
   static {
     __name(this, "StorageUnknownError");
   }
-  static {
-    __name2(this, "StorageUnknownError");
-  }
   constructor(message, originalError, namespace = "storage") {
     super(message, namespace);
     this.name = namespace === "vectors" ? "StorageVectorsUnknownError" : "StorageUnknownError";
     this.originalError = originalError;
   }
 };
-var resolveFetch2 = /* @__PURE__ */ __name2((customFetch) => {
+var resolveFetch2 = /* @__PURE__ */ __name((customFetch) => {
   if (customFetch) return (...args) => customFetch(...args);
   return (...args) => fetch(...args);
 }, "resolveFetch");
-var isPlainObject = /* @__PURE__ */ __name2((value) => {
+var isPlainObject = /* @__PURE__ */ __name((value) => {
   if (typeof value !== "object" || value === null) return false;
   const prototype = Object.getPrototypeOf(value);
   return (prototype === null || prototype === Object.prototype || Object.getPrototypeOf(prototype) === null) && !(Symbol.toStringTag in value) && !(Symbol.iterator in value);
 }, "isPlainObject");
-var recursiveToCamel = /* @__PURE__ */ __name2((item) => {
+var recursiveToCamel = /* @__PURE__ */ __name((item) => {
   if (Array.isArray(item)) return item.map((el) => recursiveToCamel(el));
   else if (typeof item === "function" || item !== Object(item)) return item;
   const result = {};
@@ -9932,20 +10761,20 @@ var recursiveToCamel = /* @__PURE__ */ __name2((item) => {
   });
   return result;
 }, "recursiveToCamel");
-var isValidBucketName = /* @__PURE__ */ __name2((bucketName) => {
+var isValidBucketName = /* @__PURE__ */ __name((bucketName) => {
   if (!bucketName || typeof bucketName !== "string") return false;
   if (bucketName.length === 0 || bucketName.length > 100) return false;
   if (bucketName.trim() !== bucketName) return false;
   if (bucketName.includes("/") || bucketName.includes("\\")) return false;
   return /^[\w!.\*'() &$@=;:+,?-]+$/.test(bucketName);
 }, "isValidBucketName");
-var _getErrorMessage = /* @__PURE__ */ __name2((err) => {
+var _getErrorMessage = /* @__PURE__ */ __name((err) => {
   var _err$error;
   return err.msg || err.message || err.error_description || (typeof err.error === "string" ? err.error : (_err$error = err.error) === null || _err$error === void 0 ? void 0 : _err$error.message) || JSON.stringify(err);
 }, "_getErrorMessage");
-var handleError = /* @__PURE__ */ __name2(async (error, reject, options, namespace) => {
-  if (error !== null && typeof error === "object" && typeof error.json === "function") {
-    const responseError = error;
+var handleError = /* @__PURE__ */ __name(async (error3, reject, options, namespace) => {
+  if (error3 !== null && typeof error3 === "object" && typeof error3.json === "function") {
+    const responseError = error3;
     let status = parseInt(responseError.status, 10);
     if (!Number.isFinite(status)) status = 500;
     responseError.json().then((err) => {
@@ -9955,9 +10784,9 @@ var handleError = /* @__PURE__ */ __name2(async (error, reject, options, namespa
       const statusCode = status + "";
       reject(new StorageApiError(responseError.statusText || `HTTP ${status} error`, status, statusCode, namespace));
     });
-  } else reject(new StorageUnknownError(_getErrorMessage(error), error, namespace));
+  } else reject(new StorageUnknownError(_getErrorMessage(error3), error3, namespace));
 }, "handleError");
-var _getRequestParams = /* @__PURE__ */ __name2((method, options, parameters, body) => {
+var _getRequestParams = /* @__PURE__ */ __name((method, options, parameters, body) => {
   const params = {
     method,
     headers: (options === null || options === void 0 ? void 0 : options.headers) || {}
@@ -9981,7 +10810,6 @@ function setRequestHeader(headers, name, value) {
   return nextHeaders;
 }
 __name(setRequestHeader, "setRequestHeader");
-__name2(setRequestHeader, "setRequestHeader");
 async function _handleRequest(fetcher, method, url, options, parameters, body, namespace) {
   return new Promise((resolve, reject) => {
     fetcher(url, _getRequestParams(method, options, parameters, body)).then((result) => {
@@ -9993,41 +10821,36 @@ async function _handleRequest(fetcher, method, url, options, parameters, body, n
         if (!contentType || !contentType.includes("application/json")) return {};
       }
       return result.json();
-    }).then((data) => resolve(data)).catch((error) => handleError(error, reject, options, namespace));
+    }).then((data) => resolve(data)).catch((error3) => handleError(error3, reject, options, namespace));
   });
 }
 __name(_handleRequest, "_handleRequest");
-__name2(_handleRequest, "_handleRequest");
 function createFetchApi(namespace = "storage") {
   return {
-    get: /* @__PURE__ */ __name2(async (fetcher, url, options, parameters) => {
+    get: /* @__PURE__ */ __name(async (fetcher, url, options, parameters) => {
       return _handleRequest(fetcher, "GET", url, options, parameters, void 0, namespace);
     }, "get"),
-    post: /* @__PURE__ */ __name2(async (fetcher, url, body, options, parameters) => {
+    post: /* @__PURE__ */ __name(async (fetcher, url, body, options, parameters) => {
       return _handleRequest(fetcher, "POST", url, options, parameters, body, namespace);
     }, "post"),
-    put: /* @__PURE__ */ __name2(async (fetcher, url, body, options, parameters) => {
+    put: /* @__PURE__ */ __name(async (fetcher, url, body, options, parameters) => {
       return _handleRequest(fetcher, "PUT", url, options, parameters, body, namespace);
     }, "put"),
-    head: /* @__PURE__ */ __name2(async (fetcher, url, options, parameters) => {
+    head: /* @__PURE__ */ __name(async (fetcher, url, options, parameters) => {
       return _handleRequest(fetcher, "HEAD", url, _objectSpread22(_objectSpread22({}, options), {}, { noResolveJson: true }), parameters, void 0, namespace);
     }, "head"),
-    remove: /* @__PURE__ */ __name2(async (fetcher, url, body, options, parameters) => {
+    remove: /* @__PURE__ */ __name(async (fetcher, url, body, options, parameters) => {
       return _handleRequest(fetcher, "DELETE", url, options, parameters, body, namespace);
     }, "remove")
   };
 }
 __name(createFetchApi, "createFetchApi");
-__name2(createFetchApi, "createFetchApi");
 var defaultApi = createFetchApi("storage");
 var { get, post, put, head, remove } = defaultApi;
 var vectorsApi = createFetchApi("vectors");
 var BaseApiClient = class {
   static {
     __name(this, "BaseApiClient");
-  }
-  static {
-    __name2(this, "BaseApiClient");
   }
   /**
   * Creates a new BaseApiClient instance
@@ -10097,22 +10920,19 @@ var BaseApiClient = class {
         data: await operation(),
         error: null
       };
-    } catch (error) {
-      if (_this.shouldThrowOnError) throw error;
-      if (isStorageError(error)) return {
+    } catch (error3) {
+      if (_this.shouldThrowOnError) throw error3;
+      if (isStorageError(error3)) return {
         data: null,
-        error
+        error: error3
       };
-      throw error;
+      throw error3;
     }
   }
 };
 var StreamDownloadBuilder = class {
   static {
     __name(this, "StreamDownloadBuilder");
-  }
-  static {
-    __name2(this, "StreamDownloadBuilder");
   }
   constructor(downloadFn, shouldThrowOnError) {
     this.downloadFn = downloadFn;
@@ -10128,13 +10948,13 @@ var StreamDownloadBuilder = class {
         data: (await _this.downloadFn()).body,
         error: null
       };
-    } catch (error) {
-      if (_this.shouldThrowOnError) throw error;
-      if (isStorageError(error)) return {
+    } catch (error3) {
+      if (_this.shouldThrowOnError) throw error3;
+      if (isStorageError(error3)) return {
         data: null,
-        error
+        error: error3
       };
-      throw error;
+      throw error3;
     }
   }
 };
@@ -10143,9 +10963,6 @@ _Symbol$toStringTag = Symbol.toStringTag;
 var BlobDownloadBuilder = class {
   static {
     __name(this, "BlobDownloadBuilder");
-  }
-  static {
-    __name2(this, "BlobDownloadBuilder");
   }
   constructor(downloadFn, shouldThrowOnError) {
     this.downloadFn = downloadFn;
@@ -10176,13 +10993,13 @@ var BlobDownloadBuilder = class {
         data: await (await _this.downloadFn()).blob(),
         error: null
       };
-    } catch (error) {
-      if (_this.shouldThrowOnError) throw error;
-      if (isStorageError(error)) return {
+    } catch (error3) {
+      if (_this.shouldThrowOnError) throw error3;
+      if (isStorageError(error3)) return {
         data: null,
-        error
+        error: error3
       };
-      throw error;
+      throw error3;
     }
   }
 };
@@ -10202,9 +11019,6 @@ var DEFAULT_FILE_OPTIONS = {
 var StorageFileApi = class extends BaseApiClient {
   static {
     __name(this, "StorageFileApi");
-  }
-  static {
-    __name2(this, "StorageFileApi");
   }
   constructor(url, headers = {}, bucketId, fetch$1) {
     super(url, headers, fetch$1, "storage");
@@ -10767,7 +11581,7 @@ var StorageFileApi = class extends BaseApiClient {
     if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
     const queryString = query.toString();
     const _path = this._getFinalPath(path);
-    const downloadFn = /* @__PURE__ */ __name2(() => get(this.fetch, `${this.url}/${renderPath}/${_path}${queryString ? `?${queryString}` : ""}`, {
+    const downloadFn = /* @__PURE__ */ __name(() => get(this.fetch, `${this.url}/${renderPath}/${_path}${queryString ? `?${queryString}` : ""}`, {
       headers: this.headers,
       noResolveJson: true
     }, parameters), "downloadFn");
@@ -10827,17 +11641,17 @@ var StorageFileApi = class extends BaseApiClient {
         data: true,
         error: null
       };
-    } catch (error) {
-      if (_this11.shouldThrowOnError) throw error;
-      if (isStorageError(error)) {
+    } catch (error3) {
+      if (_this11.shouldThrowOnError) throw error3;
+      if (isStorageError(error3)) {
         var _error$originalError;
-        const status = error instanceof StorageApiError ? error.status : error instanceof StorageUnknownError ? (_error$originalError = error.originalError) === null || _error$originalError === void 0 ? void 0 : _error$originalError.status : void 0;
+        const status = error3 instanceof StorageApiError ? error3.status : error3 instanceof StorageUnknownError ? (_error$originalError = error3.originalError) === null || _error$originalError === void 0 ? void 0 : _error$originalError.status : void 0;
         if (status !== void 0 && [400, 404].includes(status)) return {
           data: false,
-          error
+          error: error3
         };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -11119,14 +11933,11 @@ var StorageFileApi = class extends BaseApiClient {
     return query;
   }
 };
-var version2 = "2.103.3";
-var DEFAULT_HEADERS = { "X-Client-Info": `storage-js/${version2}` };
+var version3 = "2.103.3";
+var DEFAULT_HEADERS = { "X-Client-Info": `storage-js/${version3}` };
 var StorageBucketApi = class extends BaseApiClient {
   static {
     __name(this, "StorageBucketApi");
-  }
-  static {
-    __name2(this, "StorageBucketApi");
   }
   constructor(url, headers = {}, fetch$1, opts) {
     const baseUrl = new URL(url);
@@ -11424,9 +12235,6 @@ var StorageBucketApi = class extends BaseApiClient {
 var StorageAnalyticsClient = class extends BaseApiClient {
   static {
     __name(this, "StorageAnalyticsClient");
-  }
-  static {
-    __name2(this, "StorageAnalyticsClient");
   }
   /**
   * @alpha
@@ -11729,7 +12537,7 @@ var StorageAnalyticsClient = class extends BaseApiClient {
       catalogName: bucketName,
       auth: {
         type: "custom",
-        getHeaders: /* @__PURE__ */ __name2(async () => _this4.headers, "getHeaders")
+        getHeaders: /* @__PURE__ */ __name(async () => _this4.headers, "getHeaders")
       },
       fetch: this.fetch
     });
@@ -11743,11 +12551,11 @@ var StorageAnalyticsClient = class extends BaseApiClient {
             data: await value.apply(target, args),
             error: null
           };
-        } catch (error) {
-          if (shouldThrowOnError) throw error;
+        } catch (error3) {
+          if (shouldThrowOnError) throw error3;
           return {
             data: null,
-            error
+            error: error3
           };
         }
       };
@@ -11757,9 +12565,6 @@ var StorageAnalyticsClient = class extends BaseApiClient {
 var VectorIndexApi = class extends BaseApiClient {
   static {
     __name(this, "VectorIndexApi");
-  }
-  static {
-    __name2(this, "VectorIndexApi");
   }
   /** Creates a new VectorIndexApi instance */
   constructor(url, headers = {}, fetch$1) {
@@ -11805,9 +12610,6 @@ var VectorIndexApi = class extends BaseApiClient {
 var VectorDataApi = class extends BaseApiClient {
   static {
     __name(this, "VectorDataApi");
-  }
-  static {
-    __name2(this, "VectorDataApi");
   }
   /** Creates a new VectorDataApi instance */
   constructor(url, headers = {}, fetch$1) {
@@ -11863,9 +12665,6 @@ var VectorBucketApi = class extends BaseApiClient {
   static {
     __name(this, "VectorBucketApi");
   }
-  static {
-    __name2(this, "VectorBucketApi");
-  }
   /** Creates a new VectorBucketApi instance */
   constructor(url, headers = {}, fetch$1) {
     const finalUrl = url.replace(/\/$/, "");
@@ -11904,9 +12703,6 @@ var VectorBucketApi = class extends BaseApiClient {
 var StorageVectorsClient = class extends VectorBucketApi {
   static {
     __name(this, "StorageVectorsClient");
-  }
-  static {
-    __name2(this, "StorageVectorsClient");
   }
   /**
   * @alpha
@@ -11971,7 +12767,7 @@ var StorageVectorsClient = class extends VectorBucketApi {
   * ```
   */
   async createBucket(vectorBucketName) {
-    var _superprop_getCreateBucket = /* @__PURE__ */ __name2(() => super.createBucket, "_superprop_getCreateBucket"), _this = this;
+    var _superprop_getCreateBucket = /* @__PURE__ */ __name(() => super.createBucket, "_superprop_getCreateBucket"), _this = this;
     return _superprop_getCreateBucket().call(_this, vectorBucketName);
   }
   /**
@@ -11997,7 +12793,7 @@ var StorageVectorsClient = class extends VectorBucketApi {
   * ```
   */
   async getBucket(vectorBucketName) {
-    var _superprop_getGetBucket = /* @__PURE__ */ __name2(() => super.getBucket, "_superprop_getGetBucket"), _this2 = this;
+    var _superprop_getGetBucket = /* @__PURE__ */ __name(() => super.getBucket, "_superprop_getGetBucket"), _this2 = this;
     return _superprop_getGetBucket().call(_this2, vectorBucketName);
   }
   /**
@@ -12025,7 +12821,7 @@ var StorageVectorsClient = class extends VectorBucketApi {
   * ```
   */
   async listBuckets(options = {}) {
-    var _superprop_getListBuckets = /* @__PURE__ */ __name2(() => super.listBuckets, "_superprop_getListBuckets"), _this3 = this;
+    var _superprop_getListBuckets = /* @__PURE__ */ __name(() => super.listBuckets, "_superprop_getListBuckets"), _this3 = this;
     return _superprop_getListBuckets().call(_this3, options);
   }
   /**
@@ -12050,16 +12846,13 @@ var StorageVectorsClient = class extends VectorBucketApi {
   * ```
   */
   async deleteBucket(vectorBucketName) {
-    var _superprop_getDeleteBucket = /* @__PURE__ */ __name2(() => super.deleteBucket, "_superprop_getDeleteBucket"), _this4 = this;
+    var _superprop_getDeleteBucket = /* @__PURE__ */ __name(() => super.deleteBucket, "_superprop_getDeleteBucket"), _this4 = this;
     return _superprop_getDeleteBucket().call(_this4, vectorBucketName);
   }
 };
 var VectorBucketScope = class extends VectorIndexApi {
   static {
     __name(this, "VectorBucketScope");
-  }
-  static {
-    __name2(this, "VectorBucketScope");
   }
   /**
   * @alpha
@@ -12106,7 +12899,7 @@ var VectorBucketScope = class extends VectorIndexApi {
   * ```
   */
   async createIndex(options) {
-    var _superprop_getCreateIndex = /* @__PURE__ */ __name2(() => super.createIndex, "_superprop_getCreateIndex"), _this5 = this;
+    var _superprop_getCreateIndex = /* @__PURE__ */ __name(() => super.createIndex, "_superprop_getCreateIndex"), _this5 = this;
     return _superprop_getCreateIndex().call(_this5, _objectSpread22(_objectSpread22({}, options), {}, { vectorBucketName: _this5.vectorBucketName }));
   }
   /**
@@ -12129,7 +12922,7 @@ var VectorBucketScope = class extends VectorIndexApi {
   * ```
   */
   async listIndexes(options = {}) {
-    var _superprop_getListIndexes = /* @__PURE__ */ __name2(() => super.listIndexes, "_superprop_getListIndexes"), _this6 = this;
+    var _superprop_getListIndexes = /* @__PURE__ */ __name(() => super.listIndexes, "_superprop_getListIndexes"), _this6 = this;
     return _superprop_getListIndexes().call(_this6, _objectSpread22(_objectSpread22({}, options), {}, { vectorBucketName: _this6.vectorBucketName }));
   }
   /**
@@ -12153,7 +12946,7 @@ var VectorBucketScope = class extends VectorIndexApi {
   * ```
   */
   async getIndex(indexName) {
-    var _superprop_getGetIndex = /* @__PURE__ */ __name2(() => super.getIndex, "_superprop_getGetIndex"), _this7 = this;
+    var _superprop_getGetIndex = /* @__PURE__ */ __name(() => super.getIndex, "_superprop_getGetIndex"), _this7 = this;
     return _superprop_getGetIndex().call(_this7, _this7.vectorBucketName, indexName);
   }
   /**
@@ -12176,7 +12969,7 @@ var VectorBucketScope = class extends VectorIndexApi {
   * ```
   */
   async deleteIndex(indexName) {
-    var _superprop_getDeleteIndex = /* @__PURE__ */ __name2(() => super.deleteIndex, "_superprop_getDeleteIndex"), _this8 = this;
+    var _superprop_getDeleteIndex = /* @__PURE__ */ __name(() => super.deleteIndex, "_superprop_getDeleteIndex"), _this8 = this;
     return _superprop_getDeleteIndex().call(_this8, _this8.vectorBucketName, indexName);
   }
   /**
@@ -12217,9 +13010,6 @@ var VectorBucketScope = class extends VectorIndexApi {
 var VectorIndexScope = class extends VectorDataApi {
   static {
     __name(this, "VectorIndexScope");
-  }
-  static {
-    __name2(this, "VectorIndexScope");
   }
   /**
   *
@@ -12268,7 +13058,7 @@ var VectorIndexScope = class extends VectorDataApi {
   * ```
   */
   async putVectors(options) {
-    var _superprop_getPutVectors = /* @__PURE__ */ __name2(() => super.putVectors, "_superprop_getPutVectors"), _this9 = this;
+    var _superprop_getPutVectors = /* @__PURE__ */ __name(() => super.putVectors, "_superprop_getPutVectors"), _this9 = this;
     return _superprop_getPutVectors().call(_this9, _objectSpread22(_objectSpread22({}, options), {}, {
       vectorBucketName: _this9.vectorBucketName,
       indexName: _this9.indexName
@@ -12297,7 +13087,7 @@ var VectorIndexScope = class extends VectorDataApi {
   * ```
   */
   async getVectors(options) {
-    var _superprop_getGetVectors = /* @__PURE__ */ __name2(() => super.getVectors, "_superprop_getGetVectors"), _this10 = this;
+    var _superprop_getGetVectors = /* @__PURE__ */ __name(() => super.getVectors, "_superprop_getGetVectors"), _this10 = this;
     return _superprop_getGetVectors().call(_this10, _objectSpread22(_objectSpread22({}, options), {}, {
       vectorBucketName: _this10.vectorBucketName,
       indexName: _this10.indexName
@@ -12326,7 +13116,7 @@ var VectorIndexScope = class extends VectorDataApi {
   * ```
   */
   async listVectors(options = {}) {
-    var _superprop_getListVectors = /* @__PURE__ */ __name2(() => super.listVectors, "_superprop_getListVectors"), _this11 = this;
+    var _superprop_getListVectors = /* @__PURE__ */ __name(() => super.listVectors, "_superprop_getListVectors"), _this11 = this;
     return _superprop_getListVectors().call(_this11, _objectSpread22(_objectSpread22({}, options), {}, {
       vectorBucketName: _this11.vectorBucketName,
       indexName: _this11.indexName
@@ -12358,7 +13148,7 @@ var VectorIndexScope = class extends VectorDataApi {
   * ```
   */
   async queryVectors(options) {
-    var _superprop_getQueryVectors = /* @__PURE__ */ __name2(() => super.queryVectors, "_superprop_getQueryVectors"), _this12 = this;
+    var _superprop_getQueryVectors = /* @__PURE__ */ __name(() => super.queryVectors, "_superprop_getQueryVectors"), _this12 = this;
     return _superprop_getQueryVectors().call(_this12, _objectSpread22(_objectSpread22({}, options), {}, {
       vectorBucketName: _this12.vectorBucketName,
       indexName: _this12.indexName
@@ -12386,7 +13176,7 @@ var VectorIndexScope = class extends VectorDataApi {
   * ```
   */
   async deleteVectors(options) {
-    var _superprop_getDeleteVectors = /* @__PURE__ */ __name2(() => super.deleteVectors, "_superprop_getDeleteVectors"), _this13 = this;
+    var _superprop_getDeleteVectors = /* @__PURE__ */ __name(() => super.deleteVectors, "_superprop_getDeleteVectors"), _this13 = this;
     return _superprop_getDeleteVectors().call(_this13, _objectSpread22(_objectSpread22({}, options), {}, {
       vectorBucketName: _this13.vectorBucketName,
       indexName: _this13.indexName
@@ -12396,9 +13186,6 @@ var VectorIndexScope = class extends VectorDataApi {
 var StorageClient = class extends StorageBucketApi {
   static {
     __name(this, "StorageClient");
-  }
-  static {
-    __name2(this, "StorageClient");
   }
   /**
   * Creates a client for Storage buckets, files, analytics, and vectors.
@@ -12463,13 +13250,17 @@ var StorageClient = class extends StorageBucketApi {
     return new StorageAnalyticsClient(this.url + "/iceberg", this.headers, this.fetch);
   }
 };
-var version3 = "2.103.3";
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/version.js
+var version4 = "2.103.3";
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/constants.js
 var AUTO_REFRESH_TICK_DURATION_MS = 30 * 1e3;
 var AUTO_REFRESH_TICK_THRESHOLD = 3;
 var EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD * AUTO_REFRESH_TICK_DURATION_MS;
 var GOTRUE_URL = "http://localhost:9999";
 var STORAGE_KEY = "supabase.auth.token";
-var DEFAULT_HEADERS2 = { "X-Client-Info": `gotrue-js/${version3}` };
+var DEFAULT_HEADERS2 = { "X-Client-Info": `gotrue-js/${version4}` };
 var API_VERSION_HEADER_NAME = "X-Supabase-Api-Version";
 var API_VERSIONS = {
   "2024-01-01": {
@@ -12479,12 +13270,11 @@ var API_VERSIONS = {
 };
 var BASE64URL_REGEX = /^([a-z0-9_-]{4})*($|[a-z0-9_-]{3}$|[a-z0-9_-]{2}$)$/i;
 var JWKS_TTL = 10 * 60 * 1e3;
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/errors.js
 var AuthError = class extends Error {
   static {
     __name(this, "AuthError");
-  }
-  static {
-    __name2(this, "AuthError");
   }
   constructor(message, status, code) {
     super(message);
@@ -12502,17 +13292,13 @@ var AuthError = class extends Error {
     };
   }
 };
-function isAuthError(error) {
-  return typeof error === "object" && error !== null && "__isAuthError" in error;
+function isAuthError(error3) {
+  return typeof error3 === "object" && error3 !== null && "__isAuthError" in error3;
 }
 __name(isAuthError, "isAuthError");
-__name2(isAuthError, "isAuthError");
 var AuthApiError = class extends AuthError {
   static {
     __name(this, "AuthApiError");
-  }
-  static {
-    __name2(this, "AuthApiError");
   }
   constructor(message, status, code) {
     super(message, status, code);
@@ -12521,17 +13307,13 @@ var AuthApiError = class extends AuthError {
     this.code = code;
   }
 };
-function isAuthApiError(error) {
-  return isAuthError(error) && error.name === "AuthApiError";
+function isAuthApiError(error3) {
+  return isAuthError(error3) && error3.name === "AuthApiError";
 }
 __name(isAuthApiError, "isAuthApiError");
-__name2(isAuthApiError, "isAuthApiError");
 var AuthUnknownError = class extends AuthError {
   static {
     __name(this, "AuthUnknownError");
-  }
-  static {
-    __name2(this, "AuthUnknownError");
   }
   constructor(message, originalError) {
     super(message);
@@ -12543,9 +13325,6 @@ var CustomAuthError = class extends AuthError {
   static {
     __name(this, "CustomAuthError");
   }
-  static {
-    __name2(this, "CustomAuthError");
-  }
   constructor(message, name, status, code) {
     super(message, status, code);
     this.name = name;
@@ -12556,24 +13335,17 @@ var AuthSessionMissingError = class extends CustomAuthError {
   static {
     __name(this, "AuthSessionMissingError");
   }
-  static {
-    __name2(this, "AuthSessionMissingError");
-  }
   constructor() {
     super("Auth session missing!", "AuthSessionMissingError", 400, void 0);
   }
 };
-function isAuthSessionMissingError(error) {
-  return isAuthError(error) && error.name === "AuthSessionMissingError";
+function isAuthSessionMissingError(error3) {
+  return isAuthError(error3) && error3.name === "AuthSessionMissingError";
 }
 __name(isAuthSessionMissingError, "isAuthSessionMissingError");
-__name2(isAuthSessionMissingError, "isAuthSessionMissingError");
 var AuthInvalidTokenResponseError = class extends CustomAuthError {
   static {
     __name(this, "AuthInvalidTokenResponseError");
-  }
-  static {
-    __name2(this, "AuthInvalidTokenResponseError");
   }
   constructor() {
     super("Auth session or user missing", "AuthInvalidTokenResponseError", 500, void 0);
@@ -12583,9 +13355,6 @@ var AuthInvalidCredentialsError = class extends CustomAuthError {
   static {
     __name(this, "AuthInvalidCredentialsError");
   }
-  static {
-    __name2(this, "AuthInvalidCredentialsError");
-  }
   constructor(message) {
     super(message, "AuthInvalidCredentialsError", 400, void 0);
   }
@@ -12593,9 +13362,6 @@ var AuthInvalidCredentialsError = class extends CustomAuthError {
 var AuthImplicitGrantRedirectError = class extends CustomAuthError {
   static {
     __name(this, "AuthImplicitGrantRedirectError");
-  }
-  static {
-    __name2(this, "AuthImplicitGrantRedirectError");
   }
   constructor(message, details = null) {
     super(message, "AuthImplicitGrantRedirectError", 500, void 0);
@@ -12606,17 +13372,13 @@ var AuthImplicitGrantRedirectError = class extends CustomAuthError {
     return Object.assign(Object.assign({}, super.toJSON()), { details: this.details });
   }
 };
-function isAuthImplicitGrantRedirectError(error) {
-  return isAuthError(error) && error.name === "AuthImplicitGrantRedirectError";
+function isAuthImplicitGrantRedirectError(error3) {
+  return isAuthError(error3) && error3.name === "AuthImplicitGrantRedirectError";
 }
 __name(isAuthImplicitGrantRedirectError, "isAuthImplicitGrantRedirectError");
-__name2(isAuthImplicitGrantRedirectError, "isAuthImplicitGrantRedirectError");
 var AuthPKCEGrantCodeExchangeError = class extends CustomAuthError {
   static {
     __name(this, "AuthPKCEGrantCodeExchangeError");
-  }
-  static {
-    __name2(this, "AuthPKCEGrantCodeExchangeError");
   }
   constructor(message, details = null) {
     super(message, "AuthPKCEGrantCodeExchangeError", 500, void 0);
@@ -12631,9 +13393,6 @@ var AuthPKCECodeVerifierMissingError = class extends CustomAuthError {
   static {
     __name(this, "AuthPKCECodeVerifierMissingError");
   }
-  static {
-    __name2(this, "AuthPKCECodeVerifierMissingError");
-  }
   constructor() {
     super("PKCE code verifier not found in storage. This can happen if the auth flow was initiated in a different browser or device, or if the storage was cleared. For SSR frameworks (Next.js, SvelteKit, etc.), use @supabase/ssr on both the server and client to store the code verifier in cookies.", "AuthPKCECodeVerifierMissingError", 400, "pkce_code_verifier_not_found");
   }
@@ -12642,24 +13401,17 @@ var AuthRetryableFetchError = class extends CustomAuthError {
   static {
     __name(this, "AuthRetryableFetchError");
   }
-  static {
-    __name2(this, "AuthRetryableFetchError");
-  }
   constructor(message, status) {
     super(message, "AuthRetryableFetchError", status, void 0);
   }
 };
-function isAuthRetryableFetchError(error) {
-  return isAuthError(error) && error.name === "AuthRetryableFetchError";
+function isAuthRetryableFetchError(error3) {
+  return isAuthError(error3) && error3.name === "AuthRetryableFetchError";
 }
 __name(isAuthRetryableFetchError, "isAuthRetryableFetchError");
-__name2(isAuthRetryableFetchError, "isAuthRetryableFetchError");
 var AuthWeakPasswordError = class extends CustomAuthError {
   static {
     __name(this, "AuthWeakPasswordError");
-  }
-  static {
-    __name2(this, "AuthWeakPasswordError");
   }
   constructor(message, status, reasons) {
     super(message, "AuthWeakPasswordError", status, "weak_password");
@@ -12673,13 +13425,12 @@ var AuthInvalidJwtError = class extends CustomAuthError {
   static {
     __name(this, "AuthInvalidJwtError");
   }
-  static {
-    __name2(this, "AuthInvalidJwtError");
-  }
   constructor(message) {
     super(message, "AuthInvalidJwtError", 400, "invalid_jwt");
   }
 };
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/base64url.js
 var TO_BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".split("");
 var IGNORE_BASE64URL = " 	\n\r=".split("");
 var FROM_BASE64URL = (() => {
@@ -12695,13 +13446,13 @@ var FROM_BASE64URL = (() => {
   }
   return charMap;
 })();
-function byteToBase64URL(byte, state, emit) {
+function byteToBase64URL(byte, state, emit2) {
   if (byte !== null) {
     state.queue = state.queue << 8 | byte;
     state.queuedBits += 8;
     while (state.queuedBits >= 6) {
       const pos = state.queue >> state.queuedBits - 6 & 63;
-      emit(TO_BASE64URL[pos]);
+      emit2(TO_BASE64URL[pos]);
       state.queuedBits -= 6;
     }
   } else if (state.queuedBits > 0) {
@@ -12709,20 +13460,19 @@ function byteToBase64URL(byte, state, emit) {
     state.queuedBits = 6;
     while (state.queuedBits >= 6) {
       const pos = state.queue >> state.queuedBits - 6 & 63;
-      emit(TO_BASE64URL[pos]);
+      emit2(TO_BASE64URL[pos]);
       state.queuedBits -= 6;
     }
   }
 }
 __name(byteToBase64URL, "byteToBase64URL");
-__name2(byteToBase64URL, "byteToBase64URL");
-function byteFromBase64URL(charCode, state, emit) {
+function byteFromBase64URL(charCode, state, emit2) {
   const bits = FROM_BASE64URL[charCode];
   if (bits > -1) {
     state.queue = state.queue << 6 | bits;
     state.queuedBits += 6;
     while (state.queuedBits >= 8) {
-      emit(state.queue >> state.queuedBits - 8 & 255);
+      emit2(state.queue >> state.queuedBits - 8 & 255);
       state.queuedBits -= 8;
     }
   } else if (bits === -2) {
@@ -12732,10 +13482,9 @@ function byteFromBase64URL(charCode, state, emit) {
   }
 }
 __name(byteFromBase64URL, "byteFromBase64URL");
-__name2(byteFromBase64URL, "byteFromBase64URL");
 function stringFromBase64URL(str) {
   const conv = [];
-  const utf8Emit = /* @__PURE__ */ __name2((codepoint) => {
+  const utf8Emit = /* @__PURE__ */ __name((codepoint) => {
     conv.push(String.fromCodePoint(codepoint));
   }, "utf8Emit");
   const utf8State = {
@@ -12743,7 +13492,7 @@ function stringFromBase64URL(str) {
     codepoint: 0
   };
   const b64State = { queue: 0, queuedBits: 0 };
-  const byteEmit = /* @__PURE__ */ __name2((byte) => {
+  const byteEmit = /* @__PURE__ */ __name((byte) => {
     stringFromUTF8(byte, utf8State, utf8Emit);
   }, "byteEmit");
   for (let i = 0; i < str.length; i += 1) {
@@ -12752,32 +13501,30 @@ function stringFromBase64URL(str) {
   return conv.join("");
 }
 __name(stringFromBase64URL, "stringFromBase64URL");
-__name2(stringFromBase64URL, "stringFromBase64URL");
-function codepointToUTF8(codepoint, emit) {
+function codepointToUTF8(codepoint, emit2) {
   if (codepoint <= 127) {
-    emit(codepoint);
+    emit2(codepoint);
     return;
   } else if (codepoint <= 2047) {
-    emit(192 | codepoint >> 6);
-    emit(128 | codepoint & 63);
+    emit2(192 | codepoint >> 6);
+    emit2(128 | codepoint & 63);
     return;
   } else if (codepoint <= 65535) {
-    emit(224 | codepoint >> 12);
-    emit(128 | codepoint >> 6 & 63);
-    emit(128 | codepoint & 63);
+    emit2(224 | codepoint >> 12);
+    emit2(128 | codepoint >> 6 & 63);
+    emit2(128 | codepoint & 63);
     return;
   } else if (codepoint <= 1114111) {
-    emit(240 | codepoint >> 18);
-    emit(128 | codepoint >> 12 & 63);
-    emit(128 | codepoint >> 6 & 63);
-    emit(128 | codepoint & 63);
+    emit2(240 | codepoint >> 18);
+    emit2(128 | codepoint >> 12 & 63);
+    emit2(128 | codepoint >> 6 & 63);
+    emit2(128 | codepoint & 63);
     return;
   }
   throw new Error(`Unrecognized Unicode codepoint: ${codepoint.toString(16)}`);
 }
 __name(codepointToUTF8, "codepointToUTF8");
-__name2(codepointToUTF8, "codepointToUTF8");
-function stringToUTF8(str, emit) {
+function stringToUTF8(str, emit2) {
   for (let i = 0; i < str.length; i += 1) {
     let codepoint = str.charCodeAt(i);
     if (codepoint > 55295 && codepoint <= 56319) {
@@ -12786,15 +13533,14 @@ function stringToUTF8(str, emit) {
       codepoint = (lowSurrogate | highSurrogate) + 65536;
       i += 1;
     }
-    codepointToUTF8(codepoint, emit);
+    codepointToUTF8(codepoint, emit2);
   }
 }
 __name(stringToUTF8, "stringToUTF8");
-__name2(stringToUTF8, "stringToUTF8");
-function stringFromUTF8(byte, state, emit) {
+function stringFromUTF8(byte, state, emit2) {
   if (state.utf8seq === 0) {
     if (byte <= 127) {
-      emit(byte);
+      emit2(byte);
       return;
     }
     for (let leadingBit = 1; leadingBit < 6; leadingBit += 1) {
@@ -12820,16 +13566,15 @@ function stringFromUTF8(byte, state, emit) {
     state.codepoint = state.codepoint << 6 | byte & 63;
     state.utf8seq -= 1;
     if (state.utf8seq === 0) {
-      emit(state.codepoint);
+      emit2(state.codepoint);
     }
   }
 }
 __name(stringFromUTF8, "stringFromUTF8");
-__name2(stringFromUTF8, "stringFromUTF8");
 function base64UrlToUint8Array(str) {
   const result = [];
   const state = { queue: 0, queuedBits: 0 };
-  const onByte = /* @__PURE__ */ __name2((byte) => {
+  const onByte = /* @__PURE__ */ __name((byte) => {
     result.push(byte);
   }, "onByte");
   for (let i = 0; i < str.length; i += 1) {
@@ -12838,18 +13583,16 @@ function base64UrlToUint8Array(str) {
   return new Uint8Array(result);
 }
 __name(base64UrlToUint8Array, "base64UrlToUint8Array");
-__name2(base64UrlToUint8Array, "base64UrlToUint8Array");
 function stringToUint8Array(str) {
   const result = [];
   stringToUTF8(str, (byte) => result.push(byte));
   return new Uint8Array(result);
 }
 __name(stringToUint8Array, "stringToUint8Array");
-__name2(stringToUint8Array, "stringToUint8Array");
 function bytesToBase64URL(bytes) {
   const result = [];
   const state = { queue: 0, queuedBits: 0 };
-  const onChar = /* @__PURE__ */ __name2((char) => {
+  const onChar = /* @__PURE__ */ __name((char) => {
     result.push(char);
   }, "onChar");
   bytes.forEach((byte) => byteToBase64URL(byte, state, onChar));
@@ -12857,24 +13600,23 @@ function bytesToBase64URL(bytes) {
   return result.join("");
 }
 __name(bytesToBase64URL, "bytesToBase64URL");
-__name2(bytesToBase64URL, "bytesToBase64URL");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/helpers.js
 function expiresAt(expiresIn) {
   const timeNow = Math.round(Date.now() / 1e3);
   return timeNow + expiresIn;
 }
 __name(expiresAt, "expiresAt");
-__name2(expiresAt, "expiresAt");
 function generateCallbackId() {
   return /* @__PURE__ */ Symbol("auth-callback");
 }
 __name(generateCallbackId, "generateCallbackId");
-__name2(generateCallbackId, "generateCallbackId");
-var isBrowser = /* @__PURE__ */ __name2(() => typeof window !== "undefined" && typeof document !== "undefined", "isBrowser");
+var isBrowser = /* @__PURE__ */ __name(() => typeof window !== "undefined" && typeof document !== "undefined", "isBrowser");
 var localStorageWriteTests = {
   tested: false,
   writable: false
 };
-var supportsLocalStorage = /* @__PURE__ */ __name2(() => {
+var supportsLocalStorage = /* @__PURE__ */ __name(() => {
   if (!isBrowser()) {
     return false;
   }
@@ -12918,20 +13660,19 @@ function parseParametersFromURL(href) {
   return result;
 }
 __name(parseParametersFromURL, "parseParametersFromURL");
-__name2(parseParametersFromURL, "parseParametersFromURL");
-var resolveFetch3 = /* @__PURE__ */ __name2((customFetch) => {
+var resolveFetch3 = /* @__PURE__ */ __name((customFetch) => {
   if (customFetch) {
     return (...args) => customFetch(...args);
   }
   return (...args) => fetch(...args);
 }, "resolveFetch");
-var looksLikeFetchResponse = /* @__PURE__ */ __name2((maybeResponse) => {
+var looksLikeFetchResponse = /* @__PURE__ */ __name((maybeResponse) => {
   return typeof maybeResponse === "object" && maybeResponse !== null && "status" in maybeResponse && "ok" in maybeResponse && "json" in maybeResponse && typeof maybeResponse.json === "function";
 }, "looksLikeFetchResponse");
-var setItemAsync = /* @__PURE__ */ __name2(async (storage, key, data) => {
+var setItemAsync = /* @__PURE__ */ __name(async (storage, key, data) => {
   await storage.setItem(key, JSON.stringify(data));
 }, "setItemAsync");
-var getItemAsync = /* @__PURE__ */ __name2(async (storage, key) => {
+var getItemAsync = /* @__PURE__ */ __name(async (storage, key) => {
   const value = await storage.getItem(key);
   if (!value) {
     return null;
@@ -12942,15 +13683,12 @@ var getItemAsync = /* @__PURE__ */ __name2(async (storage, key) => {
     return value;
   }
 }, "getItemAsync");
-var removeItemAsync = /* @__PURE__ */ __name2(async (storage, key) => {
+var removeItemAsync = /* @__PURE__ */ __name(async (storage, key) => {
   await storage.removeItem(key);
 }, "removeItemAsync");
 var Deferred = class _Deferred {
   static {
-    __name(this, "_Deferred");
-  }
-  static {
-    __name2(this, "Deferred");
+    __name(this, "Deferred");
   }
   constructor() {
     ;
@@ -12985,14 +13723,12 @@ function decodeJWT(token) {
   return data;
 }
 __name(decodeJWT, "decodeJWT");
-__name2(decodeJWT, "decodeJWT");
-async function sleep2(time) {
+async function sleep2(time3) {
   return await new Promise((accept) => {
-    setTimeout(() => accept(null), time);
+    setTimeout(() => accept(null), time3);
   });
 }
-__name(sleep2, "sleep2");
-__name2(sleep2, "sleep");
+__name(sleep2, "sleep");
 function retryable(fn, isRetryable) {
   const promise = new Promise((accept, reject) => {
     ;
@@ -13016,12 +13752,10 @@ function retryable(fn, isRetryable) {
   return promise;
 }
 __name(retryable, "retryable");
-__name2(retryable, "retryable");
 function dec2hex(dec) {
   return ("0" + dec.toString(16)).substr(-2);
 }
 __name(dec2hex, "dec2hex");
-__name2(dec2hex, "dec2hex");
 function generatePKCEVerifier() {
   const verifierLength = 56;
   const array = new Uint32Array(verifierLength);
@@ -13038,7 +13772,6 @@ function generatePKCEVerifier() {
   return Array.from(array, dec2hex).join("");
 }
 __name(generatePKCEVerifier, "generatePKCEVerifier");
-__name2(generatePKCEVerifier, "generatePKCEVerifier");
 async function sha256(randomString) {
   const encoder = new TextEncoder();
   const encodedData = encoder.encode(randomString);
@@ -13047,7 +13780,6 @@ async function sha256(randomString) {
   return Array.from(bytes).map((c) => String.fromCharCode(c)).join("");
 }
 __name(sha256, "sha256");
-__name2(sha256, "sha256");
 async function generatePKCEChallenge(verifier) {
   const hasCryptoSupport = typeof crypto !== "undefined" && typeof crypto.subtle !== "undefined" && typeof TextEncoder !== "undefined";
   if (!hasCryptoSupport) {
@@ -13058,7 +13790,6 @@ async function generatePKCEChallenge(verifier) {
   return btoa(hashed).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 __name(generatePKCEChallenge, "generatePKCEChallenge");
-__name2(generatePKCEChallenge, "generatePKCEChallenge");
 async function getCodeChallengeAndMethod(storage, storageKey, isPasswordRecovery = false) {
   const codeVerifier = generatePKCEVerifier();
   let storedCodeVerifier = codeVerifier;
@@ -13071,7 +13802,6 @@ async function getCodeChallengeAndMethod(storage, storageKey, isPasswordRecovery
   return [codeChallenge, codeChallengeMethod];
 }
 __name(getCodeChallengeAndMethod, "getCodeChallengeAndMethod");
-__name2(getCodeChallengeAndMethod, "getCodeChallengeAndMethod");
 var API_VERSION_REGEX = /^2[0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|1[0-9]|2[0-9]|3[0-1])$/i;
 function parseResponseAPIVersion(response) {
   const apiVersion = response.headers.get(API_VERSION_HEADER_NAME);
@@ -13089,7 +13819,6 @@ function parseResponseAPIVersion(response) {
   }
 }
 __name(parseResponseAPIVersion, "parseResponseAPIVersion");
-__name2(parseResponseAPIVersion, "parseResponseAPIVersion");
 function validateExp(exp) {
   if (!exp) {
     throw new Error("Missing exp claim");
@@ -13100,7 +13829,6 @@ function validateExp(exp) {
   }
 }
 __name(validateExp, "validateExp");
-__name2(validateExp, "validateExp");
 function getAlgorithm(alg) {
   switch (alg) {
     case "RS256":
@@ -13119,7 +13847,6 @@ function getAlgorithm(alg) {
   }
 }
 __name(getAlgorithm, "getAlgorithm");
-__name2(getAlgorithm, "getAlgorithm");
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function validateUUID(str) {
   if (!UUID_REGEX.test(str)) {
@@ -13127,11 +13854,10 @@ function validateUUID(str) {
   }
 }
 __name(validateUUID, "validateUUID");
-__name2(validateUUID, "validateUUID");
 function userNotAvailableProxy() {
   const proxyTarget = {};
   return new Proxy(proxyTarget, {
-    get: /* @__PURE__ */ __name2((target, prop) => {
+    get: /* @__PURE__ */ __name((target, prop) => {
       if (prop === "__isUserNotAvailableProxy") {
         return true;
       }
@@ -13143,19 +13869,18 @@ function userNotAvailableProxy() {
       }
       throw new Error(`@supabase/auth-js: client was created with userStorage option and there was no user stored in the user storage. Accessing the "${prop}" property of the session object is not supported. Please use getUser() instead.`);
     }, "get"),
-    set: /* @__PURE__ */ __name2((_target, prop) => {
+    set: /* @__PURE__ */ __name((_target, prop) => {
       throw new Error(`@supabase/auth-js: client was created with userStorage option and there was no user stored in the user storage. Setting the "${prop}" property of the session object is not supported. Please use getUser() to fetch a user object you can manipulate.`);
     }, "set"),
-    deleteProperty: /* @__PURE__ */ __name2((_target, prop) => {
+    deleteProperty: /* @__PURE__ */ __name((_target, prop) => {
       throw new Error(`@supabase/auth-js: client was created with userStorage option and there was no user stored in the user storage. Deleting the "${prop}" property of the session object is not supported. Please use getUser() to fetch a user object you can manipulate.`);
     }, "deleteProperty")
   });
 }
 __name(userNotAvailableProxy, "userNotAvailableProxy");
-__name2(userNotAvailableProxy, "userNotAvailableProxy");
 function insecureUserWarningProxy(user, suppressWarningRef) {
   return new Proxy(user, {
-    get: /* @__PURE__ */ __name2((target, prop, receiver) => {
+    get: /* @__PURE__ */ __name((target, prop, receiver) => {
       if (prop === "__isInsecureUserWarningProxy") {
         return true;
       }
@@ -13174,30 +13899,30 @@ function insecureUserWarningProxy(user, suppressWarningRef) {
   });
 }
 __name(insecureUserWarningProxy, "insecureUserWarningProxy");
-__name2(insecureUserWarningProxy, "insecureUserWarningProxy");
 function deepClone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 __name(deepClone, "deepClone");
-__name2(deepClone, "deepClone");
-var _getErrorMessage2 = /* @__PURE__ */ __name2((err) => err.msg || err.message || err.error_description || err.error || JSON.stringify(err), "_getErrorMessage");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/fetch.js
+var _getErrorMessage2 = /* @__PURE__ */ __name((err) => err.msg || err.message || err.error_description || err.error || JSON.stringify(err), "_getErrorMessage");
 var NETWORK_ERROR_CODES = [502, 503, 504, 520, 521, 522, 523, 524, 530];
-async function handleError2(error) {
+async function handleError2(error3) {
   var _a;
-  if (!looksLikeFetchResponse(error)) {
-    throw new AuthRetryableFetchError(_getErrorMessage2(error), 0);
+  if (!looksLikeFetchResponse(error3)) {
+    throw new AuthRetryableFetchError(_getErrorMessage2(error3), 0);
   }
-  if (NETWORK_ERROR_CODES.includes(error.status)) {
-    throw new AuthRetryableFetchError(_getErrorMessage2(error), error.status);
+  if (NETWORK_ERROR_CODES.includes(error3.status)) {
+    throw new AuthRetryableFetchError(_getErrorMessage2(error3), error3.status);
   }
   let data;
   try {
-    data = await error.json();
+    data = await error3.json();
   } catch (e) {
     throw new AuthUnknownError(_getErrorMessage2(e), e);
   }
   let errorCode = void 0;
-  const responseAPIVersion = parseResponseAPIVersion(error);
+  const responseAPIVersion = parseResponseAPIVersion(error3);
   if (responseAPIVersion && responseAPIVersion.getTime() >= API_VERSIONS["2024-01-01"].timestamp && typeof data === "object" && data && typeof data.code === "string") {
     errorCode = data.code;
   } else if (typeof data === "object" && data && typeof data.error_code === "string") {
@@ -13205,18 +13930,17 @@ async function handleError2(error) {
   }
   if (!errorCode) {
     if (typeof data === "object" && data && typeof data.weak_password === "object" && data.weak_password && Array.isArray(data.weak_password.reasons) && data.weak_password.reasons.length && data.weak_password.reasons.reduce((a, i) => a && typeof i === "string", true)) {
-      throw new AuthWeakPasswordError(_getErrorMessage2(data), error.status, data.weak_password.reasons);
+      throw new AuthWeakPasswordError(_getErrorMessage2(data), error3.status, data.weak_password.reasons);
     }
   } else if (errorCode === "weak_password") {
-    throw new AuthWeakPasswordError(_getErrorMessage2(data), error.status, ((_a = data.weak_password) === null || _a === void 0 ? void 0 : _a.reasons) || []);
+    throw new AuthWeakPasswordError(_getErrorMessage2(data), error3.status, ((_a = data.weak_password) === null || _a === void 0 ? void 0 : _a.reasons) || []);
   } else if (errorCode === "session_not_found") {
     throw new AuthSessionMissingError();
   }
-  throw new AuthApiError(_getErrorMessage2(data), error.status || 500, errorCode);
+  throw new AuthApiError(_getErrorMessage2(data), error3.status || 500, errorCode);
 }
-__name(handleError2, "handleError2");
-__name2(handleError2, "handleError");
-var _getRequestParams2 = /* @__PURE__ */ __name2((method, options, parameters, body) => {
+__name(handleError2, "handleError");
+var _getRequestParams2 = /* @__PURE__ */ __name((method, options, parameters, body) => {
   const params = { method, headers: (options === null || options === void 0 ? void 0 : options.headers) || {} };
   if (method === "GET") {
     return params;
@@ -13246,7 +13970,6 @@ async function _request(fetcher, method, url, options) {
   return (options === null || options === void 0 ? void 0 : options.xform) ? options === null || options === void 0 ? void 0 : options.xform(data) : { data: Object.assign({}, data), error: null };
 }
 __name(_request, "_request");
-__name2(_request, "_request");
 async function _handleRequest2(fetcher, method, url, options, parameters, body) {
   const requestParams = _getRequestParams2(method, options, parameters, body);
   let result;
@@ -13268,8 +13991,7 @@ async function _handleRequest2(fetcher, method, url, options, parameters, body) 
     await handleError2(e);
   }
 }
-__name(_handleRequest2, "_handleRequest2");
-__name2(_handleRequest2, "_handleRequest");
+__name(_handleRequest2, "_handleRequest");
 function _sessionResponse(data) {
   var _a;
   let session = null;
@@ -13283,7 +14005,6 @@ function _sessionResponse(data) {
   return { data: { session, user }, error: null };
 }
 __name(_sessionResponse, "_sessionResponse");
-__name2(_sessionResponse, "_sessionResponse");
 function _sessionResponsePassword(data) {
   const response = _sessionResponse(data);
   if (!response.error && data.weak_password && typeof data.weak_password === "object" && Array.isArray(data.weak_password.reasons) && data.weak_password.reasons.length && data.weak_password.message && typeof data.weak_password.message === "string" && data.weak_password.reasons.reduce((a, i) => a && typeof i === "string", true)) {
@@ -13292,19 +14013,16 @@ function _sessionResponsePassword(data) {
   return response;
 }
 __name(_sessionResponsePassword, "_sessionResponsePassword");
-__name2(_sessionResponsePassword, "_sessionResponsePassword");
 function _userResponse(data) {
   var _a;
   const user = (_a = data.user) !== null && _a !== void 0 ? _a : data;
   return { data: { user }, error: null };
 }
 __name(_userResponse, "_userResponse");
-__name2(_userResponse, "_userResponse");
 function _ssoResponse(data) {
   return { data, error: null };
 }
 __name(_ssoResponse, "_ssoResponse");
-__name2(_ssoResponse, "_ssoResponse");
 function _generateLinkResponse(data) {
   const { action_link, email_otp, hashed_token, redirect_to, verification_type } = data, rest = __rest(data, ["action_link", "email_otp", "hashed_token", "redirect_to", "verification_type"]);
   const properties = {
@@ -13324,24 +14042,22 @@ function _generateLinkResponse(data) {
   };
 }
 __name(_generateLinkResponse, "_generateLinkResponse");
-__name2(_generateLinkResponse, "_generateLinkResponse");
 function _noResolveJsonResponse(data) {
   return data;
 }
 __name(_noResolveJsonResponse, "_noResolveJsonResponse");
-__name2(_noResolveJsonResponse, "_noResolveJsonResponse");
 function hasSession(data) {
   return data.access_token && data.refresh_token && data.expires_in;
 }
 __name(hasSession, "hasSession");
-__name2(hasSession, "hasSession");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/types.js
 var SIGN_OUT_SCOPES = ["global", "local", "others"];
+
+// ../node_modules/@supabase/auth-js/dist/module/GoTrueAdminApi.js
 var GoTrueAdminApi = class {
   static {
     __name(this, "GoTrueAdminApi");
-  }
-  static {
-    __name2(this, "GoTrueAdminApi");
   }
   /**
    * Creates an admin API client that can be used to manage users and OAuth clients.
@@ -13398,11 +14114,11 @@ var GoTrueAdminApi = class {
         noResolveJson: true
       });
       return { data: null, error: null };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -13476,11 +14192,11 @@ var GoTrueAdminApi = class {
         redirectTo: options.redirectTo,
         xform: _userResponse
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { user: null }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { user: null }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -13613,17 +14329,17 @@ var GoTrueAdminApi = class {
         xform: _generateLinkResponse,
         redirectTo: options === null || options === void 0 ? void 0 : options.redirectTo
       });
-    } catch (error) {
-      if (isAuthError(error)) {
+    } catch (error3) {
+      if (isAuthError(error3)) {
         return {
           data: {
             properties: null,
             user: null
           },
-          error
+          error: error3
         };
       }
-      throw error;
+      throw error3;
     }
   }
   // User Admin API
@@ -13713,11 +14429,11 @@ var GoTrueAdminApi = class {
         headers: this.headers,
         xform: _userResponse
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { user: null }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { user: null }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -13771,11 +14487,11 @@ var GoTrueAdminApi = class {
         pagination.total = parseInt(total);
       }
       return { data: Object.assign(Object.assign({}, users), pagination), error: null };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { users: [] }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { users: [] }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -13846,11 +14562,11 @@ var GoTrueAdminApi = class {
         headers: this.headers,
         xform: _userResponse
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { user: null }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { user: null }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14004,11 +14720,11 @@ var GoTrueAdminApi = class {
         headers: this.headers,
         xform: _userResponse
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { user: null }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { user: null }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14052,28 +14768,28 @@ var GoTrueAdminApi = class {
         },
         xform: _userResponse
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { user: null }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { user: null }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   async _listFactors(params) {
     validateUUID(params.userId);
     try {
-      const { data, error } = await _request(this.fetch, "GET", `${this.url}/admin/users/${params.userId}/factors`, {
+      const { data, error: error3 } = await _request(this.fetch, "GET", `${this.url}/admin/users/${params.userId}/factors`, {
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((factors) => {
+        xform: /* @__PURE__ */ __name((factors) => {
           return { data: { factors }, error: null };
         }, "xform")
       });
-      return { data, error };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+      return { data, error: error3 };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   async _deleteFactor(params) {
@@ -14084,11 +14800,11 @@ var GoTrueAdminApi = class {
         headers: this.headers
       });
       return { data, error: null };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14124,11 +14840,11 @@ var GoTrueAdminApi = class {
         pagination.total = parseInt(total);
       }
       return { data: Object.assign(Object.assign({}, clients), pagination), error: null };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { clients: [] }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { clients: [] }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14142,15 +14858,15 @@ var GoTrueAdminApi = class {
       return await _request(this.fetch, "POST", `${this.url}/admin/oauth/clients`, {
         body: params,
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((client) => {
+        xform: /* @__PURE__ */ __name((client) => {
           return { data: client, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14163,15 +14879,15 @@ var GoTrueAdminApi = class {
     try {
       return await _request(this.fetch, "GET", `${this.url}/admin/oauth/clients/${clientId}`, {
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((client) => {
+        xform: /* @__PURE__ */ __name((client) => {
           return { data: client, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14185,15 +14901,15 @@ var GoTrueAdminApi = class {
       return await _request(this.fetch, "PUT", `${this.url}/admin/oauth/clients/${clientId}`, {
         body: params,
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((client) => {
+        xform: /* @__PURE__ */ __name((client) => {
           return { data: client, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14209,11 +14925,11 @@ var GoTrueAdminApi = class {
         noResolveJson: true
       });
       return { data: null, error: null };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14226,15 +14942,15 @@ var GoTrueAdminApi = class {
     try {
       return await _request(this.fetch, "POST", `${this.url}/admin/oauth/clients/${clientId}/regenerate_secret`, {
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((client) => {
+        xform: /* @__PURE__ */ __name((client) => {
           return { data: client, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14251,16 +14967,16 @@ var GoTrueAdminApi = class {
       return await _request(this.fetch, "GET", `${this.url}/admin/custom-providers`, {
         headers: this.headers,
         query,
-        xform: /* @__PURE__ */ __name2((data) => {
+        xform: /* @__PURE__ */ __name((data) => {
           var _a;
           return { data: { providers: (_a = data === null || data === void 0 ? void 0 : data.providers) !== null && _a !== void 0 ? _a : [] }, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: { providers: [] }, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: { providers: [] }, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14279,15 +14995,15 @@ var GoTrueAdminApi = class {
       return await _request(this.fetch, "POST", `${this.url}/admin/custom-providers`, {
         body: params,
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((provider) => {
+        xform: /* @__PURE__ */ __name((provider) => {
           return { data: provider, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14299,15 +15015,15 @@ var GoTrueAdminApi = class {
     try {
       return await _request(this.fetch, "GET", `${this.url}/admin/custom-providers/${identifier}`, {
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((provider) => {
+        xform: /* @__PURE__ */ __name((provider) => {
           return { data: provider, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14325,15 +15041,15 @@ var GoTrueAdminApi = class {
       return await _request(this.fetch, "PUT", `${this.url}/admin/custom-providers/${identifier}`, {
         body: params,
         headers: this.headers,
-        xform: /* @__PURE__ */ __name2((provider) => {
+        xform: /* @__PURE__ */ __name((provider) => {
           return { data: provider, error: null };
         }, "xform")
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -14348,29 +15064,32 @@ var GoTrueAdminApi = class {
         noResolveJson: true
       });
       return { data: null, error: null };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
-      throw error;
+      throw error3;
     }
   }
 };
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/local-storage.js
 function memoryLocalStorageAdapter(store = {}) {
   return {
-    getItem: /* @__PURE__ */ __name2((key) => {
+    getItem: /* @__PURE__ */ __name((key) => {
       return store[key] || null;
     }, "getItem"),
-    setItem: /* @__PURE__ */ __name2((key, value) => {
+    setItem: /* @__PURE__ */ __name((key, value) => {
       store[key] = value;
     }, "setItem"),
-    removeItem: /* @__PURE__ */ __name2((key) => {
+    removeItem: /* @__PURE__ */ __name((key) => {
       delete store[key];
     }, "removeItem")
   };
 }
 __name(memoryLocalStorageAdapter, "memoryLocalStorageAdapter");
-__name2(memoryLocalStorageAdapter, "memoryLocalStorageAdapter");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/locks.js
 var internals = {
   /**
    * @experimental
@@ -14381,9 +15100,6 @@ var LockAcquireTimeoutError = class extends Error {
   static {
     __name(this, "LockAcquireTimeoutError");
   }
-  static {
-    __name2(this, "LockAcquireTimeoutError");
-  }
   constructor(message) {
     super(message);
     this.isAcquireTimeout = true;
@@ -14392,9 +15108,6 @@ var LockAcquireTimeoutError = class extends Error {
 var NavigatorLockAcquireTimeoutError = class extends LockAcquireTimeoutError {
   static {
     __name(this, "NavigatorLockAcquireTimeoutError");
-  }
-  static {
-    __name2(this, "NavigatorLockAcquireTimeoutError");
   }
 };
 async function navigatorLock(name, acquireTimeout, fn) {
@@ -14494,13 +15207,14 @@ async function navigatorLock(name, acquireTimeout, fn) {
   }
 }
 __name(navigatorLock, "navigatorLock");
-__name2(navigatorLock, "navigatorLock");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/polyfills.js
 function polyfillGlobalThis() {
   if (typeof globalThis === "object")
     return;
   try {
     Object.defineProperty(Object.prototype, "__magic__", {
-      get: /* @__PURE__ */ __name2(function() {
+      get: /* @__PURE__ */ __name(function() {
         return this;
       }, "get"),
       configurable: true
@@ -14514,7 +15228,8 @@ function polyfillGlobalThis() {
   }
 }
 __name(polyfillGlobalThis, "polyfillGlobalThis");
-__name2(polyfillGlobalThis, "polyfillGlobalThis");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/web3/ethereum.js
 function getAddress(address) {
   if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
     throw new Error(`@supabase/auth-js: Address "${address}" is invalid.`);
@@ -14522,38 +15237,35 @@ function getAddress(address) {
   return address.toLowerCase();
 }
 __name(getAddress, "getAddress");
-__name2(getAddress, "getAddress");
 function fromHex(hex) {
   return parseInt(hex, 16);
 }
 __name(fromHex, "fromHex");
-__name2(fromHex, "fromHex");
 function toHex(value) {
   const bytes = new TextEncoder().encode(value);
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   return "0x" + hex;
 }
 __name(toHex, "toHex");
-__name2(toHex, "toHex");
 function createSiweMessage(parameters) {
   var _a;
-  const { chainId, domain, expirationTime, issuedAt = /* @__PURE__ */ new Date(), nonce, notBefore, requestId, resources, scheme, uri, version: version5 } = parameters;
+  const { chainId, domain: domain2, expirationTime, issuedAt = /* @__PURE__ */ new Date(), nonce, notBefore, requestId, resources, scheme, uri, version: version6 } = parameters;
   {
     if (!Number.isInteger(chainId))
       throw new Error(`@supabase/auth-js: Invalid SIWE message field "chainId". Chain ID must be a EIP-155 chain ID. Provided value: ${chainId}`);
-    if (!domain)
+    if (!domain2)
       throw new Error(`@supabase/auth-js: Invalid SIWE message field "domain". Domain must be provided.`);
     if (nonce && nonce.length < 8)
       throw new Error(`@supabase/auth-js: Invalid SIWE message field "nonce". Nonce must be at least 8 characters. Provided value: ${nonce}`);
     if (!uri)
       throw new Error(`@supabase/auth-js: Invalid SIWE message field "uri". URI must be provided.`);
-    if (version5 !== "1")
-      throw new Error(`@supabase/auth-js: Invalid SIWE message field "version". Version must be '1'. Provided value: ${version5}`);
+    if (version6 !== "1")
+      throw new Error(`@supabase/auth-js: Invalid SIWE message field "version". Version must be '1'. Provided value: ${version6}`);
     if ((_a = parameters.statement) === null || _a === void 0 ? void 0 : _a.includes("\n"))
       throw new Error(`@supabase/auth-js: Invalid SIWE message field "statement". Statement must not include '\\n'. Provided value: ${parameters.statement}`);
   }
   const address = getAddress(parameters.address);
-  const origin = scheme ? `${scheme}://${domain}` : domain;
+  const origin = scheme ? `${scheme}://${domain2}` : domain2;
   const statement = parameters.statement ? `${parameters.statement}
 ` : "";
   const prefix = `${origin} wants you to sign in with your Ethereum account:
@@ -14561,7 +15273,7 @@ ${address}
 
 ${statement}`;
   let suffix = `URI: ${uri}
-Version: ${version5}
+Version: ${version6}
 Chain ID: ${chainId}${nonce ? `
 Nonce: ${nonce}` : ""}
 Issued At: ${issuedAt.toISOString()}`;
@@ -14588,13 +15300,11 @@ Request ID: ${requestId}`;
 ${suffix}`;
 }
 __name(createSiweMessage, "createSiweMessage");
-__name2(createSiweMessage, "createSiweMessage");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/webauthn.errors.js
 var WebAuthnError = class extends Error {
   static {
     __name(this, "WebAuthnError");
-  }
-  static {
-    __name2(this, "WebAuthnError");
   }
   constructor({ message, code, cause, name }) {
     var _a;
@@ -14608,9 +15318,6 @@ var WebAuthnUnknownError = class extends WebAuthnError {
   static {
     __name(this, "WebAuthnUnknownError");
   }
-  static {
-    __name2(this, "WebAuthnUnknownError");
-  }
   constructor(message, originalError) {
     super({
       code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
@@ -14621,26 +15328,26 @@ var WebAuthnUnknownError = class extends WebAuthnError {
     this.originalError = originalError;
   }
 };
-function identifyRegistrationError({ error, options }) {
+function identifyRegistrationError({ error: error3, options }) {
   var _a, _b, _c;
   const { publicKey } = options;
   if (!publicKey) {
     throw Error("options was missing required publicKey property");
   }
-  if (error.name === "AbortError") {
+  if (error3.name === "AbortError") {
     if (options.signal instanceof AbortSignal) {
       return new WebAuthnError({
         message: "Registration ceremony was sent an abort signal",
         code: "ERROR_CEREMONY_ABORTED",
-        cause: error
+        cause: error3
       });
     }
-  } else if (error.name === "ConstraintError") {
+  } else if (error3.name === "ConstraintError") {
     if (((_a = publicKey.authenticatorSelection) === null || _a === void 0 ? void 0 : _a.requireResidentKey) === true) {
       return new WebAuthnError({
         message: "Discoverable credentials were required but no available authenticator supported it",
         code: "ERROR_AUTHENTICATOR_MISSING_DISCOVERABLE_CREDENTIAL_SUPPORT",
-        cause: error
+        cause: error3
       });
     } else if (
       // @ts-ignore: `mediation` doesn't yet exist on CredentialCreationOptions but it's possible as of Sept 2024
@@ -14649,134 +15356,131 @@ function identifyRegistrationError({ error, options }) {
       return new WebAuthnError({
         message: "User verification was required during automatic registration but it could not be performed",
         code: "ERROR_AUTO_REGISTER_USER_VERIFICATION_FAILURE",
-        cause: error
+        cause: error3
       });
     } else if (((_c = publicKey.authenticatorSelection) === null || _c === void 0 ? void 0 : _c.userVerification) === "required") {
       return new WebAuthnError({
         message: "User verification was required but no available authenticator supported it",
         code: "ERROR_AUTHENTICATOR_MISSING_USER_VERIFICATION_SUPPORT",
-        cause: error
+        cause: error3
       });
     }
-  } else if (error.name === "InvalidStateError") {
+  } else if (error3.name === "InvalidStateError") {
     return new WebAuthnError({
       message: "The authenticator was previously registered",
       code: "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED",
-      cause: error
+      cause: error3
     });
-  } else if (error.name === "NotAllowedError") {
+  } else if (error3.name === "NotAllowedError") {
     return new WebAuthnError({
-      message: error.message,
+      message: error3.message,
       code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
-      cause: error
+      cause: error3
     });
-  } else if (error.name === "NotSupportedError") {
+  } else if (error3.name === "NotSupportedError") {
     const validPubKeyCredParams = publicKey.pubKeyCredParams.filter((param) => param.type === "public-key");
     if (validPubKeyCredParams.length === 0) {
       return new WebAuthnError({
         message: 'No entry in pubKeyCredParams was of type "public-key"',
         code: "ERROR_MALFORMED_PUBKEYCREDPARAMS",
-        cause: error
+        cause: error3
       });
     }
     return new WebAuthnError({
       message: "No available authenticator supported any of the specified pubKeyCredParams algorithms",
       code: "ERROR_AUTHENTICATOR_NO_SUPPORTED_PUBKEYCREDPARAMS_ALG",
-      cause: error
+      cause: error3
     });
-  } else if (error.name === "SecurityError") {
+  } else if (error3.name === "SecurityError") {
     const effectiveDomain = window.location.hostname;
     if (!isValidDomain(effectiveDomain)) {
       return new WebAuthnError({
         message: `${window.location.hostname} is an invalid domain`,
         code: "ERROR_INVALID_DOMAIN",
-        cause: error
+        cause: error3
       });
     } else if (publicKey.rp.id !== effectiveDomain) {
       return new WebAuthnError({
         message: `The RP ID "${publicKey.rp.id}" is invalid for this domain`,
         code: "ERROR_INVALID_RP_ID",
-        cause: error
+        cause: error3
       });
     }
-  } else if (error.name === "TypeError") {
+  } else if (error3.name === "TypeError") {
     if (publicKey.user.id.byteLength < 1 || publicKey.user.id.byteLength > 64) {
       return new WebAuthnError({
         message: "User ID was not between 1 and 64 characters",
         code: "ERROR_INVALID_USER_ID_LENGTH",
-        cause: error
+        cause: error3
       });
     }
-  } else if (error.name === "UnknownError") {
+  } else if (error3.name === "UnknownError") {
     return new WebAuthnError({
       message: "The authenticator was unable to process the specified options, or could not create a new credential",
       code: "ERROR_AUTHENTICATOR_GENERAL_ERROR",
-      cause: error
+      cause: error3
     });
   }
   return new WebAuthnError({
     message: "a Non-Webauthn related error has occurred",
     code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
-    cause: error
+    cause: error3
   });
 }
 __name(identifyRegistrationError, "identifyRegistrationError");
-__name2(identifyRegistrationError, "identifyRegistrationError");
-function identifyAuthenticationError({ error, options }) {
+function identifyAuthenticationError({ error: error3, options }) {
   const { publicKey } = options;
   if (!publicKey) {
     throw Error("options was missing required publicKey property");
   }
-  if (error.name === "AbortError") {
+  if (error3.name === "AbortError") {
     if (options.signal instanceof AbortSignal) {
       return new WebAuthnError({
         message: "Authentication ceremony was sent an abort signal",
         code: "ERROR_CEREMONY_ABORTED",
-        cause: error
+        cause: error3
       });
     }
-  } else if (error.name === "NotAllowedError") {
+  } else if (error3.name === "NotAllowedError") {
     return new WebAuthnError({
-      message: error.message,
+      message: error3.message,
       code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
-      cause: error
+      cause: error3
     });
-  } else if (error.name === "SecurityError") {
+  } else if (error3.name === "SecurityError") {
     const effectiveDomain = window.location.hostname;
     if (!isValidDomain(effectiveDomain)) {
       return new WebAuthnError({
         message: `${window.location.hostname} is an invalid domain`,
         code: "ERROR_INVALID_DOMAIN",
-        cause: error
+        cause: error3
       });
     } else if (publicKey.rpId !== effectiveDomain) {
       return new WebAuthnError({
         message: `The RP ID "${publicKey.rpId}" is invalid for this domain`,
         code: "ERROR_INVALID_RP_ID",
-        cause: error
+        cause: error3
       });
     }
-  } else if (error.name === "UnknownError") {
+  } else if (error3.name === "UnknownError") {
     return new WebAuthnError({
       message: "The authenticator was unable to process the specified options, or could not create a new assertion signature",
       code: "ERROR_AUTHENTICATOR_GENERAL_ERROR",
-      cause: error
+      cause: error3
     });
   }
   return new WebAuthnError({
     message: "a Non-Webauthn related error has occurred",
     code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
-    cause: error
+    cause: error3
   });
 }
 __name(identifyAuthenticationError, "identifyAuthenticationError");
-__name2(identifyAuthenticationError, "identifyAuthenticationError");
+
+// ../node_modules/@supabase/auth-js/dist/module/lib/webauthn.js
 var WebAuthnAbortService = class {
   static {
     __name(this, "WebAuthnAbortService");
-  }
-  static {
-    __name2(this, "WebAuthnAbortService");
   }
   /**
    * Create an abort signal for a new WebAuthn operation.
@@ -14846,7 +15550,6 @@ function deserializeCredentialCreationOptions(options) {
   return result;
 }
 __name(deserializeCredentialCreationOptions, "deserializeCredentialCreationOptions");
-__name2(deserializeCredentialCreationOptions, "deserializeCredentialCreationOptions");
 function deserializeCredentialRequestOptions(options) {
   if (!options) {
     throw new Error("Credential request options are required");
@@ -14875,7 +15578,6 @@ function deserializeCredentialRequestOptions(options) {
   return result;
 }
 __name(deserializeCredentialRequestOptions, "deserializeCredentialRequestOptions");
-__name2(deserializeCredentialRequestOptions, "deserializeCredentialRequestOptions");
 function serializeCredentialCreationResponse(credential) {
   var _a;
   if ("toJSON" in credential && typeof credential.toJSON === "function") {
@@ -14896,7 +15598,6 @@ function serializeCredentialCreationResponse(credential) {
   };
 }
 __name(serializeCredentialCreationResponse, "serializeCredentialCreationResponse");
-__name2(serializeCredentialCreationResponse, "serializeCredentialCreationResponse");
 function serializeCredentialRequestResponse(credential) {
   var _a;
   if ("toJSON" in credential && typeof credential.toJSON === "function") {
@@ -14922,7 +15623,6 @@ function serializeCredentialRequestResponse(credential) {
   };
 }
 __name(serializeCredentialRequestResponse, "serializeCredentialRequestResponse");
-__name2(serializeCredentialRequestResponse, "serializeCredentialRequestResponse");
 function isValidDomain(hostname) {
   return (
     // Consider localhost valid as well since it's okay wrt Secure Contexts
@@ -14930,13 +15630,11 @@ function isValidDomain(hostname) {
   );
 }
 __name(isValidDomain, "isValidDomain");
-__name2(isValidDomain, "isValidDomain");
 function browserSupportsWebAuthn() {
   var _a, _b;
   return !!(isBrowser() && "PublicKeyCredential" in window && window.PublicKeyCredential && "credentials" in navigator && typeof ((_a = navigator === null || navigator === void 0 ? void 0 : navigator.credentials) === null || _a === void 0 ? void 0 : _a.create) === "function" && typeof ((_b = navigator === null || navigator === void 0 ? void 0 : navigator.credentials) === null || _b === void 0 ? void 0 : _b.get) === "function");
 }
 __name(browserSupportsWebAuthn, "browserSupportsWebAuthn");
-__name2(browserSupportsWebAuthn, "browserSupportsWebAuthn");
 async function createCredential(options) {
   try {
     const response = await navigator.credentials.create(
@@ -14967,7 +15665,6 @@ async function createCredential(options) {
   }
 }
 __name(createCredential, "createCredential");
-__name2(createCredential, "createCredential");
 async function getCredential(options) {
   try {
     const response = await navigator.credentials.get(
@@ -14998,7 +15695,6 @@ async function getCredential(options) {
   }
 }
 __name(getCredential, "getCredential");
-__name2(getCredential, "getCredential");
 var DEFAULT_CREATION_OPTIONS = {
   hints: ["security-key"],
   authenticatorSelection: {
@@ -15017,8 +15713,8 @@ var DEFAULT_REQUEST_OPTIONS = {
   attestation: "direct"
 };
 function deepMerge(...sources) {
-  const isObject = /* @__PURE__ */ __name2((val) => val !== null && typeof val === "object" && !Array.isArray(val), "isObject");
-  const isArrayBufferLike = /* @__PURE__ */ __name2((val) => val instanceof ArrayBuffer || ArrayBuffer.isView(val), "isArrayBufferLike");
+  const isObject = /* @__PURE__ */ __name((val) => val !== null && typeof val === "object" && !Array.isArray(val), "isObject");
+  const isArrayBufferLike = /* @__PURE__ */ __name((val) => val instanceof ArrayBuffer || ArrayBuffer.isView(val), "isArrayBufferLike");
   const result = {};
   for (const source of sources) {
     if (!source)
@@ -15046,23 +15742,17 @@ function deepMerge(...sources) {
   return result;
 }
 __name(deepMerge, "deepMerge");
-__name2(deepMerge, "deepMerge");
 function mergeCredentialCreationOptions(baseOptions, overrides) {
   return deepMerge(DEFAULT_CREATION_OPTIONS, baseOptions, overrides || {});
 }
 __name(mergeCredentialCreationOptions, "mergeCredentialCreationOptions");
-__name2(mergeCredentialCreationOptions, "mergeCredentialCreationOptions");
 function mergeCredentialRequestOptions(baseOptions, overrides) {
   return deepMerge(DEFAULT_REQUEST_OPTIONS, baseOptions, overrides || {});
 }
 __name(mergeCredentialRequestOptions, "mergeCredentialRequestOptions");
-__name2(mergeCredentialRequestOptions, "mergeCredentialRequestOptions");
 var WebAuthnApi = class {
   static {
     __name(this, "WebAuthnApi");
-  }
-  static {
-    __name2(this, "WebAuthnApi");
   }
   constructor(client) {
     this.client = client;
@@ -15129,7 +15819,7 @@ var WebAuthnApi = class {
       switch (challengeResponse.webauthn.type) {
         case "create": {
           const options = mergeCredentialCreationOptions(challengeResponse.webauthn.credential_options.publicKey, overrides === null || overrides === void 0 ? void 0 : overrides.create);
-          const { data, error } = await createCredential({
+          const { data, error: error3 } = await createCredential({
             publicKey: options,
             signal: abortSignal
           });
@@ -15146,11 +15836,11 @@ var WebAuthnApi = class {
               error: null
             };
           }
-          return { data: null, error };
+          return { data: null, error: error3 };
         }
         case "request": {
           const options = mergeCredentialRequestOptions(challengeResponse.webauthn.credential_options.publicKey, overrides === null || overrides === void 0 ? void 0 : overrides.request);
-          const { data, error } = await getCredential(Object.assign(Object.assign({}, challengeResponse.webauthn.credential_options), { publicKey: options, signal: abortSignal }));
+          const { data, error: error3 } = await getCredential(Object.assign(Object.assign({}, challengeResponse.webauthn.credential_options), { publicKey: options, signal: abortSignal }));
           if (data) {
             return {
               data: {
@@ -15164,16 +15854,16 @@ var WebAuthnApi = class {
               error: null
             };
           }
-          return { data: null, error };
+          return { data: null, error: error3 };
         }
       }
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
       return {
         data: null,
-        error: new AuthUnknownError("Unexpected error in challenge", error)
+        error: new AuthUnknownError("Unexpected error in challenge", error3)
       };
     }
   }
@@ -15245,13 +15935,13 @@ var WebAuthnApi = class {
           credential_response: webauthn.credential_response
         }
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
       return {
         data: null,
-        error: new AuthUnknownError("Unexpected error in authenticate", error)
+        error: new AuthUnknownError("Unexpected error in authenticate", error3)
       };
     }
   }
@@ -15315,17 +16005,19 @@ var WebAuthnApi = class {
           credential_response: challengeResponse.webauthn.credential_response
         }
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return { data: null, error };
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return { data: null, error: error3 };
       }
       return {
         data: null,
-        error: new AuthUnknownError("Unexpected error in register", error)
+        error: new AuthUnknownError("Unexpected error in register", error3)
       };
     }
   }
 };
+
+// ../node_modules/@supabase/auth-js/dist/module/GoTrueClient.js
 polyfillGlobalThis();
 var DEFAULT_OPTIONS = {
   url: GOTRUE_URL,
@@ -15346,14 +16038,10 @@ async function lockNoOp(name, acquireTimeout, fn) {
   return await fn();
 }
 __name(lockNoOp, "lockNoOp");
-__name2(lockNoOp, "lockNoOp");
 var GLOBAL_JWKS = {};
 var GoTrueClient = class _GoTrueClient {
   static {
-    __name(this, "_GoTrueClient");
-  }
-  static {
-    __name2(this, "GoTrueClient");
+    __name(this, "GoTrueClient");
   }
   /**
    * The JWKS used for verifying asymmetric JWTs
@@ -15490,14 +16178,14 @@ var GoTrueClient = class _GoTrueClient {
         this._debug("received broadcast notification from other tab or client", event);
         try {
           await this._notifyAllSubscribers(event.data.event, event.data.session, false);
-        } catch (error) {
-          this._debug("#broadcastChannel", "error", error);
+        } catch (error3) {
+          this._debug("#broadcastChannel", "error", error3);
         }
       });
     }
     if (!settings.skipAutoInitialize) {
-      this.initialize().catch((error) => {
-        this._debug("#initialize()", "error", error);
+      this.initialize().catch((error3) => {
+        this._debug("#initialize()", "error", error3);
       });
     }
   }
@@ -15519,7 +16207,7 @@ var GoTrueClient = class _GoTrueClient {
     return result;
   }
   _logPrefix() {
-    return `GoTrueClient@${this.storageKey}:${this.instanceID} (${version3}) ${(/* @__PURE__ */ new Date()).toISOString()}`;
+    return `GoTrueClient@${this.storageKey}:${this.instanceID} (${version4}) ${(/* @__PURE__ */ new Date()).toISOString()}`;
   }
   _debug(...args) {
     if (this.logDebugMessages) {
@@ -15565,16 +16253,16 @@ var GoTrueClient = class _GoTrueClient {
         }
       }
       if (isBrowser() && this.detectSessionInUrl && callbackUrlType !== "none") {
-        const { data, error } = await this._getSessionFromURL(params, callbackUrlType);
-        if (error) {
-          this._debug("#_initialize()", "error detecting session from URL", error);
-          if (isAuthImplicitGrantRedirectError(error)) {
-            const errorCode = (_a = error.details) === null || _a === void 0 ? void 0 : _a.code;
+        const { data, error: error3 } = await this._getSessionFromURL(params, callbackUrlType);
+        if (error3) {
+          this._debug("#_initialize()", "error detecting session from URL", error3);
+          if (isAuthImplicitGrantRedirectError(error3)) {
+            const errorCode = (_a = error3.details) === null || _a === void 0 ? void 0 : _a.code;
             if (errorCode === "identity_already_exists" || errorCode === "identity_not_found" || errorCode === "single_identity_not_deletable") {
-              return { error };
+              return { error: error3 };
             }
           }
-          return { error };
+          return { error: error3 };
         }
         const { session, redirectType } = data;
         this._debug("#_initialize()", "detected session in URL", session, "redirect type", redirectType);
@@ -15590,12 +16278,12 @@ var GoTrueClient = class _GoTrueClient {
       }
       await this._recoverAndRefresh();
       return { error: null };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ error: error3 });
       }
       return this._returnResult({
-        error: new AuthUnknownError("Unexpected error during initialization", error)
+        error: new AuthUnknownError("Unexpected error during initialization", error3)
       });
     } finally {
       await this._handleVisibilityChange();
@@ -15686,9 +16374,9 @@ var GoTrueClient = class _GoTrueClient {
         },
         xform: _sessionResponse
       });
-      const { data, error } = res;
-      if (error || !data) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      const { data, error: error3 } = res;
+      if (error3 || !data) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
       const session = data.session;
       const user = data.user;
@@ -15697,11 +16385,11 @@ var GoTrueClient = class _GoTrueClient {
         await this._notifyAllSubscribers("SIGNED_IN", session);
       }
       return this._returnResult({ data: { user, session }, error: null });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -15922,10 +16610,10 @@ var GoTrueClient = class _GoTrueClient {
       } else {
         throw new AuthInvalidCredentialsError("You must provide either an email or phone number and a password");
       }
-      const { data, error } = res;
-      if (error || !data) {
+      const { data, error: error3 } = res;
+      if (error3 || !data) {
         await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-        return this._returnResult({ data: { user: null, session: null }, error });
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
       const session = data.session;
       const user = data.user;
@@ -15934,12 +16622,12 @@ var GoTrueClient = class _GoTrueClient {
         await this._notifyAllSubscribers("SIGNED_IN", session);
       }
       return this._returnResult({ data: { user, session }, error: null });
-    } catch (error) {
+    } catch (error3) {
       await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -16087,9 +16775,9 @@ var GoTrueClient = class _GoTrueClient {
       } else {
         throw new AuthInvalidCredentialsError("You must provide either an email or phone number and a password");
       }
-      const { data, error } = res;
-      if (error) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      const { data, error: error3 } = res;
+      if (error3) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       } else if (!data || !data.session || !data.user) {
         const invalidTokenError = new AuthInvalidTokenResponseError();
         return this._returnResult({ data: { user: null, session: null }, error: invalidTokenError });
@@ -16100,13 +16788,13 @@ var GoTrueClient = class _GoTrueClient {
       }
       return this._returnResult({
         data: Object.assign({ user: data.user, session: data.session }, data.weak_password ? { weakPassword: data.weak_password } : null),
-        error
+        error: error3
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -16535,7 +17223,7 @@ var GoTrueClient = class _GoTrueClient {
       });
     }
     try {
-      const { data, error } = await _request(this.fetch, "POST", `${this.url}/token?grant_type=web3`, {
+      const { data, error: error3 } = await _request(this.fetch, "POST", `${this.url}/token?grant_type=web3`, {
         headers: this.headers,
         body: Object.assign({
           chain: "ethereum",
@@ -16544,8 +17232,8 @@ var GoTrueClient = class _GoTrueClient {
         }, ((_k = credentials.options) === null || _k === void 0 ? void 0 : _k.captchaToken) ? { gotrue_meta_security: { captcha_token: (_l = credentials.options) === null || _l === void 0 ? void 0 : _l.captchaToken } } : null),
         xform: _sessionResponse
       });
-      if (error) {
-        throw error;
+      if (error3) {
+        throw error3;
       }
       if (!data || !data.session || !data.user) {
         const invalidTokenError = new AuthInvalidTokenResponseError();
@@ -16555,12 +17243,12 @@ var GoTrueClient = class _GoTrueClient {
         await this._saveSession(data.session);
         await this._notifyAllSubscribers("SIGNED_IN", data.session);
       }
-      return this._returnResult({ data: Object.assign({}, data), error });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      return this._returnResult({ data: Object.assign({}, data), error: error3 });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   async signInWithSolana(credentials) {
@@ -16639,13 +17327,13 @@ var GoTrueClient = class _GoTrueClient {
       }
     }
     try {
-      const { data, error } = await _request(this.fetch, "POST", `${this.url}/token?grant_type=web3`, {
+      const { data, error: error3 } = await _request(this.fetch, "POST", `${this.url}/token?grant_type=web3`, {
         headers: this.headers,
         body: Object.assign({ chain: "solana", message, signature: bytesToBase64URL(signature) }, ((_l = credentials.options) === null || _l === void 0 ? void 0 : _l.captchaToken) ? { gotrue_meta_security: { captcha_token: (_m = credentials.options) === null || _m === void 0 ? void 0 : _m.captchaToken } } : null),
         xform: _sessionResponse
       });
-      if (error) {
-        throw error;
+      if (error3) {
+        throw error3;
       }
       if (!data || !data.session || !data.user) {
         const invalidTokenError = new AuthInvalidTokenResponseError();
@@ -16655,12 +17343,12 @@ var GoTrueClient = class _GoTrueClient {
         await this._saveSession(data.session);
         await this._notifyAllSubscribers("SIGNED_IN", data.session);
       }
-      return this._returnResult({ data: Object.assign({}, data), error });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      return this._returnResult({ data: Object.assign({}, data), error: error3 });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   async _exchangeCodeForSession(authCode) {
@@ -16670,7 +17358,7 @@ var GoTrueClient = class _GoTrueClient {
       if (!codeVerifier && this.flowType === "pkce") {
         throw new AuthPKCECodeVerifierMissingError();
       }
-      const { data, error } = await _request(this.fetch, "POST", `${this.url}/token?grant_type=pkce`, {
+      const { data, error: error3 } = await _request(this.fetch, "POST", `${this.url}/token?grant_type=pkce`, {
         headers: this.headers,
         body: {
           auth_code: authCode,
@@ -16679,8 +17367,8 @@ var GoTrueClient = class _GoTrueClient {
         xform: _sessionResponse
       });
       await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-      if (error) {
-        throw error;
+      if (error3) {
+        throw error3;
       }
       if (!data || !data.session || !data.user) {
         const invalidTokenError = new AuthInvalidTokenResponseError();
@@ -16693,16 +17381,16 @@ var GoTrueClient = class _GoTrueClient {
         await this._saveSession(data.session);
         await this._notifyAllSubscribers("SIGNED_IN", data.session);
       }
-      return this._returnResult({ data: Object.assign(Object.assign({}, data), { redirectType: redirectType !== null && redirectType !== void 0 ? redirectType : null }), error });
-    } catch (error) {
+      return this._returnResult({ data: Object.assign(Object.assign({}, data), { redirectType: redirectType !== null && redirectType !== void 0 ? redirectType : null }), error: error3 });
+    } catch (error3) {
       await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-      if (isAuthError(error)) {
+      if (isAuthError(error3)) {
         return this._returnResult({
           data: { user: null, session: null, redirectType: null },
-          error
+          error: error3
         });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -16794,9 +17482,9 @@ var GoTrueClient = class _GoTrueClient {
         },
         xform: _sessionResponse
       });
-      const { data, error } = res;
-      if (error) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      const { data, error: error3 } = res;
+      if (error3) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       } else if (!data || !data.session || !data.user) {
         const invalidTokenError = new AuthInvalidTokenResponseError();
         return this._returnResult({ data: { user: null, session: null }, error: invalidTokenError });
@@ -16805,12 +17493,12 @@ var GoTrueClient = class _GoTrueClient {
         await this._saveSession(data.session);
         await this._notifyAllSubscribers("SIGNED_IN", data.session);
       }
-      return this._returnResult({ data, error });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      return this._returnResult({ data, error: error3 });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -16901,7 +17589,7 @@ var GoTrueClient = class _GoTrueClient {
           ;
           [codeChallenge, codeChallengeMethod] = await getCodeChallengeAndMethod(this.storage, this.storageKey);
         }
-        const { error } = await _request(this.fetch, "POST", `${this.url}/otp`, {
+        const { error: error3 } = await _request(this.fetch, "POST", `${this.url}/otp`, {
           headers: this.headers,
           body: {
             email,
@@ -16913,11 +17601,11 @@ var GoTrueClient = class _GoTrueClient {
           },
           redirectTo: options === null || options === void 0 ? void 0 : options.emailRedirectTo
         });
-        return this._returnResult({ data: { user: null, session: null }, error });
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
       if ("phone" in credentials) {
         const { phone, options } = credentials;
-        const { data, error } = await _request(this.fetch, "POST", `${this.url}/otp`, {
+        const { data, error: error3 } = await _request(this.fetch, "POST", `${this.url}/otp`, {
           headers: this.headers,
           body: {
             phone,
@@ -16929,16 +17617,16 @@ var GoTrueClient = class _GoTrueClient {
         });
         return this._returnResult({
           data: { user: null, session: null, messageId: data === null || data === void 0 ? void 0 : data.message_id },
-          error
+          error: error3
         });
       }
       throw new AuthInvalidCredentialsError("You must provide either an email or phone number.");
-    } catch (error) {
+    } catch (error3) {
       await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -17087,14 +17775,14 @@ var GoTrueClient = class _GoTrueClient {
         redirectTo = (_a = params.options) === null || _a === void 0 ? void 0 : _a.redirectTo;
         captchaToken = (_b = params.options) === null || _b === void 0 ? void 0 : _b.captchaToken;
       }
-      const { data, error } = await _request(this.fetch, "POST", `${this.url}/verify`, {
+      const { data, error: error3 } = await _request(this.fetch, "POST", `${this.url}/verify`, {
         headers: this.headers,
         body: Object.assign(Object.assign({}, params), { gotrue_meta_security: { captcha_token: captchaToken } }),
         redirectTo,
         xform: _sessionResponse
       });
-      if (error) {
-        throw error;
+      if (error3) {
+        throw error3;
       }
       if (!data) {
         const tokenVerificationError = new Error("An error occurred on token verification.");
@@ -17107,11 +17795,11 @@ var GoTrueClient = class _GoTrueClient {
         await this._notifyAllSubscribers(params.type == "recovery" ? "PASSWORD_RECOVERY" : "SIGNED_IN", session);
       }
       return this._returnResult({ data: { user, session }, error: null });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -17185,12 +17873,12 @@ var GoTrueClient = class _GoTrueClient {
         window.location.assign(result.data.url);
       }
       return this._returnResult(result);
-    } catch (error) {
+    } catch (error3) {
       await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -17228,17 +17916,17 @@ var GoTrueClient = class _GoTrueClient {
           throw sessionError;
         if (!session)
           throw new AuthSessionMissingError();
-        const { error } = await _request(this.fetch, "GET", `${this.url}/reauthenticate`, {
+        const { error: error3 } = await _request(this.fetch, "GET", `${this.url}/reauthenticate`, {
           headers: this.headers,
           jwt: session.access_token
         });
-        return this._returnResult({ data: { user: null, session: null }, error });
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -17305,7 +17993,7 @@ var GoTrueClient = class _GoTrueClient {
       const endpoint = `${this.url}/resend`;
       if ("email" in credentials) {
         const { email, type, options } = credentials;
-        const { error } = await _request(this.fetch, "POST", endpoint, {
+        const { error: error3 } = await _request(this.fetch, "POST", endpoint, {
           headers: this.headers,
           body: {
             email,
@@ -17314,10 +18002,10 @@ var GoTrueClient = class _GoTrueClient {
           },
           redirectTo: options === null || options === void 0 ? void 0 : options.emailRedirectTo
         });
-        return this._returnResult({ data: { user: null, session: null }, error });
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       } else if ("phone" in credentials) {
         const { phone, type, options } = credentials;
-        const { data, error } = await _request(this.fetch, "POST", endpoint, {
+        const { data, error: error3 } = await _request(this.fetch, "POST", endpoint, {
           headers: this.headers,
           body: {
             phone,
@@ -17327,15 +18015,15 @@ var GoTrueClient = class _GoTrueClient {
         });
         return this._returnResult({
           data: { user: null, session: null, messageId: data === null || data === void 0 ? void 0 : data.message_id },
-          error
+          error: error3
         });
       }
       throw new AuthInvalidCredentialsError("You must provide either an email or phone number and a type");
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -17539,9 +18227,9 @@ var GoTrueClient = class _GoTrueClient {
         }
         return { data: { session: currentSession }, error: null };
       }
-      const { data: session, error } = await this._callRefreshToken(currentSession.refresh_token);
-      if (error) {
-        return this._returnResult({ data: { session: null }, error });
+      const { data: session, error: error3 } = await this._callRefreshToken(currentSession.refresh_token);
+      if (error3) {
+        return this._returnResult({ data: { session: null }, error: error3 });
       }
       return this._returnResult({ data: { session }, error: null });
     } finally {
@@ -17648,9 +18336,9 @@ var GoTrueClient = class _GoTrueClient {
       }
       return await this._useSession(async (result) => {
         var _a, _b, _c;
-        const { data, error } = result;
-        if (error) {
-          throw error;
+        const { data, error: error3 } = result;
+        if (error3) {
+          throw error3;
         }
         if (!((_a = data.session) === null || _a === void 0 ? void 0 : _a.access_token) && !this.hasCustomAuthorizationHeader) {
           return { data: { user: null }, error: new AuthSessionMissingError() };
@@ -17661,15 +18349,15 @@ var GoTrueClient = class _GoTrueClient {
           xform: _userResponse
         });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        if (isAuthSessionMissingError(error)) {
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        if (isAuthSessionMissingError(error3)) {
           await this._removeSession();
           await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
         }
-        return this._returnResult({ data: { user: null }, error });
+        return this._returnResult({ data: { user: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -17824,12 +18512,12 @@ var GoTrueClient = class _GoTrueClient {
         await this._notifyAllSubscribers("USER_UPDATED", session);
         return this._returnResult({ data: { user: session.user }, error: null });
       });
-    } catch (error) {
+    } catch (error3) {
       await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null }, error });
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -17977,18 +18665,18 @@ var GoTrueClient = class _GoTrueClient {
         hasExpired = expiresAt2 <= timeNow;
       }
       if (hasExpired) {
-        const { data: refreshedSession, error } = await this._callRefreshToken(currentSession.refresh_token);
-        if (error) {
-          return this._returnResult({ data: { user: null, session: null }, error });
+        const { data: refreshedSession, error: error3 } = await this._callRefreshToken(currentSession.refresh_token);
+        if (error3) {
+          return this._returnResult({ data: { user: null, session: null }, error: error3 });
         }
         if (!refreshedSession) {
           return { data: { user: null, session: null }, error: null };
         }
         session = refreshedSession;
       } else {
-        const { data, error } = await this._getUser(currentSession.access_token);
-        if (error) {
-          return this._returnResult({ data: { user: null, session: null }, error });
+        const { data, error: error3 } = await this._getUser(currentSession.access_token);
+        if (error3) {
+          return this._returnResult({ data: { user: null, session: null }, error: error3 });
         }
         session = {
           access_token: currentSession.access_token,
@@ -18002,11 +18690,11 @@ var GoTrueClient = class _GoTrueClient {
         await this._notifyAllSubscribers("SIGNED_IN", session);
       }
       return this._returnResult({ data: { user: session.user, session }, error: null });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { session: null, user: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { session: null, user: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -18145,29 +18833,29 @@ var GoTrueClient = class _GoTrueClient {
       return await this._useSession(async (result) => {
         var _a;
         if (!currentSession) {
-          const { data, error: error2 } = result;
-          if (error2) {
-            throw error2;
+          const { data, error: error4 } = result;
+          if (error4) {
+            throw error4;
           }
           currentSession = (_a = data.session) !== null && _a !== void 0 ? _a : void 0;
         }
         if (!(currentSession === null || currentSession === void 0 ? void 0 : currentSession.refresh_token)) {
           throw new AuthSessionMissingError();
         }
-        const { data: session, error } = await this._callRefreshToken(currentSession.refresh_token);
-        if (error) {
-          return this._returnResult({ data: { user: null, session: null }, error });
+        const { data: session, error: error3 } = await this._callRefreshToken(currentSession.refresh_token);
+        if (error3) {
+          return this._returnResult({ data: { user: null, session: null }, error: error3 });
         }
         if (!session) {
           return this._returnResult({ data: { user: null, session: null }, error: null });
         }
         return this._returnResult({ data: { user: session.user, session }, error: null });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { user: null, session: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { user: null, session: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -18200,9 +18888,9 @@ var GoTrueClient = class _GoTrueClient {
         this._debug("#_initialize()", "begin", "is PKCE flow", true);
         if (!params.code)
           throw new AuthPKCEGrantCodeExchangeError("No code detected.");
-        const { data: data2, error: error2 } = await this._exchangeCodeForSession(params.code);
-        if (error2)
-          throw error2;
+        const { data: data2, error: error4 } = await this._exchangeCodeForSession(params.code);
+        if (error4)
+          throw error4;
         const url = new URL(window.location.href);
         url.searchParams.delete("code");
         window.history.replaceState(window.history.state, "", url.toString());
@@ -18228,9 +18916,9 @@ var GoTrueClient = class _GoTrueClient {
       } else if (timeNow - issuedAt < 0) {
         console.warn("@supabase/gotrue-js: Session as retrieved from URL was issued in the future? Check the device clock for skew", issuedAt, expiresAt2, timeNow);
       }
-      const { data, error } = await this._getUser(access_token);
-      if (error)
-        throw error;
+      const { data, error: error3 } = await this._getUser(access_token);
+      if (error3)
+        throw error3;
       const session = {
         provider_token,
         provider_refresh_token,
@@ -18244,11 +18932,11 @@ var GoTrueClient = class _GoTrueClient {
       window.location.hash = "";
       this._debug("#_getSessionFromURL()", "clearing window.location.hash");
       return this._returnResult({ data: { session, redirectType: params.type }, error: null });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { session: null, redirectType: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { session: null, redirectType: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -18316,10 +19004,10 @@ var GoTrueClient = class _GoTrueClient {
       }
       const accessToken = (_a = data.session) === null || _a === void 0 ? void 0 : _a.access_token;
       if (accessToken) {
-        const { error } = await this.admin.signOut(accessToken, scope);
-        if (error) {
-          if (!(isAuthApiError(error) && (error.status === 404 || error.status === 401 || error.status === 403) || isAuthSessionMissingError(error))) {
-            return this._returnResult({ error });
+        const { error: error3 } = await this.admin.signOut(accessToken, scope);
+        if (error3) {
+          if (!(isAuthApiError(error3) && (error3.status === 404 || error3.status === 401 || error3.status === 403) || isAuthSessionMissingError(error3))) {
+            return this._returnResult({ error: error3 });
           }
         }
       }
@@ -18522,7 +19210,7 @@ var GoTrueClient = class _GoTrueClient {
     const subscription = {
       id,
       callback,
-      unsubscribe: /* @__PURE__ */ __name2(() => {
+      unsubscribe: /* @__PURE__ */ __name(() => {
         this._debug("#unsubscribe()", "state change callback with id removed", id);
         this.stateChangeEmitters.delete(id);
       }, "unsubscribe")
@@ -18541,9 +19229,9 @@ var GoTrueClient = class _GoTrueClient {
     return await this._useSession(async (result) => {
       var _a, _b;
       try {
-        const { data: { session }, error } = result;
-        if (error)
-          throw error;
+        const { data: { session }, error: error3 } = result;
+        if (error3)
+          throw error3;
         await ((_a = this.stateChangeEmitters.get(id)) === null || _a === void 0 ? void 0 : _a.callback("INITIAL_SESSION", session));
         this._debug("INITIAL_SESSION", "callback id", id, "session", session);
       } catch (err) {
@@ -18647,12 +19335,12 @@ var GoTrueClient = class _GoTrueClient {
         headers: this.headers,
         redirectTo: options.redirectTo
       });
-    } catch (error) {
+    } catch (error3) {
       await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -18698,15 +19386,15 @@ var GoTrueClient = class _GoTrueClient {
   async getUserIdentities() {
     var _a;
     try {
-      const { data, error } = await this.getUser();
-      if (error)
-        throw error;
+      const { data, error: error3 } = await this.getUser();
+      if (error3)
+        throw error3;
       return this._returnResult({ data: { identities: (_a = data.user.identities) !== null && _a !== void 0 ? _a : [] }, error: null });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**  *
@@ -18745,11 +19433,11 @@ var GoTrueClient = class _GoTrueClient {
   async linkIdentityOAuth(credentials) {
     var _a;
     try {
-      const { data, error } = await this._useSession(async (result) => {
+      const { data, error: error3 } = await this._useSession(async (result) => {
         var _a2, _b, _c, _d, _e;
-        const { data: data2, error: error2 } = result;
-        if (error2)
-          throw error2;
+        const { data: data2, error: error4 } = result;
+        if (error4)
+          throw error4;
         const url = await this._getUrlForProvider(`${this.url}/user/identities/authorize`, credentials.provider, {
           redirectTo: (_a2 = credentials.options) === null || _a2 === void 0 ? void 0 : _a2.redirectTo,
           scopes: (_b = credentials.options) === null || _b === void 0 ? void 0 : _b.scopes,
@@ -18761,8 +19449,8 @@ var GoTrueClient = class _GoTrueClient {
           jwt: (_e = (_d = data2.session) === null || _d === void 0 ? void 0 : _d.access_token) !== null && _e !== void 0 ? _e : void 0
         });
       });
-      if (error)
-        throw error;
+      if (error3)
+        throw error3;
       if (isBrowser() && !((_a = credentials.options) === null || _a === void 0 ? void 0 : _a.skipBrowserRedirect)) {
         window.location.assign(data === null || data === void 0 ? void 0 : data.url);
       }
@@ -18770,11 +19458,11 @@ var GoTrueClient = class _GoTrueClient {
         data: { provider: credentials.provider, url: data === null || data === void 0 ? void 0 : data.url },
         error: null
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { provider: credentials.provider, url: null }, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { provider: credentials.provider, url: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   async linkIdentityIdToken(credentials) {
@@ -18798,9 +19486,9 @@ var GoTrueClient = class _GoTrueClient {
           },
           xform: _sessionResponse
         });
-        const { data, error } = res;
-        if (error) {
-          return this._returnResult({ data: { user: null, session: null }, error });
+        const { data, error: error3 } = res;
+        if (error3) {
+          return this._returnResult({ data: { user: null, session: null }, error: error3 });
         } else if (!data || !data.session || !data.user) {
           return this._returnResult({
             data: { user: null, session: null },
@@ -18811,13 +19499,13 @@ var GoTrueClient = class _GoTrueClient {
           await this._saveSession(data.session);
           await this._notifyAllSubscribers("USER_UPDATED", data.session);
         }
-        return this._returnResult({ data, error });
-      } catch (error) {
+        return this._returnResult({ data, error: error3 });
+      } catch (error3) {
         await removeItemAsync(this.storage, `${this.storageKey}-code-verifier`);
-        if (isAuthError(error)) {
-          return this._returnResult({ data: { user: null, session: null }, error });
+        if (isAuthError(error3)) {
+          return this._returnResult({ data: { user: null, session: null }, error: error3 });
         }
-        throw error;
+        throw error3;
       }
     });
   }
@@ -18850,20 +19538,20 @@ var GoTrueClient = class _GoTrueClient {
     try {
       return await this._useSession(async (result) => {
         var _a, _b;
-        const { data, error } = result;
-        if (error) {
-          throw error;
+        const { data, error: error3 } = result;
+        if (error3) {
+          throw error3;
         }
         return await _request(this.fetch, "DELETE", `${this.url}/user/identities/${identity.identity_id}`, {
           headers: this.headers,
           jwt: (_b = (_a = data.session) === null || _a === void 0 ? void 0 : _a.access_token) !== null && _b !== void 0 ? _b : void 0
         });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -18885,17 +19573,17 @@ var GoTrueClient = class _GoTrueClient {
           headers: this.headers,
           xform: _sessionResponse
         });
-      }, (attempt, error) => {
+      }, (attempt, error3) => {
         const nextBackOffInterval = 200 * Math.pow(2, attempt);
-        return error && isAuthRetryableFetchError(error) && // retryable only if the request can be sent before the backoff overflows the tick duration
+        return error3 && isAuthRetryableFetchError(error3) && // retryable only if the request can be sent before the backoff overflows the tick duration
         Date.now() + nextBackOffInterval - startedAt < AUTO_REFRESH_TICK_DURATION_MS;
       });
-    } catch (error) {
-      this._debug(debugName, "error", error);
-      if (isAuthError(error)) {
-        return this._returnResult({ data: { session: null, user: null }, error });
+    } catch (error3) {
+      this._debug(debugName, "error", error3);
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: { session: null, user: null }, error: error3 });
       }
-      throw error;
+      throw error3;
     } finally {
       this._debug(debugName, "end");
     }
@@ -18957,11 +19645,11 @@ var GoTrueClient = class _GoTrueClient {
       this._debug(debugName, `session has${expiresWithMargin ? "" : " not"} expired with margin of ${EXPIRY_MARGIN_MS}s`);
       if (expiresWithMargin) {
         if (this.autoRefreshToken && currentSession.refresh_token) {
-          const { error } = await this._callRefreshToken(currentSession.refresh_token);
-          if (error) {
-            console.error(error);
-            if (!isAuthRetryableFetchError(error)) {
-              this._debug(debugName, "refresh failed with a non-retryable error, removing the session", error);
+          const { error: error3 } = await this._callRefreshToken(currentSession.refresh_token);
+          if (error3) {
+            console.error(error3);
+            if (!isAuthRetryableFetchError(error3)) {
+              this._debug(debugName, "refresh failed with a non-retryable error, removing the session", error3);
               await this._removeSession();
             }
           }
@@ -19003,9 +19691,9 @@ var GoTrueClient = class _GoTrueClient {
     this._debug(debugName, "begin");
     try {
       this.refreshingDeferred = new Deferred();
-      const { data, error } = await this._refreshAccessToken(refreshToken);
-      if (error)
-        throw error;
+      const { data, error: error3 } = await this._refreshAccessToken(refreshToken);
+      if (error3)
+        throw error3;
       if (!data.session)
         throw new AuthSessionMissingError();
       await this._saveSession(data.session);
@@ -19013,18 +19701,18 @@ var GoTrueClient = class _GoTrueClient {
       const result = { data: data.session, error: null };
       this.refreshingDeferred.resolve(result);
       return result;
-    } catch (error) {
-      this._debug(debugName, "error", error);
-      if (isAuthError(error)) {
-        const result = { data: null, error };
-        if (!isAuthRetryableFetchError(error)) {
+    } catch (error3) {
+      this._debug(debugName, "error", error3);
+      if (isAuthError(error3)) {
+        const result = { data: null, error: error3 };
+        if (!isAuthRetryableFetchError(error3)) {
           await this._removeSession();
         }
         (_a = this.refreshingDeferred) === null || _a === void 0 ? void 0 : _a.resolve(result);
         return result;
       }
-      (_b = this.refreshingDeferred) === null || _b === void 0 ? void 0 : _b.reject(error);
-      throw error;
+      (_b = this.refreshingDeferred) === null || _b === void 0 ? void 0 : _b.reject(error3);
+      throw error3;
     } finally {
       this.refreshingDeferred = null;
       this._debug(debugName, "end");
@@ -19289,14 +19977,14 @@ var GoTrueClient = class _GoTrueClient {
       this.visibilityChangedCallback = async () => {
         try {
           await this._onVisibilityChanged(false);
-        } catch (error) {
-          this._debug("#visibilityChangedCallback", "error", error);
+        } catch (error3) {
+          this._debug("#visibilityChangedCallback", "error", error3);
         }
       };
       window === null || window === void 0 ? void 0 : window.addEventListener("visibilitychange", this.visibilityChangedCallback);
       await this._onVisibilityChanged(true);
-    } catch (error) {
-      console.error("_handleVisibilityChange", error);
+    } catch (error3) {
+      console.error("_handleVisibilityChange", error3);
     }
   }
   /**
@@ -19369,11 +20057,11 @@ var GoTrueClient = class _GoTrueClient {
           jwt: (_a = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a === void 0 ? void 0 : _a.access_token
         });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   async _enroll(params) {
@@ -19385,24 +20073,24 @@ var GoTrueClient = class _GoTrueClient {
           return this._returnResult({ data: null, error: sessionError });
         }
         const body = Object.assign({ friendly_name: params.friendlyName, factor_type: params.factorType }, params.factorType === "phone" ? { phone: params.phone } : params.factorType === "totp" ? { issuer: params.issuer } : {});
-        const { data, error } = await _request(this.fetch, "POST", `${this.url}/factors`, {
+        const { data, error: error3 } = await _request(this.fetch, "POST", `${this.url}/factors`, {
           body,
           headers: this.headers,
           jwt: (_a = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a === void 0 ? void 0 : _a.access_token
         });
-        if (error) {
-          return this._returnResult({ data: null, error });
+        if (error3) {
+          return this._returnResult({ data: null, error: error3 });
         }
         if (params.factorType === "totp" && data.type === "totp" && ((_b = data === null || data === void 0 ? void 0 : data.totp) === null || _b === void 0 ? void 0 : _b.qr_code)) {
           data.totp.qr_code = `data:image/svg+xml;utf-8,${data.totp.qr_code}`;
         }
         return this._returnResult({ data, error: null });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   async _verify(params) {
@@ -19417,23 +20105,23 @@ var GoTrueClient = class _GoTrueClient {
           const body = Object.assign({ challenge_id: params.challengeId }, "webauthn" in params ? {
             webauthn: Object.assign(Object.assign({}, params.webauthn), { credential_response: params.webauthn.type === "create" ? serializeCredentialCreationResponse(params.webauthn.credential_response) : serializeCredentialRequestResponse(params.webauthn.credential_response) })
           } : { code: params.code });
-          const { data, error } = await _request(this.fetch, "POST", `${this.url}/factors/${params.factorId}/verify`, {
+          const { data, error: error3 } = await _request(this.fetch, "POST", `${this.url}/factors/${params.factorId}/verify`, {
             body,
             headers: this.headers,
             jwt: (_a = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a === void 0 ? void 0 : _a.access_token
           });
-          if (error) {
-            return this._returnResult({ data: null, error });
+          if (error3) {
+            return this._returnResult({ data: null, error: error3 });
           }
           await this._saveSession(Object.assign({ expires_at: Math.round(Date.now() / 1e3) + data.expires_in }, data));
           await this._notifyAllSubscribers("MFA_CHALLENGE_VERIFIED", data);
-          return this._returnResult({ data, error });
+          return this._returnResult({ data, error: error3 });
         });
-      } catch (error) {
-        if (isAuthError(error)) {
-          return this._returnResult({ data: null, error });
+      } catch (error3) {
+        if (isAuthError(error3)) {
+          return this._returnResult({ data: null, error: error3 });
         }
-        throw error;
+        throw error3;
       }
     });
   }
@@ -19471,11 +20159,11 @@ var GoTrueClient = class _GoTrueClient {
               };
           }
         });
-      } catch (error) {
-        if (isAuthError(error)) {
-          return this._returnResult({ data: null, error });
+      } catch (error3) {
+        if (isAuthError(error3)) {
+          return this._returnResult({ data: null, error: error3 });
         }
-        throw error;
+        throw error3;
       }
     });
   }
@@ -19545,11 +20233,11 @@ var GoTrueClient = class _GoTrueClient {
         }
         const currentAuthenticationMethods2 = payload2.amr || [];
         return { data: { currentLevel: currentLevel2, nextLevel: nextLevel2, currentAuthenticationMethods: currentAuthenticationMethods2 }, error: null };
-      } catch (error) {
-        if (isAuthError(error)) {
-          return this._returnResult({ data: null, error });
+      } catch (error3) {
+        if (isAuthError(error3)) {
+          return this._returnResult({ data: null, error: error3 });
         }
-        throw error;
+        throw error3;
       }
     }
     const { data: { session }, error: sessionError } = await this.getSession();
@@ -19596,14 +20284,14 @@ var GoTrueClient = class _GoTrueClient {
         return await _request(this.fetch, "GET", `${this.url}/oauth/authorizations/${authorizationId}`, {
           headers: this.headers,
           jwt: session.access_token,
-          xform: /* @__PURE__ */ __name2((data) => ({ data, error: null }), "xform")
+          xform: /* @__PURE__ */ __name((data) => ({ data, error: null }), "xform")
         });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -19624,7 +20312,7 @@ var GoTrueClient = class _GoTrueClient {
           headers: this.headers,
           jwt: session.access_token,
           body: { action: "approve" },
-          xform: /* @__PURE__ */ __name2((data) => ({ data, error: null }), "xform")
+          xform: /* @__PURE__ */ __name((data) => ({ data, error: null }), "xform")
         });
         if (response.data && response.data.redirect_url) {
           if (isBrowser() && !(options === null || options === void 0 ? void 0 : options.skipBrowserRedirect)) {
@@ -19633,11 +20321,11 @@ var GoTrueClient = class _GoTrueClient {
         }
         return response;
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -19658,7 +20346,7 @@ var GoTrueClient = class _GoTrueClient {
           headers: this.headers,
           jwt: session.access_token,
           body: { action: "deny" },
-          xform: /* @__PURE__ */ __name2((data) => ({ data, error: null }), "xform")
+          xform: /* @__PURE__ */ __name((data) => ({ data, error: null }), "xform")
         });
         if (response.data && response.data.redirect_url) {
           if (isBrowser() && !(options === null || options === void 0 ? void 0 : options.skipBrowserRedirect)) {
@@ -19667,11 +20355,11 @@ var GoTrueClient = class _GoTrueClient {
         }
         return response;
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -19691,14 +20379,14 @@ var GoTrueClient = class _GoTrueClient {
         return await _request(this.fetch, "GET", `${this.url}/user/oauth/grants`, {
           headers: this.headers,
           jwt: session.access_token,
-          xform: /* @__PURE__ */ __name2((data) => ({ data, error: null }), "xform")
+          xform: /* @__PURE__ */ __name((data) => ({ data, error: null }), "xform")
         });
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   /**
@@ -19723,11 +20411,11 @@ var GoTrueClient = class _GoTrueClient {
         });
         return { data: {}, error: null };
       });
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
   async fetchJwk(kid, jwks = { keys: [] }) {
@@ -19740,11 +20428,11 @@ var GoTrueClient = class _GoTrueClient {
     if (jwk && this.jwks_cached_at + JWKS_TTL > now) {
       return jwk;
     }
-    const { data, error } = await _request(this.fetch, "GET", `${this.url}/.well-known/jwks.json`, {
+    const { data, error: error3 } = await _request(this.fetch, "GET", `${this.url}/.well-known/jwks.json`, {
       headers: this.headers
     });
-    if (error) {
-      throw error;
+    if (error3) {
+      throw error3;
     }
     if (!data.keys || data.keys.length === 0) {
       return null;
@@ -19826,9 +20514,9 @@ var GoTrueClient = class _GoTrueClient {
     try {
       let token = jwt;
       if (!token) {
-        const { data, error } = await this.getSession();
-        if (error || !data.session) {
-          return this._returnResult({ data: null, error });
+        const { data, error: error3 } = await this.getSession();
+        if (error3 || !data.session) {
+          return this._returnResult({ data: null, error: error3 });
         }
         token = data.session.access_token;
       }
@@ -19838,9 +20526,9 @@ var GoTrueClient = class _GoTrueClient {
       }
       const signingKey = !header.alg || header.alg.startsWith("HS") || !header.kid || !("crypto" in globalThis && "subtle" in globalThis.crypto) ? null : await this.fetchJwk(header.kid, (options === null || options === void 0 ? void 0 : options.keys) ? { keys: options.keys } : options === null || options === void 0 ? void 0 : options.jwks);
       if (!signingKey) {
-        const { error } = await this.getUser(token);
-        if (error) {
-          throw error;
+        const { error: error3 } = await this.getUser(token);
+        if (error3) {
+          throw error3;
         }
         return {
           data: {
@@ -19867,25 +20555,29 @@ var GoTrueClient = class _GoTrueClient {
         },
         error: null
       };
-    } catch (error) {
-      if (isAuthError(error)) {
-        return this._returnResult({ data: null, error });
+    } catch (error3) {
+      if (isAuthError(error3)) {
+        return this._returnResult({ data: null, error: error3 });
       }
-      throw error;
+      throw error3;
     }
   }
 };
 GoTrueClient.nextInstanceID = {};
 var GoTrueClient_default = GoTrueClient;
+
+// ../node_modules/@supabase/auth-js/dist/module/AuthClient.js
 var AuthClient = GoTrueClient_default;
 var AuthClient_default = AuthClient;
-var version4 = "2.103.3";
+
+// ../node_modules/@supabase/supabase-js/dist/index.mjs
+var version5 = "2.103.3";
 var JS_ENV = "";
 if (typeof Deno !== "undefined") JS_ENV = "deno";
 else if (typeof document !== "undefined") JS_ENV = "web";
 else if (typeof navigator !== "undefined" && navigator.product === "ReactNative") JS_ENV = "react-native";
 else JS_ENV = "node";
-var DEFAULT_HEADERS3 = { "X-Client-Info": `supabase-js-${JS_ENV}/${version4}` };
+var DEFAULT_HEADERS3 = { "X-Client-Info": `supabase-js-${JS_ENV}/${version5}` };
 var DEFAULT_GLOBAL_OPTIONS = { headers: DEFAULT_HEADERS3 };
 var DEFAULT_DB_OPTIONS = { schema: "public" };
 var DEFAULT_AUTH_OPTIONS = {
@@ -19903,8 +20595,7 @@ function _typeof3(o) {
     return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
   }, _typeof3(o);
 }
-__name(_typeof3, "_typeof3");
-__name2(_typeof3, "_typeof");
+__name(_typeof3, "_typeof");
 function toPrimitive3(t, r) {
   if ("object" != _typeof3(t) || !t) return t;
   var e = t[Symbol.toPrimitive];
@@ -19915,14 +20606,12 @@ function toPrimitive3(t, r) {
   }
   return ("string" === r ? String : Number)(t);
 }
-__name(toPrimitive3, "toPrimitive3");
-__name2(toPrimitive3, "toPrimitive");
+__name(toPrimitive3, "toPrimitive");
 function toPropertyKey3(t) {
   var i = toPrimitive3(t, "string");
   return "symbol" == _typeof3(i) ? i : i + "";
 }
-__name(toPropertyKey3, "toPropertyKey3");
-__name2(toPropertyKey3, "toPropertyKey");
+__name(toPropertyKey3, "toPropertyKey");
 function _defineProperty3(e, r, t) {
   return (r = toPropertyKey3(r)) in e ? Object.defineProperty(e, r, {
     value: t,
@@ -19931,8 +20620,7 @@ function _defineProperty3(e, r, t) {
     writable: true
   }) : e[r] = t, e;
 }
-__name(_defineProperty3, "_defineProperty3");
-__name2(_defineProperty3, "_defineProperty");
+__name(_defineProperty3, "_defineProperty");
 function ownKeys3(e, r) {
   var t = Object.keys(e);
   if (Object.getOwnPropertySymbols) {
@@ -19943,8 +20631,7 @@ function ownKeys3(e, r) {
   }
   return t;
 }
-__name(ownKeys3, "ownKeys3");
-__name2(ownKeys3, "ownKeys");
+__name(ownKeys3, "ownKeys");
 function _objectSpread23(e) {
   for (var r = 1; r < arguments.length; r++) {
     var t = null != arguments[r] ? arguments[r] : {};
@@ -19956,16 +20643,15 @@ function _objectSpread23(e) {
   }
   return e;
 }
-__name(_objectSpread23, "_objectSpread23");
-__name2(_objectSpread23, "_objectSpread2");
-var resolveFetch4 = /* @__PURE__ */ __name2((customFetch) => {
+__name(_objectSpread23, "_objectSpread2");
+var resolveFetch4 = /* @__PURE__ */ __name((customFetch) => {
   if (customFetch) return (...args) => customFetch(...args);
   return (...args) => fetch(...args);
 }, "resolveFetch");
-var resolveHeadersConstructor = /* @__PURE__ */ __name2(() => {
+var resolveHeadersConstructor = /* @__PURE__ */ __name(() => {
   return Headers;
 }, "resolveHeadersConstructor");
-var fetchWithAuth = /* @__PURE__ */ __name2((supabaseKey, getAccessToken, customFetch) => {
+var fetchWithAuth = /* @__PURE__ */ __name((supabaseKey, getAccessToken, customFetch) => {
   const fetch$1 = resolveFetch4(customFetch);
   const HeadersConstructor = resolveHeadersConstructor();
   return async (input, init) => {
@@ -19981,7 +20667,6 @@ function ensureTrailingSlash(url) {
   return url.endsWith("/") ? url : url + "/";
 }
 __name(ensureTrailingSlash, "ensureTrailingSlash");
-__name2(ensureTrailingSlash, "ensureTrailingSlash");
 function applySettingDefaults(options, defaults) {
   var _DEFAULT_GLOBAL_OPTIO, _globalOptions$header;
   const { db: dbOptions, auth: authOptions, realtime: realtimeOptions, global: globalOptions } = options;
@@ -19992,14 +20677,13 @@ function applySettingDefaults(options, defaults) {
     realtime: _objectSpread23(_objectSpread23({}, DEFAULT_REALTIME_OPTIONS$1), realtimeOptions),
     storage: {},
     global: _objectSpread23(_objectSpread23(_objectSpread23({}, DEFAULT_GLOBAL_OPTIONS$1), globalOptions), {}, { headers: _objectSpread23(_objectSpread23({}, (_DEFAULT_GLOBAL_OPTIO = DEFAULT_GLOBAL_OPTIONS$1 === null || DEFAULT_GLOBAL_OPTIONS$1 === void 0 ? void 0 : DEFAULT_GLOBAL_OPTIONS$1.headers) !== null && _DEFAULT_GLOBAL_OPTIO !== void 0 ? _DEFAULT_GLOBAL_OPTIO : {}), (_globalOptions$header = globalOptions === null || globalOptions === void 0 ? void 0 : globalOptions.headers) !== null && _globalOptions$header !== void 0 ? _globalOptions$header : {}) }),
-    accessToken: /* @__PURE__ */ __name2(async () => "", "accessToken")
+    accessToken: /* @__PURE__ */ __name(async () => "", "accessToken")
   };
   if (options.accessToken) result.accessToken = options.accessToken;
   else delete result.accessToken;
   return result;
 }
 __name(applySettingDefaults, "applySettingDefaults");
-__name2(applySettingDefaults, "applySettingDefaults");
 function validateSupabaseUrl(supabaseUrl) {
   const trimmedUrl = supabaseUrl === null || supabaseUrl === void 0 ? void 0 : supabaseUrl.trim();
   if (!trimmedUrl) throw new Error("supabaseUrl is required.");
@@ -20011,13 +20695,9 @@ function validateSupabaseUrl(supabaseUrl) {
   }
 }
 __name(validateSupabaseUrl, "validateSupabaseUrl");
-__name2(validateSupabaseUrl, "validateSupabaseUrl");
 var SupabaseAuthClient = class extends AuthClient_default {
   static {
     __name(this, "SupabaseAuthClient");
-  }
-  static {
-    __name2(this, "SupabaseAuthClient");
   }
   constructor(options) {
     super(options);
@@ -20026,9 +20706,6 @@ var SupabaseAuthClient = class extends AuthClient_default {
 var SupabaseClient = class {
   static {
     __name(this, "SupabaseClient");
-  }
-  static {
-    __name2(this, "SupabaseClient");
   }
   /**
   * Create a new client for use in the browser.
@@ -20243,7 +20920,7 @@ var SupabaseClient = class {
       this.auth = this._initSupabaseAuthClient((_settings$auth = settings.auth) !== null && _settings$auth !== void 0 ? _settings$auth : {}, this.headers, settings.global.fetch);
     } else {
       this.accessToken = settings.accessToken;
-      this.auth = new Proxy({}, { get: /* @__PURE__ */ __name2((_, prop) => {
+      this.auth = new Proxy({}, { get: /* @__PURE__ */ __name((_, prop) => {
         throw new Error(`@supabase/supabase-js: Supabase Client is configured with the accessToken option, accessing supabase.auth.${String(prop)} is not possible`);
       }, "get") });
     }
@@ -20359,8 +21036,8 @@ var SupabaseClient = class {
   * supabase.removeChannel(myChannel)
   * ```
   */
-  removeChannel(channel) {
-    return this.realtime.removeChannel(channel);
+  removeChannel(channel2) {
+    return this.realtime.removeChannel(channel2);
   }
   /**
   * Unsubscribes and removes all Realtime channels from Realtime client.
@@ -20385,7 +21062,7 @@ var SupabaseClient = class {
     const { data } = await _this.auth.getSession();
     return (_data$session$access_ = (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.access_token) !== null && _data$session$access_ !== void 0 ? _data$session$access_ : _this.supabaseKey;
   }
-  _initSupabaseAuthClient({ autoRefreshToken, persistSession, detectSessionInUrl, storage, userStorage, storageKey, flowType, lock, debug, throwOnError }, headers, fetch$1) {
+  _initSupabaseAuthClient({ autoRefreshToken, persistSession, detectSessionInUrl, storage, userStorage, storageKey, flowType, lock, debug: debug3, throwOnError }, headers, fetch$1) {
     const authHeaders = {
       Authorization: `Bearer ${this.supabaseKey}`,
       apikey: `${this.supabaseKey}`
@@ -20401,7 +21078,7 @@ var SupabaseClient = class {
       userStorage,
       flowType,
       lock,
-      debug,
+      debug: debug3,
       throwOnError,
       fetch: fetch$1,
       hasCustomAuthorizationHeader: Object.keys(this.headers).some((key) => key.toLowerCase() === "authorization")
@@ -20426,22 +21103,26 @@ var SupabaseClient = class {
     }
   }
 };
-var createClient = /* @__PURE__ */ __name2((supabaseUrl, supabaseKey, options) => {
+var createClient = /* @__PURE__ */ __name((supabaseUrl, supabaseKey, options) => {
   return new SupabaseClient(supabaseUrl, supabaseKey, options);
 }, "createClient");
 function shouldShowDeprecationWarning() {
   if (typeof window !== "undefined") return false;
-  const _process = globalThis["process"];
-  if (!_process) return false;
-  const processVersion = _process["version"];
+  const _process2 = globalThis["process"];
+  if (!_process2) return false;
+  const processVersion = _process2["version"];
   if (processVersion === void 0 || processVersion === null) return false;
   const versionMatch = processVersion.match(/^v(\d+)\./);
   if (!versionMatch) return false;
   return parseInt(versionMatch[1], 10) <= 18;
 }
 __name(shouldShowDeprecationWarning, "shouldShowDeprecationWarning");
-__name2(shouldShowDeprecationWarning, "shouldShowDeprecationWarning");
 if (shouldShowDeprecationWarning()) console.warn("\u26A0\uFE0F  Node.js 18 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 20 or later. For more information, visit: https://github.com/orgs/supabase/discussions/37217");
+
+// api/[[path]].js
+import { createHmac } from "node:crypto";
+
+// _levels.js
 var LEVELS = [
   { level: 0, name: "Egg", nameRu: "\u042F\u0439\u0446\u043E", emoji: "\u{1F95A}", maxPoints: 33 },
   { level: 1, name: "Baby", nameRu: "\u041C\u0430\u043B\u044B\u0448", emoji: "\u{1F423}", maxPoints: 45 },
@@ -20468,7 +21149,8 @@ function getLevel(totalPoints) {
   return { ...last, idx: LEVELS.length - 1, current: last.maxPoints, needed: last.maxPoints, remaining: 0 };
 }
 __name(getLevel, "getLevel");
-__name2(getLevel, "getLevel");
+
+// api/[[path]].js
 var ADMIN_IDS = ["713156118"];
 var MAX_PAIRS_BASE = 2;
 var TASK_POINTS = {
@@ -20483,12 +21165,10 @@ function escapeMd(s) {
   return String(s || "").replace(/\\/g, "\\\\").replace(/([_*`\[\]])/g, "\\$1");
 }
 __name(escapeMd, "escapeMd");
-__name2(escapeMd, "escapeMd");
-function getSupabase(env) {
-  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
+function getSupabase(env2) {
+  return createClient(env2.SUPABASE_URL, env2.SUPABASE_KEY);
 }
 __name(getSupabase, "getSupabase");
-__name2(getSupabase, "getSupabase");
 function generateCode() {
   const c = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -20496,7 +21176,6 @@ function generateCode() {
   return code;
 }
 __name(generateCode, "generateCode");
-__name2(generateCode, "generateCode");
 async function generateUniqueCode(supabase) {
   for (let attempt = 0; attempt < 20; attempt++) {
     const code = generateCode();
@@ -20506,7 +21185,6 @@ async function generateUniqueCode(supabase) {
   throw new Error("Could not generate unique pair code");
 }
 __name(generateUniqueCode, "generateUniqueCode");
-__name2(generateUniqueCode, "generateUniqueCode");
 function getTodayDate(tz) {
   const date = /* @__PURE__ */ new Date();
   if (!tz) return date.toISOString().split("T")[0];
@@ -20522,7 +21200,6 @@ function getTodayDate(tz) {
   }
 }
 __name(getTodayDate, "getTodayDate");
-__name2(getTodayDate, "getTodayDate");
 function getYesterdayDate(tz) {
   const today = getTodayDate(tz);
   const d = /* @__PURE__ */ new Date(today + "T00:00:00Z");
@@ -20530,12 +21207,10 @@ function getYesterdayDate(tz) {
   return d.toISOString().split("T")[0];
 }
 __name(getYesterdayDate, "getYesterdayDate");
-__name2(getYesterdayDate, "getYesterdayDate");
 function getCurrentMonth(tz) {
   return getTodayDate(tz).slice(0, 7);
 }
 __name(getCurrentMonth, "getCurrentMonth");
-__name2(getCurrentMonth, "getCurrentMonth");
 var ALLOWED_ORIGINS = [
   "https://chumi-app.pages.dev",
   "https://web.telegram.org",
@@ -20553,7 +21228,6 @@ function corsHeaders(request) {
   };
 }
 __name(corsHeaders, "corsHeaders");
-__name2(corsHeaders, "corsHeaders");
 function json(data, status = 200, request = null) {
   return new Response(JSON.stringify(data), {
     status,
@@ -20564,7 +21238,6 @@ function json(data, status = 200, request = null) {
   });
 }
 __name(json, "json");
-__name2(json, "json");
 async function isPremium(supabase, userId) {
   if (ADMIN_IDS.includes(String(userId))) return true;
   const { data } = await supabase.from("user_subscriptions").select("id, expires_at").eq("telegram_user_id", userId).eq("status", "active").order("expires_at", { ascending: false }).limit(1).maybeSingle();
@@ -20572,7 +21245,6 @@ async function isPremium(supabase, userId) {
   return new Date(data.expires_at) > /* @__PURE__ */ new Date();
 }
 __name(isPremium, "isPremium");
-__name2(isPremium, "isPremium");
 async function getMaxPairs(supabase, userId) {
   if (ADMIN_IDS.includes(userId)) return 999;
   const premium = await isPremium(supabase, userId);
@@ -20581,8 +21253,7 @@ async function getMaxPairs(supabase, userId) {
   return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
 __name(getMaxPairs, "getMaxPairs");
-__name2(getMaxPairs, "getMaxPairs");
-async function sendTelegramMessage(env, chatId, text, extra = {}) {
+async function sendTelegramMessage(env2, chatId, text, extra = {}) {
   try {
     const body = { chat_id: chatId, text, parse_mode: "Markdown", ...extra };
     if (!body.reply_markup) {
@@ -20592,7 +21263,7 @@ async function sendTelegramMessage(env, chatId, text, extra = {}) {
         ]]
       };
     }
-    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -20615,11 +21286,10 @@ async function sendTelegramMessage(env, chatId, text, extra = {}) {
   }
 }
 __name(sendTelegramMessage, "sendTelegramMessage");
-__name2(sendTelegramMessage, "sendTelegramMessage");
-async function notifyAdmins(env, text) {
+async function notifyAdmins(env2, text) {
   for (const adminId of ADMIN_IDS) {
     try {
-      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -20633,7 +21303,6 @@ async function notifyAdmins(env, text) {
   }
 }
 __name(notifyAdmins, "notifyAdmins");
-__name2(notifyAdmins, "notifyAdmins");
 function validateInitData(initDataRaw, botToken, maxAgeSec = 86400) {
   if (!initDataRaw || !botToken) return null;
   try {
@@ -20658,46 +21327,47 @@ function validateInitData(initDataRaw, botToken, maxAgeSec = 86400) {
   }
 }
 __name(validateInitData, "validateInitData");
-__name2(validateInitData, "validateInitData");
-function extractUserId(request, env, bodyUserId, opts = {}) {
+function extractUserId(request, env2, bodyUserId, opts = {}) {
   const initData = request.headers.get("X-Telegram-Init-Data");
   if (initData) {
-    const validated = validateInitData(initData, env.BOT_TOKEN, opts.maxAgeSec);
+    const validated = validateInitData(initData, env2.BOT_TOKEN, opts.maxAgeSec);
     if (validated) return validated.userId;
   }
-  if (env.ALLOW_DEV_AUTH === "1" && bodyUserId) return String(bodyUserId);
+  if (env2.ALLOW_DEV_AUTH === "1" && bodyUserId) return String(bodyUserId);
   return null;
 }
 __name(extractUserId, "extractUserId");
-__name2(extractUserId, "extractUserId");
-function getAuthedUserId(request, env) {
+function getAuthedUserId(request, env2) {
   const initData = request.headers.get("X-Telegram-Init-Data");
   if (initData) {
-    const validated = validateInitData(initData, env.BOT_TOKEN);
+    const validated = validateInitData(initData, env2.BOT_TOKEN);
     if (validated) return validated.userId;
   }
-  if (env.ALLOW_DEV_AUTH === "1") {
+  if (env2.ALLOW_DEV_AUTH === "1") {
     const devId = request.headers.get("X-Dev-User-Id");
     if (devId) return String(devId);
+    try {
+      const url = new URL(request.url);
+      const q = url.searchParams.get("devUser");
+      if (q) return String(q);
+    } catch {
+    }
   }
   return null;
 }
 __name(getAuthedUserId, "getAuthedUserId");
-__name2(getAuthedUserId, "getAuthedUserId");
 async function isPairMember(supabase, pairCode, userId) {
   if (!pairCode || !userId) return false;
   const { data } = await supabase.from("pair_users").select("user_id").eq("pair_code", pairCode).eq("user_id", userId).maybeSingle();
   return !!data;
 }
 __name(isPairMember, "isPairMember");
-__name2(isPairMember, "isPairMember");
-function isCronAuthorized(request, env) {
-  if (!env.CRON_SECRET) return false;
+function isCronAuthorized(request, env2) {
+  if (!env2.CRON_SECRET) return false;
   const auth = request.headers.get("Authorization") || "";
-  return auth === `Bearer ${env.CRON_SECRET}`;
+  return auth === `Bearer ${env2.CRON_SECRET}`;
 }
 __name(isCronAuthorized, "isCronAuthorized");
-__name2(isCronAuthorized, "isCronAuthorized");
 function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
   const lv = getLevel(pair.growth_points || 0);
   const partner = members?.find((m) => m.user_id !== userId);
@@ -20732,7 +21402,6 @@ function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
   };
 }
 __name(formatPair, "formatPair");
-__name2(formatPair, "formatPair");
 function seededRandom(seed) {
   let s = seed >>> 0 || 1;
   return function() {
@@ -20741,7 +21410,6 @@ function seededRandom(seed) {
   };
 }
 __name(seededRandom, "seededRandom");
-__name2(seededRandom, "seededRandom");
 function shuffleWithSeed(arr, seed) {
   const shuffled = [...arr];
   const rng = seededRandom(seed);
@@ -20752,7 +21420,6 @@ function shuffleWithSeed(arr, seed) {
   return shuffled;
 }
 __name(shuffleWithSeed, "shuffleWithSeed");
-__name2(shuffleWithSeed, "shuffleWithSeed");
 async function createStarsInvoice(botToken, params) {
   const res = await fetch(`https://api.telegram.org/bot${botToken}/createInvoiceLink`, {
     method: "POST",
@@ -20764,19 +21431,18 @@ async function createStarsInvoice(botToken, params) {
   return data.result;
 }
 __name(createStarsInvoice, "createStarsInvoice");
-__name2(createStarsInvoice, "createStarsInvoice");
-async function onRequest(context) {
-  const { request, env } = context;
+async function onRequest(context2) {
+  const { request, env: env2 } = context2;
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders(request) });
   }
   try {
     const url = new URL(request.url);
     const path = url.pathname;
-    const supabase = getSupabase(env);
+    const supabase = getSupabase(env2);
     if (request.method === "GET" && path.match(/^\/api\/pairs\/[^/]+$/)) {
       const userId = path.split("/")[3];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (authedId !== String(userId)) return json({ error: "Forbidden" }, 403);
       const { data: userPairs } = await supabase.from("pair_users").select("pair_code").eq("user_id", userId);
@@ -20797,7 +21463,7 @@ async function onRequest(context) {
       const parts = path.split("/");
       const pairCode = parts[3];
       const userId = parts[4];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (!await isPairMember(supabase, pairCode, authedId)) {
         return json({ error: "Not a member" }, 403);
@@ -20812,7 +21478,7 @@ async function onRequest(context) {
     }
     if (request.method === "GET" && path.match(/^\/api\/avatar\/[^/]+$/)) {
       const tgUserId = path.split("/")[3];
-      const BOT_TOKEN = env.BOT_TOKEN;
+      const BOT_TOKEN = env2.BOT_TOKEN;
       const wantProxy = url.searchParams.get("proxy");
       const { data: targetPairUser } = await supabase.from("pair_users").select("user_id").eq("user_id", tgUserId).limit(1).maybeSingle();
       if (!targetPairUser) {
@@ -20866,7 +21532,7 @@ async function onRequest(context) {
       const parts = path.split("/");
       const pairCode = parts[3];
       const userId = parts[4];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (authedId !== String(userId)) return json({ error: "Forbidden" }, 403);
       if (!await isPairMember(supabase, pairCode, authedId)) {
@@ -20880,7 +21546,7 @@ async function onRequest(context) {
     if (request.method === "GET" && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
       const pairCode = path.split("/")[3];
       const monthParam = url.searchParams.get("month");
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (!await isPairMember(supabase, pairCode, authedId)) {
         return json({ error: "Not a member" }, 403);
@@ -20905,18 +21571,18 @@ async function onRequest(context) {
       const days = [];
       for (let d = 1; d <= lastDay; d++) {
         const date = `${month}-${String(d).padStart(2, "0")}`;
-        const count = byDate[date]?.size || 0;
+        const count3 = byDate[date]?.size || 0;
         let status = "empty";
-        if (count >= 2) status = "both";
-        else if (count === 1) status = "one";
-        days.push({ date, status, count });
+        if (count3 >= 2) status = "both";
+        else if (count3 === 1) status = "one";
+        days.push({ date, status, count: count3 });
       }
       const bothCount = days.filter((d) => d.status === "both").length;
       return json({ month, days, bothCount, totalDays: lastDay });
     }
     if (request.method === "GET" && path.match(/^\/api\/diary\/[^/]+$/)) {
       const pairCode = path.split("/")[3];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (!await isPairMember(supabase, pairCode, authedId)) {
         return json({ error: "Not a member" }, 403);
@@ -20926,7 +21592,7 @@ async function onRequest(context) {
     }
     if (request.method === "POST" && path === "/api/diary") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const pairCode = body.pairCode;
       const emoji = (body.emoji || "").toString().slice(0, 8);
@@ -20964,7 +21630,7 @@ ${emoji} _${safeText}_` : `\u{1F4D4} *${safeAuthor}* added a diary entry for ${s
 
 ${emoji} _${safeText}_`;
             const btnText = partnerLang === "ru" ? "\u{1F4D6} \u041F\u043E\u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C" : "\u{1F4D6} View";
-            await sendTelegramMessage(env, partner.user_id, notifyText, {
+            await sendTelegramMessage(env2, partner.user_id, notifyText, {
               reply_markup: {
                 inline_keyboard: [[{ text: btnText, web_app: { url: "https://chumi-app.pages.dev" } }]]
               }
@@ -20978,7 +21644,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/diary-delete") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const entryId = body.entryId;
       if (!entryId) return json({ error: "entryId required" }, 400);
@@ -20990,7 +21656,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "GET" && path.match(/^\/api\/user-slots\/[^/]+$/)) {
       const userId = path.split("/")[3];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (authedId !== String(userId)) return json({ error: "Forbidden" }, 403);
       const maxPairs = await getMaxPairs(supabase, userId);
@@ -21003,7 +21669,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/create") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const displayName = body.displayName || null;
       const username = body.username || null;
@@ -21050,7 +21716,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/join") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = (body.code || "").trim().toUpperCase();
       const displayName = body.displayName || null;
@@ -21091,14 +21757,14 @@ ${emoji} _${safeText}_`;
           const who = (displayName || "").toString().slice(0, 40) || (partnerLang === "ru" ? "\u041F\u0430\u0440\u0442\u043D\u0451\u0440" : "Someone");
           const safeWho = escapeMd(who);
           const msg = partnerLang === "ru" ? `\u{1F389} *${safeWho}* \u043F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0438\u043B\u0441\u044F \u043A \u043F\u0430\u0440\u0435 \`${code}\`!` : `\u{1F389} *${safeWho}* joined pair \`${code}\`!`;
-          await sendTelegramMessage(env, m.user_id, msg);
+          await sendTelegramMessage(env2, m.user_id, msg);
         }
       }
       return json({ code });
     }
     if (request.method === "POST" && path === "/api/complete-task") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = body.code;
       const taskKey = body.taskKey;
@@ -21207,7 +21873,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/rename") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = body.code || body.pairCode;
       const name = (body.pet_name || body.name || "").trim().slice(0, 20);
@@ -21219,7 +21885,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/delete") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = body.pairCode || body.code;
       const { data: membership } = await supabase.from("pair_users").select("user_id").eq("pair_code", code).eq("user_id", userId).maybeSingle();
@@ -21230,7 +21896,7 @@ ${emoji} _${safeText}_`;
           const { data: ps } = await supabase.from("user_settings").select("lang").eq("telegram_user_id", m.user_id).maybeSingle();
           const pLang = ps?.lang || "ru";
           const msg = pLang === "ru" ? `\u{1F622} \u041F\u0430\u0440\u0430 \`${code}\` \u0431\u044B\u043B\u0430 \u0443\u0434\u0430\u043B\u0435\u043D\u0430.` : `\u{1F622} Pair \`${code}\` has been deleted.`;
-          await sendTelegramMessage(env, m.user_id, msg);
+          await sendTelegramMessage(env2, m.user_id, msg);
         }
       }
       await supabase.from("one_time_tasks").delete().eq("pair_code", code);
@@ -21242,7 +21908,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/setbg") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = body.pairCode || body.code;
       const { data: membership } = await supabase.from("pair_users").select("user_id").eq("pair_code", code).eq("user_id", userId).maybeSingle();
@@ -21252,7 +21918,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/notify") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const targetUserId = String(body.targetUserId || "");
       if (!targetUserId || targetUserId === userId) {
@@ -21271,7 +21937,7 @@ ${emoji} _${safeText}_`;
       const { data: ps } = await supabase.from("user_settings").select("lang").eq("telegram_user_id", targetUserId).maybeSingle();
       const tLang = ps?.lang || "ru";
       const defaultMsg = tLang === "ru" ? "\u{1F514} \u041D\u0430\u043F\u043E\u043C\u0438\u043D\u0430\u043D\u0438\u0435 \u043E\u0442 Chumi" : "\u{1F514} Reminder from Chumi";
-      await sendTelegramMessage(env, targetUserId, defaultMsg);
+      await sendTelegramMessage(env2, targetUserId, defaultMsg);
       await supabase.from("notification_log").insert({
         sender_user_id: userId,
         target_user_id: targetUserId,
@@ -21281,7 +21947,7 @@ ${emoji} _${safeText}_`;
     }
     if (request.method === "POST" && path === "/api/recover-streak") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = body.pairCode || body.code;
       const { data: membership } = await supabase.from("pair_users").select("user_id").eq("pair_code", code).eq("user_id", userId).maybeSingle();
@@ -21318,7 +21984,7 @@ ${emoji} _${safeText}_`;
 \u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C \u0432\u043E\u0441\u043A\u0440\u0435\u0448\u0435\u043D\u0438\u0439 \u0432 \u044D\u0442\u043E\u043C \u043C\u0435\u0441\u044F\u0446\u0435: ${5 - (used + 1)}/5.` : `\u2728 *${safeReviver}* revived *${safePet}*! Streak (${pair.streak_days} days) preserved \u{1F43E}
 Revives left this month: ${5 - (used + 1)}/5.`;
           const btnText = pLang === "ru" ? "\u{1F43E} \u041E\u0442\u043A\u0440\u044B\u0442\u044C Chumi" : "\u{1F43E} Open Chumi";
-          await sendTelegramMessage(env, p.user_id, text, {
+          await sendTelegramMessage(env2, p.user_id, text, {
             reply_markup: {
               inline_keyboard: [[{ text: btnText, web_app: { url: "https://chumi-app.pages.dev" } }]]
             }
@@ -21340,12 +22006,12 @@ Revives left this month: ${5 - (used + 1)}/5.`;
     }
     if (request.method === "POST" && path === "/api/create-invoice") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
+      const userId = extractUserId(request, env2, body.userId, { maxAgeSec: 3600 });
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const productId = body.productId;
       if (productId === "extra_slot") {
         const payload = JSON.stringify({ userId, productId, timestamp: Date.now() });
-        const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
+        const res = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/createInvoiceLink`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -21362,7 +22028,7 @@ Revives left this month: ${5 - (used + 1)}/5.`;
         return json({ invoiceUrl: data.result });
       }
       if (productId === "premium_monthly") {
-        const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
+        const invoiceUrl = await createStarsInvoice(env2.BOT_TOKEN, {
           title: "Chumi Premium",
           description: "Exclusive skins, unlimited pairs, unique outfits",
           payload: JSON.stringify({ userId, productId: "premium_monthly", timestamp: Date.now() }),
@@ -21378,13 +22044,13 @@ Revives left this month: ${5 - (used + 1)}/5.`;
     }
     if (request.method === "POST" && path === "/api/send-invite") {
       const body = await request.json();
-      const botUsername = env.BOT_USERNAME || "ChumiPetBot";
+      const botUsername = env2.BOT_USERNAME || "ChumiPetBot";
       const inviteLink = `https://t.me/${botUsername}?start=join_${body.pairCode}`;
       return json({ inviteLink, pairCode: body.pairCode });
     }
     if (request.method === "POST" && path === "/api/create-egg") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = body.pairCode || body.code;
       const { data: membership } = await supabase.from("pair_users").select("user_id").eq("pair_code", code).eq("user_id", userId).maybeSingle();
@@ -21472,9 +22138,9 @@ Revives left this month: ${5 - (used + 1)}/5.`;
     }
     if (request.method === "POST" && path === "/api/prepare-share") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
-      const botUsername = env.BOT_USERNAME || "ChumiPetBot";
+      const botUsername = env2.BOT_USERNAME || "ChumiPetBot";
       const botLink = `https://t.me/${botUsername}`;
       const { data: ps } = await supabase.from("user_settings").select("lang").eq("telegram_user_id", userId).maybeSingle();
       const userLang = ps?.lang || "ru";
@@ -21490,11 +22156,11 @@ Complete tasks daily, keep your streak, unlock new outfits.`;
         const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
         const fileName = `promo_${userId}_${Date.now()}.png`;
         const uploadRes = await fetch(
-          `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
+          `${env2.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
           {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${env.SUPABASE_KEY}`,
+              "Authorization": `Bearer ${env2.SUPABASE_KEY}`,
               "Content-Type": "image/png",
               "x-upsert": "true"
             },
@@ -21502,8 +22168,8 @@ Complete tasks daily, keep your streak, unlock new outfits.`;
           }
         );
         if (uploadRes.ok) {
-          const photoUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
-          const tgRes = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+          const photoUrl = `${env2.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
+          const tgRes = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/savePreparedInlineMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -21528,7 +22194,7 @@ Complete tasks daily, keep your streak, unlock new outfits.`;
           }
         }
       }
-      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -21553,7 +22219,7 @@ Complete tasks daily, keep your streak, unlock new outfits.`;
     }
     if (request.method === "POST" && path === "/api/prepare-invite") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const pairCode = (body.pairCode || "").toUpperCase();
       if (!pairCode) return json({ error: "pairCode required" }, 400);
@@ -21561,7 +22227,7 @@ Complete tasks daily, keep your streak, unlock new outfits.`;
       if (!membership) return json({ error: "Not a member" }, 403);
       const { data: ps } = await supabase.from("user_settings").select("lang").eq("telegram_user_id", userId).maybeSingle();
       const userLang = ps?.lang || "ru";
-      const botUsername = env.BOT_USERNAME || "ChumiPetBot";
+      const botUsername = env2.BOT_USERNAME || "ChumiPetBot";
       const inviteLink = `https://t.me/${botUsername}?start=join_${pairCode}`;
       const messageText = userLang === "ru" ? `\u{1F43E} *\u041F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u044F\u0439\u0441\u044F \u043A \u043C\u043E\u0435\u0439 \u043F\u0430\u0440\u0435 \u0432 Chumi!*
 
@@ -21573,7 +22239,7 @@ Pair code: \`${pairCode}\`
 
 Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits \u{1F423}`;
       const btnText = userLang === "ru" ? "\u{1F43E} \u041F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0438\u0442\u044C\u0441\u044F" : "\u{1F43E} Join pair";
-      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -21603,7 +22269,7 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
     }
     if (request.method === "POST" && path === "/api/upload-postcard") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const imageDataUrl = body.imageDataUrl || "";
       if (!imageDataUrl.startsWith("data:image/png;base64,")) {
@@ -21613,11 +22279,11 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
       const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
       const fileName = `postcard_${userId}_${Date.now()}.png`;
       const uploadRes = await fetch(
-        `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
+        `${env2.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
         {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${env.SUPABASE_KEY}`,
+            "Authorization": `Bearer ${env2.SUPABASE_KEY}`,
             "Content-Type": "image/png",
             "x-upsert": "true"
           },
@@ -21628,12 +22294,12 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
         const err = await uploadRes.text();
         return json({ error: "Upload failed: " + err.slice(0, 200) }, 500);
       }
-      const publicUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
+      const publicUrl = `${env2.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
       return json({ url: publicUrl });
     }
     if (request.method === "POST" && path === "/api/prepare-postcard") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const imageDataUrl = body.imageDataUrl || "";
       const text = (body.text || "").toString().slice(0, 800);
@@ -21644,11 +22310,11 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
       const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
       const fileName = `postcard_${userId}_${Date.now()}.png`;
       const uploadRes = await fetch(
-        `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
+        `${env2.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
         {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${env.SUPABASE_KEY}`,
+            "Authorization": `Bearer ${env2.SUPABASE_KEY}`,
             "Content-Type": "image/png",
             "x-upsert": "true"
           },
@@ -21656,12 +22322,12 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
         }
       );
       if (!uploadRes.ok) return json({ error: "Upload failed" }, 500);
-      const photoUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
-      const botUsername = env.BOT_USERNAME || "ChumiPetBot";
+      const photoUrl = `${env2.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
+      const botUsername = env2.BOT_USERNAME || "ChumiPetBot";
       const { data: ps } = await supabase.from("user_settings").select("lang").eq("telegram_user_id", userId).maybeSingle();
       const userLang = ps?.lang || "ru";
       const btnText = userLang === "ru" ? "\u{1F43E} \u041E\u0442\u043A\u0440\u044B\u0442\u044C Chumi" : "\u{1F43E} Open Chumi";
-      const tgRes = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+      const tgRes = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -21688,14 +22354,14 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
     }
     if (request.method === "POST" && path === "/api/prepare-sticker") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const stickerFileId = (body.sticker_file_id || "").toString();
       if (!stickerFileId) return json({ error: "sticker_file_id required" }, 400);
       if (!stickerFileId.startsWith("CAACAgIAAxUAAWoD")) {
         return json({ error: "Invalid sticker" }, 400);
       }
-      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -21717,7 +22383,7 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
     }
     if (request.method === "POST" && path === "/api/prepare-task-message") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const pairCode = (body.pairCode || "").toUpperCase();
       const taskKey = body.taskKey || "send_msg";
@@ -21738,7 +22404,7 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
         send_media: userLang === "ru" ? "\u0424\u043E\u0442\u043E-\u043F\u0440\u0438\u0432\u0435\u0442 Chumi \u{1F4F8}" : "Photo from Chumi \u{1F4F8}"
       };
       const WEBAPP_URL2 = "https://chumi-app.pages.dev";
-      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -21753,7 +22419,7 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
             },
             description: text.slice(0, 80),
             reply_markup: {
-              inline_keyboard: [[{ text: btnText, url: `https://t.me/${env.BOT_USERNAME || "ChumiPetBot"}` }]]
+              inline_keyboard: [[{ text: btnText, url: `https://t.me/${env2.BOT_USERNAME || "ChumiPetBot"}` }]]
             }
           },
           allow_user_chats: true,
@@ -21773,7 +22439,7 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
     }
     if (request.method === "POST" && path === "/api/set-lang") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const lang = body.lang === "en" ? "en" : "ru";
       await supabase.from("user_settings").upsert(
@@ -21783,7 +22449,7 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
       return json({ success: true, lang });
     }
     if (request.method === "POST" && path === "/api/send-reminders") {
-      if (!isCronAuthorized(request, env)) return json({ error: "Forbidden" }, 403);
+      if (!isCronAuthorized(request, env2)) return json({ error: "Forbidden" }, 403);
       const { data: allPairs } = await supabase.from("pairs").select("code, pet_name, streak_days, timezone").eq("is_dead", false).gte("streak_days", 1);
       let sent = 0;
       for (const pair of allPairs || []) {
@@ -21804,7 +22470,7 @@ Let's grow a pet together \u2014 complete tasks, keep the streak, unlock outfits
 \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u0437\u0430\u0439\u0442\u0438 \u0441\u0435\u0433\u043E\u0434\u043D\u044F!` : `\u{1F514} *${safePet}* is waiting! Streak: ${pair.streak_days} days \u{1F525}
 Don't forget to come today!`;
             const btnText = mLang === "ru" ? "\u{1F43E} \u041E\u0442\u043A\u0440\u044B\u0442\u044C Chumi" : "\u{1F43E} Open Chumi";
-            await sendTelegramMessage(env, member.user_id, reminderText, {
+            await sendTelegramMessage(env2, member.user_id, reminderText, {
               reply_markup: {
                 inline_keyboard: [[{ text: btnText, web_app: { url: "https://chumi-app.pages.dev" } }]]
               }
@@ -21821,7 +22487,7 @@ Don't forget to come today!`;
       return json({ success: true, sent });
     }
     if (request.method === "POST" && path === "/api/update-streaks") {
-      if (!isCronAuthorized(request, env)) return json({ error: "Forbidden" }, 403);
+      if (!isCronAuthorized(request, env2)) return json({ error: "Forbidden" }, 403);
       const { data: allPairs } = await supabase.from("pairs").select("code, last_streak_date, streak_days, is_dead, pet_name, timezone").eq("is_dead", false);
       let killed = 0;
       for (const pair of allPairs || []) {
@@ -21845,7 +22511,7 @@ Don't forget to come today!`;
 Open the app and tap "Revive" to continue.
 Up to 5 revivals per month available.`;
             const dBtnText = dLang === "ru" ? "\u{1F43E} \u041E\u0442\u043A\u0440\u044B\u0442\u044C Chumi" : "\u{1F43E} Open Chumi";
-            await sendTelegramMessage(env, dm.user_id, text, {
+            await sendTelegramMessage(env2, dm.user_id, text, {
               reply_markup: {
                 inline_keyboard: [[{ text: dBtnText, web_app: { url: "https://chumi-app.pages.dev" } }]]
               }
@@ -21856,7 +22522,7 @@ Up to 5 revivals per month available.`;
       return json({ success: true, killed });
     }
     if (request.method === "POST" && path === "/api/cleanup-empty-pairs") {
-      if (!isCronAuthorized(request, env)) return json({ error: "Forbidden" }, 403);
+      if (!isCronAuthorized(request, env2)) return json({ error: "Forbidden" }, 403);
       const { data: allPairs } = await supabase.from("pairs").select("code, created_at, last_streak_date, timezone");
       const fiveDaysAgo = new Date(Date.now() - 5 * 864e5).toISOString();
       let cleaned = 0;
@@ -21886,7 +22552,7 @@ Up to 5 revivals per month available.`;
               const { data: ps } = await supabase.from("user_settings").select("lang").eq("telegram_user_id", m.user_id).maybeSingle();
               const pLang = ps?.lang || "ru";
               const msg = pLang === "ru" ? `\u23F3 \u041F\u0430\u0440\u0430 \`${pair.code}\` \u0443\u0434\u0430\u043B\u0435\u043D\u0430 \u0438\u0437-\u0437\u0430 \u043D\u0435\u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u0438 (5+ \u0434\u043D\u0435\u0439 \u0431\u0435\u0437 \u0437\u0430\u0445\u043E\u0434\u043E\u0432).` : `\u23F3 Pair \`${pair.code}\` was deleted due to inactivity (5+ days without logins).`;
-              await sendTelegramMessage(env, m.user_id, msg);
+              await sendTelegramMessage(env2, m.user_id, msg);
             }
             await supabase.from("one_time_tasks").delete().eq("pair_code", pair.code);
             await supabase.from("daily_tasks").delete().eq("pair_code", pair.code);
@@ -21900,7 +22566,7 @@ Up to 5 revivals per month available.`;
       return json({ success: true, cleaned, cleanedInactive });
     }
     if (request.method === "POST" && path === "/api/admin-daily-summary") {
-      if (!isCronAuthorized(request, env)) return json({ error: "Forbidden" }, 403);
+      if (!isCronAuthorized(request, env2)) return json({ error: "Forbidden" }, 403);
       const now = /* @__PURE__ */ new Date();
       const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1e3).toISOString();
       const { count: totalUsers } = await supabase.from("user_settings").select("telegram_user_id", { count: "exact", head: true });
@@ -21943,7 +22609,7 @@ ${topStreaksText}`;
       let sent = 0;
       for (const adminId of ADMIN_IDS) {
         try {
-          await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+          await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -21960,7 +22626,7 @@ ${topStreaksText}`;
     }
     if (request.method === "POST" && path === "/api/send-partner-message") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const code = body.code;
       const { data: membership } = await supabase.from("pair_users").select("user_id").eq("pair_code", code).eq("user_id", userId).maybeSingle();
@@ -21997,7 +22663,7 @@ ${topStreaksText}`;
         const pool = targetLang === "ru" ? RU : EN;
         const text = pool[Math.floor(Math.random() * pool.length)];
         const btnText = targetLang === "ru" ? "\u{1F43E}Chumi" : "\u{1F43E}Chumi";
-        await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+        await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -22017,7 +22683,7 @@ ${topStreaksText}`;
     }
     if (request.method === "GET" && path.match(/^\/api\/skins\/[^/]+$/)) {
       const userId = path.split("/")[3];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (authedId !== String(userId)) return json({ error: "Forbidden" }, 403);
       const { data: owned } = await supabase.from("user_skins").select("skin_id").eq("user_id", userId);
@@ -22031,7 +22697,7 @@ ${topStreaksText}`;
     }
     if (request.method === "POST" && path === "/api/buy-skin") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
+      const userId = extractUserId(request, env2, body.userId, { maxAgeSec: 3600 });
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const skinId = body.skinId;
       if (!skinId) return json({ error: "skinId required" }, 400);
@@ -22040,7 +22706,7 @@ ${topStreaksText}`;
       if (price === void 0) return json({ error: "Invalid skin" }, 400);
       const { data: alreadyOwned } = await supabase.from("user_skins").select("id").eq("user_id", userId).eq("skin_id", skinId).maybeSingle();
       if (alreadyOwned) return json({ error: "Already owned" }, 400);
-      const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
+      const invoiceUrl = await createStarsInvoice(env2.BOT_TOKEN, {
         title: `\u041D\u0430\u0440\u044F\u0434: ${skinId}`,
         description: `\u0420\u0430\u0437\u0431\u043B\u043E\u043A\u0438\u0440\u0443\u0439 \u043D\u0430\u0440\u044F\u0434 ${skinId} \u0434\u043B\u044F \u0441\u0432\u043E\u0435\u0433\u043E \u0430\u043A\u0441\u043E\u043B\u043E\u0442\u043B\u044F!`,
         payload: JSON.stringify({ type: "skin", skinId, userId, timestamp: Date.now() }),
@@ -22053,7 +22719,7 @@ ${topStreaksText}`;
     }
     if (request.method === "POST" && path === "/api/buy-skin-gift") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
+      const userId = extractUserId(request, env2, body.userId, { maxAgeSec: 3600 });
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const skinId = body.skinId;
       const pairCode = body.pairCode;
@@ -22071,7 +22737,7 @@ ${topStreaksText}`;
       if (alreadyOwned) return json({ error: "Partner already owns this skin" }, 400);
       const recipientPremium = await isPremium(supabase, partner.user_id);
       if (recipientPremium) return json({ error: "Partner already owns this skin" }, 400);
-      const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
+      const invoiceUrl = await createStarsInvoice(env2.BOT_TOKEN, {
         title: `\u041F\u043E\u0434\u0430\u0440\u043E\u043A: ${skinId}`,
         description: `\u041F\u043E\u0434\u0430\u0440\u043E\u043A \u0434\u0440\u0443\u0433\u0443 \u2014 \u043D\u0430\u0440\u044F\u0434 ${skinId}!`,
         payload: JSON.stringify({
@@ -22089,11 +22755,11 @@ ${topStreaksText}`;
     }
     if (request.method === "POST" && path === "/api/claim-bee-skin") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const { data: referrals } = await supabase.from("user_referrals").select("invited_user_id").eq("inviter_user_id", userId);
-      const count = referrals?.length || 0;
-      if (count < 2) return json({ error: "Need at least 2 referrals" }, 400);
+      const count3 = referrals?.length || 0;
+      if (count3 < 2) return json({ error: "Need at least 2 referrals" }, 400);
       const { data: alreadyOwned } = await supabase.from("user_skins").select("id").eq("user_id", userId).eq("skin_id", "bee").maybeSingle();
       if (alreadyOwned) return json({ error: "Already claimed" }, 400);
       await supabase.from("user_skins").insert({ user_id: userId, skin_id: "bee" });
@@ -22101,7 +22767,7 @@ ${topStreaksText}`;
     }
     if (request.method === "POST" && path === "/api/set-skin") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const pairCode = body.pairCode;
       const skinId = body.skinId;
@@ -22128,7 +22794,7 @@ ${topStreaksText}`;
     }
     if (request.method === "GET" && path.match(/^\/api\/premium\/[^/]+$/)) {
       const userId = path.split("/")[3];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (authedId !== String(userId)) return json({ error: "Forbidden" }, 403);
       const premium = await isPremium(supabase, userId);
@@ -22144,7 +22810,7 @@ ${topStreaksText}`;
     }
     if (request.method === "GET" && path.match(/^\/api\/recoveries-left\/[^/]+$/)) {
       const pairCode = path.split("/")[3];
-      const authedId = getAuthedUserId(request, env);
+      const authedId = getAuthedUserId(request, env2);
       if (!authedId) return json({ error: "Unauthorized" }, 401);
       if (!await isPairMember(supabase, pairCode, authedId)) {
         return json({ error: "Not a member" }, 403);
@@ -22157,7 +22823,7 @@ ${topStreaksText}`;
     }
     if (request.method === "POST" && path === "/api/update-timezone") {
       const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
+      const userId = extractUserId(request, env2, body.userId);
       if (!userId) return json({ error: "Unauthorized" }, 401);
       const tz = typeof body.timezone === "string" && body.timezone.length < 64 ? body.timezone : null;
       if (!tz) return json({ error: "Invalid timezone" }, 400);
@@ -22177,7 +22843,7 @@ ${topStreaksText}`;
     return json({ error: "Not found" }, 404);
   } catch (err) {
     console.error("API Error:", err);
-    await notifyAdmins(env, `*API Error:*
+    await notifyAdmins(env2, `*API Error:*
 \`\`\`
 ${(err?.stack || err?.message || String(err)).slice(0, 1500)}
 \`\`\``);
@@ -22185,23 +22851,22 @@ ${(err?.stack || err?.message || String(err)).slice(0, 1500)}
   }
 }
 __name(onRequest, "onRequest");
-__name2(onRequest, "onRequest");
+
+// bot.js
 var ADMIN_IDS2 = ["713156118"];
 var MAX_PAIRS_BASE2 = 2;
 var WEBAPP_URL = "https://chumi-app.pages.dev";
-function getSupabase2(env) {
-  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
+function getSupabase2(env2) {
+  return createClient(env2.SUPABASE_URL, env2.SUPABASE_KEY);
 }
-__name(getSupabase2, "getSupabase2");
-__name2(getSupabase2, "getSupabase");
+__name(getSupabase2, "getSupabase");
 function generateCode2() {
   const c = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   for (let i = 0; i < 6; i++) code += c[Math.floor(Math.random() * c.length)];
   return code;
 }
-__name(generateCode2, "generateCode2");
-__name2(generateCode2, "generateCode");
+__name(generateCode2, "generateCode");
 async function generateUniqueCode2(supabase) {
   for (let attempt = 0; attempt < 10; attempt++) {
     const code = generateCode2();
@@ -22210,9 +22875,8 @@ async function generateUniqueCode2(supabase) {
   }
   throw new Error("Could not generate unique pair code");
 }
-__name(generateUniqueCode2, "generateUniqueCode2");
-__name2(generateUniqueCode2, "generateUniqueCode");
-async function sendMessage(env, chatId, text, extra = {}) {
+__name(generateUniqueCode2, "generateUniqueCode");
+async function sendMessage(env2, chatId, text, extra = {}) {
   const body = {
     chat_id: chatId,
     text,
@@ -22228,7 +22892,7 @@ async function sendMessage(env, chatId, text, extra = {}) {
   } else if (typeof body.reply_markup === "string") {
   }
   try {
-    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -22251,11 +22915,10 @@ async function sendMessage(env, chatId, text, extra = {}) {
   }
 }
 __name(sendMessage, "sendMessage");
-__name2(sendMessage, "sendMessage");
-async function notifyAdmins2(env, text) {
+async function notifyAdmins2(env2, text) {
   for (const adminId of ADMIN_IDS2) {
     try {
-      await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -22269,13 +22932,11 @@ async function notifyAdmins2(env, text) {
     }
   }
 }
-__name(notifyAdmins2, "notifyAdmins2");
-__name2(notifyAdmins2, "notifyAdmins");
+__name(notifyAdmins2, "notifyAdmins");
 function escapeMd2(s) {
   return String(s || "").replace(/\\/g, "\\\\").replace(/([_*`\[\]])/g, "\\$1");
 }
-__name(escapeMd2, "escapeMd2");
-__name2(escapeMd2, "escapeMd");
+__name(escapeMd2, "escapeMd");
 var PUBLIC_COMMANDS = [
   { command: "start", description: "\u041D\u0430\u0447\u0430\u0442\u044C \u0440\u0430\u0431\u043E\u0442\u0443 \u0441 \u0431\u043E\u0442\u043E\u043C" },
   { command: "create", description: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u043E\u0432\u0443\u044E \u043F\u0430\u0440\u0443" },
@@ -22295,14 +22956,14 @@ var ADMIN_COMMANDS = [
   { command: "grantslot", description: "\u2795 \u0412\u044B\u0434\u0430\u0442\u044C \u0434\u043E\u043F. \u0441\u043B\u043E\u0442 (USER_ID)" },
   { command: "setcommands", description: "\u{1F527} \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u043A\u043E\u043C\u0430\u043D\u0434" }
 ];
-async function setBotCommands(env) {
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setMyCommands`, {
+async function setBotCommands(env2) {
+  await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/setMyCommands`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ commands: PUBLIC_COMMANDS })
   });
   for (const adminId of ADMIN_IDS2) {
-    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setMyCommands`, {
+    await fetch(`https://api.telegram.org/bot${env2.BOT_TOKEN}/setMyCommands`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -22313,7 +22974,6 @@ async function setBotCommands(env) {
   }
 }
 __name(setBotCommands, "setBotCommands");
-__name2(setBotCommands, "setBotCommands");
 async function getMaxPairs2(supabase, userId) {
   if (ADMIN_IDS2.includes(userId)) return 999;
   const { data: sub } = await supabase.from("user_subscriptions").select("expires_at").eq("telegram_user_id", userId).eq("status", "active").order("expires_at", { ascending: false }).limit(1).maybeSingle();
@@ -22321,14 +22981,12 @@ async function getMaxPairs2(supabase, userId) {
   const { data } = await supabase.from("user_slots").select("extra_slots").eq("telegram_user_id", userId).maybeSingle();
   return MAX_PAIRS_BASE2 + (data?.extra_slots || 0);
 }
-__name(getMaxPairs2, "getMaxPairs2");
-__name2(getMaxPairs2, "getMaxPairs");
+__name(getMaxPairs2, "getMaxPairs");
 async function getUserLang(supabase, userId) {
   const { data } = await supabase.from("user_settings").select("lang").eq("telegram_user_id", userId).maybeSingle();
   return data?.lang || "ru";
 }
 __name(getUserLang, "getUserLang");
-__name2(getUserLang, "getUserLang");
 async function setUserLang(supabase, userId, lang) {
   await supabase.from("user_settings").upsert(
     { telegram_user_id: userId, lang, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
@@ -22336,7 +22994,6 @@ async function setUserLang(supabase, userId, lang) {
   );
 }
 __name(setUserLang, "setUserLang");
-__name2(setUserLang, "setUserLang");
 function detectLangFromTelegram(from) {
   const code = from?.language_code || "";
   if (code.startsWith("ru") || code.startsWith("uk") || code.startsWith("be") || code.startsWith("kk")) {
@@ -22345,10 +23002,9 @@ function detectLangFromTelegram(from) {
   return "en";
 }
 __name(detectLangFromTelegram, "detectLangFromTelegram");
-__name2(detectLangFromTelegram, "detectLangFromTelegram");
 var T = {
   ru: {
-    welcome: /* @__PURE__ */ __name2((name) => `\u041F\u0440\u0438\u0432\u0435\u0442, ${name}! \u{1F43E}
+    welcome: /* @__PURE__ */ __name((name) => `\u041F\u0440\u0438\u0432\u0435\u0442, ${name}! \u{1F43E}
 
 *Chumi* \u2014 \u0440\u0430\u0441\u0442\u0438\u0442\u0435 \u043F\u0438\u0442\u043E\u043C\u0446\u0430 \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u0434\u0440\u0443\u0433\u043E\u043C!
 
@@ -22369,26 +23025,26 @@ var T = {
 /lang \u2014 \u0441\u043C\u0435\u043D\u0438\u0442\u044C \u044F\u0437\u044B\u043A
 
 \u{1F43E} \u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0439\u0442\u0435 \u0437\u0430\u0434\u0430\u043D\u0438\u044F \u043A\u0430\u0436\u0434\u044B\u0439 \u0434\u0435\u043D\u044C!`,
-    pairCreated: /* @__PURE__ */ __name2((code) => `\u2705 *\u041F\u0430\u0440\u0430 \u0441\u043E\u0437\u0434\u0430\u043D\u0430!*
+    pairCreated: /* @__PURE__ */ __name((code) => `\u2705 *\u041F\u0430\u0440\u0430 \u0441\u043E\u0437\u0434\u0430\u043D\u0430!*
 
 \u041A\u043E\u0434: \`${code}\`
 
 \u041E\u0442\u043F\u0440\u0430\u0432\u044C \u0434\u0440\u0443\u0433\u0443 \u0438\u043B\u0438 \u043D\u0430\u0436\u043C\u0438 \u043A\u043D\u043E\u043F\u043A\u0443 \u043D\u0438\u0436\u0435:`, "pairCreated"),
-    maxPairs: /* @__PURE__ */ __name2((count, max) => `\u26A0\uFE0F \u0423 \u0442\u0435\u0431\u044F ${count}/${max} \u043F\u0430\u0440.`, "maxPairs"),
+    maxPairs: /* @__PURE__ */ __name((count3, max) => `\u26A0\uFE0F \u0423 \u0442\u0435\u0431\u044F ${count3}/${max} \u043F\u0430\u0440.`, "maxPairs"),
     joinNoCode: "\u26A0\uFE0F \u0423\u043A\u0430\u0436\u0438 \u043A\u043E\u0434: `/join ABCDEF`",
-    pairNotFound: /* @__PURE__ */ __name2((code) => `\u274C \u041F\u0430\u0440\u0430 \`${code}\` \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430.`, "pairNotFound"),
+    pairNotFound: /* @__PURE__ */ __name((code) => `\u274C \u041F\u0430\u0440\u0430 \`${code}\` \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430.`, "pairNotFound"),
     alreadyInPair: "\u2705 \u0422\u044B \u0443\u0436\u0435 \u0432 \u044D\u0442\u043E\u0439 \u043F\u0430\u0440\u0435!",
     pairFull: "\u26A0\uFE0F \u0412 \u043F\u0430\u0440\u0435 \u0443\u0436\u0435 2 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430.",
-    joined: /* @__PURE__ */ __name2((code) => `\u2705 *\u0422\u044B \u0432 \u043F\u0430\u0440\u0435!* \u041A\u043E\u0434: \`${code}\``, "joined"),
-    partnerJoined: /* @__PURE__ */ __name2((name, code) => `\u{1F389} *${name}* \u043F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0438\u043B\u0441\u044F \u043A \u043F\u0430\u0440\u0435 \`${code}\`!`, "partnerJoined"),
+    joined: /* @__PURE__ */ __name((code) => `\u2705 *\u0422\u044B \u0432 \u043F\u0430\u0440\u0435!* \u041A\u043E\u0434: \`${code}\``, "joined"),
+    partnerJoined: /* @__PURE__ */ __name((name, code) => `\u{1F389} *${name}* \u043F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0438\u043B\u0441\u044F \u043A \u043F\u0430\u0440\u0435 \`${code}\`!`, "partnerJoined"),
     noPairs: "\u{1F614} \u041D\u0435\u0442 \u043F\u0430\u0440. \u0421\u043E\u0437\u0434\u0430\u0439: /create",
     myPairsTitle: "\u{1F43E} *\u041C\u043E\u0438 \u043F\u0438\u0442\u043E\u043C\u0446\u044B:*\n\n",
     statusTitle: "\u{1F4CA} *\u0421\u0442\u0430\u0442\u0443\u0441:*\n\n",
-    pairLine: /* @__PURE__ */ __name2((emoji, name, levelName, code, xp, streak) => `${emoji} *${name}* \u2014 ${levelName}
+    pairLine: /* @__PURE__ */ __name((emoji, name, levelName, code, xp, streak) => `${emoji} *${name}* \u2014 ${levelName}
    \u041A\u043E\u0434: \`${code}\` | ${xp} XP | \u{1F525} ${streak} \u0434\u043D.
 
 `, "pairLine"),
-    statusLine: /* @__PURE__ */ __name2((emoji, name, levelName, code, streak, xp, members, partnerName, isDead) => {
+    statusLine: /* @__PURE__ */ __name((emoji, name, levelName, code, streak, xp, members, partnerName, isDead) => {
       let msg = `${emoji} *${name}* (${levelName})
    \u041A\u043E\u0434: \`${code}\`
    \u{1F525} \u0421\u0435\u0440\u0438\u044F: ${streak} \u0434\u043D. | \u2B50 ${xp} XP
@@ -22402,14 +23058,14 @@ var T = {
     paySupport: "\u{1F6DF} \u041F\u043E \u043E\u043F\u043B\u0430\u0442\u0435: @ROKENN",
     langChanged: "\u2705 \u042F\u0437\u044B\u043A \u0438\u0437\u043C\u0435\u043D\u0451\u043D \u043D\u0430 *\u0420\u0443\u0441\u0441\u043A\u0438\u0439* \u{1F1F7}\u{1F1FA}",
     langPrompt: "\u{1F310} *\u0412\u044B\u0431\u0435\u0440\u0438 \u044F\u0437\u044B\u043A / Choose language:*",
-    inviteText: /* @__PURE__ */ __name2((code) => `\u041F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u044F\u0439\u0441\u044F \u043A \u043C\u043E\u0435\u0439 \u043F\u0430\u0440\u0435 \u0432 Chumi! \u{1F43E}
+    inviteText: /* @__PURE__ */ __name((code) => `\u041F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u044F\u0439\u0441\u044F \u043A \u043C\u043E\u0435\u0439 \u043F\u0430\u0440\u0435 \u0432 Chumi! \u{1F43E}
 \u041A\u043E\u0434: ${code}`, "inviteText"),
-    maxPairsLimit: /* @__PURE__ */ __name2((max) => `\u26A0\uFE0F \u041B\u0438\u043C\u0438\u0442 \u043F\u0430\u0440: ${max}.`, "maxPairsLimit"),
-    joinedNotify: /* @__PURE__ */ __name2((name, code) => `\u{1F389} *${name}* \u043F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0438\u043B\u0441\u044F \u043A \`${code}\`!`, "joinedNotify"),
-    pairDeleted: /* @__PURE__ */ __name2((code) => `\u{1F622} \u041F\u0430\u0440\u0430 \`${code}\` \u0431\u044B\u043B\u0430 \u0443\u0434\u0430\u043B\u0435\u043D\u0430.`, "pairDeleted")
+    maxPairsLimit: /* @__PURE__ */ __name((max) => `\u26A0\uFE0F \u041B\u0438\u043C\u0438\u0442 \u043F\u0430\u0440: ${max}.`, "maxPairsLimit"),
+    joinedNotify: /* @__PURE__ */ __name((name, code) => `\u{1F389} *${name}* \u043F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0438\u043B\u0441\u044F \u043A \`${code}\`!`, "joinedNotify"),
+    pairDeleted: /* @__PURE__ */ __name((code) => `\u{1F622} \u041F\u0430\u0440\u0430 \`${code}\` \u0431\u044B\u043B\u0430 \u0443\u0434\u0430\u043B\u0435\u043D\u0430.`, "pairDeleted")
   },
   en: {
-    welcome: /* @__PURE__ */ __name2((name) => `Hi, ${name}! \u{1F43E}
+    welcome: /* @__PURE__ */ __name((name) => `Hi, ${name}! \u{1F43E}
 
 *Chumi* \u2014 grow a pet together with a friend!
 
@@ -22430,26 +23086,26 @@ var T = {
 /lang \u2014 change language
 
 \u{1F43E} Complete tasks every day!`,
-    pairCreated: /* @__PURE__ */ __name2((code) => `\u2705 *Pair created!*
+    pairCreated: /* @__PURE__ */ __name((code) => `\u2705 *Pair created!*
 
 Code: \`${code}\`
 
 Send it to your friend or tap the button below:`, "pairCreated"),
-    maxPairs: /* @__PURE__ */ __name2((count, max) => `\u26A0\uFE0F You have ${count}/${max} pairs.`, "maxPairs"),
+    maxPairs: /* @__PURE__ */ __name((count3, max) => `\u26A0\uFE0F You have ${count3}/${max} pairs.`, "maxPairs"),
     joinNoCode: "\u26A0\uFE0F Specify code: `/join ABCDEF`",
-    pairNotFound: /* @__PURE__ */ __name2((code) => `\u274C Pair \`${code}\` not found.`, "pairNotFound"),
+    pairNotFound: /* @__PURE__ */ __name((code) => `\u274C Pair \`${code}\` not found.`, "pairNotFound"),
     alreadyInPair: "\u2705 You are already in this pair!",
     pairFull: "\u26A0\uFE0F Pair already has 2 members.",
-    joined: /* @__PURE__ */ __name2((code) => `\u2705 *You joined!* Code: \`${code}\``, "joined"),
-    partnerJoined: /* @__PURE__ */ __name2((name, code) => `\u{1F389} *${name}* joined pair \`${code}\`!`, "partnerJoined"),
+    joined: /* @__PURE__ */ __name((code) => `\u2705 *You joined!* Code: \`${code}\``, "joined"),
+    partnerJoined: /* @__PURE__ */ __name((name, code) => `\u{1F389} *${name}* joined pair \`${code}\`!`, "partnerJoined"),
     noPairs: "\u{1F614} No pairs. Create one: /create",
     myPairsTitle: "\u{1F43E} *My pets:*\n\n",
     statusTitle: "\u{1F4CA} *Status:*\n\n",
-    pairLine: /* @__PURE__ */ __name2((emoji, name, levelName, code, xp, streak) => `${emoji} *${name}* \u2014 ${levelName}
+    pairLine: /* @__PURE__ */ __name((emoji, name, levelName, code, xp, streak) => `${emoji} *${name}* \u2014 ${levelName}
    Code: \`${code}\` | ${xp} XP | \u{1F525} ${streak} days
 
 `, "pairLine"),
-    statusLine: /* @__PURE__ */ __name2((emoji, name, levelName, code, streak, xp, members, partnerName, isDead) => {
+    statusLine: /* @__PURE__ */ __name((emoji, name, levelName, code, streak, xp, members, partnerName, isDead) => {
       let msg = `${emoji} *${name}* (${levelName})
    Code: \`${code}\`
    \u{1F525} Streak: ${streak} days | \u2B50 ${xp} XP
@@ -22463,11 +23119,11 @@ Send it to your friend or tap the button below:`, "pairCreated"),
     paySupport: "\u{1F6DF} Payment support: @ROKENN",
     langChanged: "\u2705 Language changed to *English* \u{1F1EC}\u{1F1E7}",
     langPrompt: "\u{1F310} *\u0412\u044B\u0431\u0435\u0440\u0438 \u044F\u0437\u044B\u043A / Choose language:*",
-    inviteText: /* @__PURE__ */ __name2((code) => `Join my pair in Chumi! \u{1F43E}
+    inviteText: /* @__PURE__ */ __name((code) => `Join my pair in Chumi! \u{1F43E}
 Code: ${code}`, "inviteText"),
-    maxPairsLimit: /* @__PURE__ */ __name2((max) => `\u26A0\uFE0F Pair limit: ${max}.`, "maxPairsLimit"),
-    joinedNotify: /* @__PURE__ */ __name2((name, code) => `\u{1F389} *${name}* joined \`${code}\`!`, "joinedNotify"),
-    pairDeleted: /* @__PURE__ */ __name2((code) => `\u{1F622} Pair \`${code}\` has been deleted.`, "pairDeleted")
+    maxPairsLimit: /* @__PURE__ */ __name((max) => `\u26A0\uFE0F Pair limit: ${max}.`, "maxPairsLimit"),
+    joinedNotify: /* @__PURE__ */ __name((name, code) => `\u{1F389} *${name}* joined \`${code}\`!`, "joinedNotify"),
+    pairDeleted: /* @__PURE__ */ __name((code) => `\u{1F622} Pair \`${code}\` has been deleted.`, "pairDeleted")
   }
 };
 var webAppButton = {
@@ -22489,7 +23145,6 @@ function langButtons() {
   };
 }
 __name(langButtons, "langButtons");
-__name2(langButtons, "langButtons");
 function inviteButton(code, lang, botUsername = "ChumiPetBot") {
   const inviteUrl = `https://t.me/${botUsername}?start=join_${code}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(T[lang].inviteText(code))}`;
@@ -22509,7 +23164,6 @@ function inviteButton(code, lang, botUsername = "ChumiPetBot") {
   };
 }
 __name(inviteButton, "inviteButton");
-__name2(inviteButton, "inviteButton");
 var CUTE_MESSAGES = [
   "\u0422\u044B \u043C\u043E\u0451 \u0441\u043E\u043B\u043D\u044B\u0448\u043A\u043E \u2600\uFE0F",
   "\u0414\u0443\u043C\u0430\u044E \u043E \u0442\u0435\u0431\u0435 \u{1F4AD}\u{1F495}",
@@ -22541,18 +23195,18 @@ var CUTE_MESSAGES = [
   "Our flame grows thanks to you \u{1F525}",
   "Let's never lose our streak! \u{1F525}"
 ];
-async function onRequestPost(context) {
-  const { env, request } = context;
-  const BOT_TOKEN = env.BOT_TOKEN;
-  if (env.TELEGRAM_WEBHOOK_SECRET) {
+async function onRequestPost(context2) {
+  const { env: env2, request } = context2;
+  const BOT_TOKEN = env2.BOT_TOKEN;
+  if (env2.TELEGRAM_WEBHOOK_SECRET) {
     const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
-    if (got !== env.TELEGRAM_WEBHOOK_SECRET) {
+    if (got !== env2.TELEGRAM_WEBHOOK_SECRET) {
       return new Response("Forbidden", { status: 403 });
     }
   }
   try {
     const update = await request.json();
-    const supabase = getSupabase2(env);
+    const supabase = getSupabase2(env2);
     if (update.callback_query) {
       const cb = update.callback_query;
       const cbUserId = String(cb.from.id);
@@ -22570,7 +23224,7 @@ async function onRequestPost(context) {
           })
         });
         if (cbChatId) {
-          await sendMessage(env, cbChatId, T[newLang].langChanged, webAppButton);
+          await sendMessage(env2, cbChatId, T[newLang].langChanged, webAppButton);
         }
       }
       return new Response("OK");
@@ -22662,7 +23316,7 @@ async function onRequestPost(context) {
         }
         const skinName = pSkinId.charAt(0).toUpperCase() + pSkinId.slice(1);
         await sendMessage(
-          env,
+          env2,
           update.message.chat.id,
           lang2 === "ru" ? `\u2705 \u041D\u0430\u0440\u044F\u0434 *${escapeMd2(skinName)}* \u0440\u0430\u0437\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D! \u{1F3A8}` : `\u2705 Outfit *${escapeMd2(skinName)}* unlocked! \u{1F3A8}`,
           webAppButton
@@ -22670,7 +23324,7 @@ async function onRequestPost(context) {
         const buyerName = update.message.from.first_name || "User";
         const buyerUser = update.message.from.username ? "@" + update.message.from.username : "\u2014";
         await notifyAdmins2(
-          env,
+          env2,
           `\u{1F4B0} *\u041F\u043E\u043A\u0443\u043F\u043A\u0430 \u0441\u043A\u0438\u043D\u0430*
 
 \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C: ${escapeMd2(buyerName)} (${escapeMd2(buyerUser)})
@@ -22707,7 +23361,7 @@ Charge: \`${chargeId || "\u2014"}\``
         const giverName = update.message?.from?.first_name || "User";
         const giverUser = update.message?.from?.username ? "@" + update.message.from.username : "\u2014";
         await sendMessage(
-          env,
+          env2,
           update.message.chat.id,
           lang2 === "ru" ? `\u{1F381} \u041F\u043E\u0434\u0430\u0440\u043E\u043A \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D \u043F\u0430\u0440\u0442\u043D\u0451\u0440\u0443!
 \u041D\u0430\u0440\u044F\u0434 *${escapeMd2(skinName)}* \u0442\u0435\u043F\u0435\u0440\u044C \u0443 \u043D\u0435\u0433\u043E \u{1F3A8}` : `\u{1F381} Gift sent to your partner!
@@ -22717,7 +23371,7 @@ They now own outfit *${escapeMd2(skinName)}* \u{1F3A8}`,
         const recipientLang = await getUserLang(supabase, recipientId);
         const giverDisplay = update.message?.from?.first_name || (recipientLang === "ru" ? "\u041F\u0430\u0440\u0442\u043D\u0451\u0440" : "Partner");
         await sendMessage(
-          env,
+          env2,
           recipientId,
           recipientLang === "ru" ? `\u{1F381} *${escapeMd2(giverDisplay)}* \u043F\u043E\u0434\u0430\u0440\u0438\u043B \u0442\u0435\u0431\u0435 \u043D\u0430\u0440\u044F\u0434 *${escapeMd2(skinName)}*! \u{1F3A8}
 \u041E\u0442\u043A\u0440\u043E\u0439 Chumi \u0438 \u043F\u0440\u0438\u043C\u0435\u0440\u044C \u0435\u0433\u043E \u{1F43E}` : `\u{1F381} *${escapeMd2(giverDisplay)}* gifted you outfit *${escapeMd2(skinName)}*! \u{1F3A8}
@@ -22725,7 +23379,7 @@ Open Chumi and try it on \u{1F43E}`,
           webAppButton
         );
         await notifyAdmins2(
-          env,
+          env2,
           `\u{1F381} *\u041F\u043E\u0434\u0430\u0440\u043E\u043A \u0441\u043A\u0438\u043D\u0430*
 
 \u0414\u0430\u0440\u0438\u0442\u0435\u043B\u044C: ${escapeMd2(giverName)} (${escapeMd2(giverUser)})
@@ -22748,7 +23402,7 @@ Charge: \`${chargeId || "\u2014"}\``
         } else {
           await supabase.from("user_slots").insert({ telegram_user_id: userId2, extra_slots: 1 });
         }
-        await sendMessage(env, update.message.chat.id, T[lang2].slotBought, webAppButton);
+        await sendMessage(env2, update.message.chat.id, T[lang2].slotBought, webAppButton);
         if (chargeId) {
           await supabase.from("processed_charges").insert({
             charge_id: chargeId,
@@ -22761,7 +23415,7 @@ Charge: \`${chargeId || "\u2014"}\``
         const slotBuyer = update.message.from.first_name || "User";
         const slotBuyerUser = update.message.from.username ? "@" + update.message.from.username : "\u2014";
         await notifyAdmins2(
-          env,
+          env2,
           `\u{1F4B0} *\u041F\u043E\u043A\u0443\u043F\u043A\u0430 \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0433\u043E \u0441\u043B\u043E\u0442\u0430*
 
 \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C: ${escapeMd2(slotBuyer)} (${escapeMd2(slotBuyerUser)})
@@ -22786,7 +23440,7 @@ Charge: \`${chargeId || "\u2014"}\``
           expires_at: expiresAt2.toISOString()
         });
         await sendMessage(
-          env,
+          env2,
           update.message.chat.id,
           lang2 === "ru" ? `\u2B50 *Chumi Premium \u0430\u043A\u0442\u0438\u0432\u0438\u0440\u043E\u0432\u0430\u043D!*
 
@@ -22808,7 +23462,7 @@ Valid until ${expiresAt2.toLocaleDateString("en-US")}`,
         const premBuyer = update.message.from.first_name || "User";
         const premBuyerUser = update.message.from.username ? "@" + update.message.from.username : "\u2014";
         await notifyAdmins2(
-          env,
+          env2,
           `\u2B50 *\u041F\u043E\u043A\u0443\u043F\u043A\u0430 Premium*
 
 \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C: ${escapeMd2(premBuyer)} (${escapeMd2(premBuyerUser)})
@@ -22877,21 +23531,21 @@ ID: \`${userId}\`
         const { data: ex } = await supabase.from("pair_users").select("pair_code").eq("user_id", userId);
         const isAdmin = ADMIN_IDS2.includes(userId);
         if (!isAdmin && ex && ex.length >= maxP) {
-          await sendMessage(env, chatId, T[lang].maxPairs(ex.length, maxP), webAppButton);
+          await sendMessage(env2, chatId, T[lang].maxPairs(ex.length, maxP), webAppButton);
           return new Response("OK");
         }
         const { data: pair } = await supabase.from("pairs").select("*").eq("code", joinCode).single();
         if (!pair) {
-          await sendMessage(env, chatId, T[lang].pairNotFound(joinCode));
+          await sendMessage(env2, chatId, T[lang].pairNotFound(joinCode));
           return new Response("OK");
         }
         const { data: members } = await supabase.from("pair_users").select("user_id").eq("pair_code", joinCode);
         if (members?.some((m) => m.user_id === userId)) {
-          await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton);
+          await sendMessage(env2, chatId, T[lang].alreadyInPair, webAppButton);
           return new Response("OK");
         }
         if (members && members.length >= 2) {
-          await sendMessage(env, chatId, T[lang].pairFull);
+          await sendMessage(env2, chatId, T[lang].pairFull);
           return new Response("OK");
         }
         await supabase.from("pair_users").insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username, timezone: "UTC" });
@@ -22906,24 +23560,24 @@ ID: \`${userId}\`
           });
           await supabase.from("pending_referrals").delete().eq("invited_user_id", userId);
         }
-        await sendMessage(env, chatId, T[lang].joined(joinCode), webAppButton);
+        await sendMessage(env2, chatId, T[lang].joined(joinCode), webAppButton);
         for (const m of members || []) {
           if (m.user_id !== userId) {
             const partnerLang = await getUserLang(supabase, m.user_id);
-            await sendMessage(env, m.user_id, T[partnerLang].partnerJoined(escapeMd2(firstName), joinCode), webAppButton);
+            await sendMessage(env2, m.user_id, T[partnerLang].partnerJoined(escapeMd2(firstName), joinCode), webAppButton);
           }
         }
         return new Response("OK");
       }
-      await sendMessage(env, chatId, T[lang].welcome(escapeMd2(firstName)), webAppButton);
+      await sendMessage(env2, chatId, T[lang].welcome(escapeMd2(firstName)), webAppButton);
       return new Response("OK");
     }
     if (text === "/help") {
-      await sendMessage(env, chatId, T[lang].help, webAppButton);
+      await sendMessage(env2, chatId, T[lang].help, webAppButton);
       return new Response("OK");
     }
     if (text === "/lang") {
-      await sendMessage(env, chatId, T[lang].langPrompt, langButtons());
+      await sendMessage(env2, chatId, T[lang].langPrompt, langButtons());
       return new Response("OK");
     }
     if (text === "/create") {
@@ -22931,7 +23585,7 @@ ID: \`${userId}\`
       const isAdmin = ADMIN_IDS2.includes(userId);
       const { data: existing } = await supabase.from("pair_users").select("pair_code").eq("user_id", userId);
       if (!isAdmin && existing && existing.length >= maxPairs) {
-        await sendMessage(env, chatId, T[lang].maxPairs(existing.length, maxPairs), webAppButton);
+        await sendMessage(env2, chatId, T[lang].maxPairs(existing.length, maxPairs), webAppButton);
         return new Response("OK");
       }
       const code = await generateUniqueCode2(supabase);
@@ -22967,35 +23621,35 @@ ID: \`${userId}\`
         });
         await supabase.from("pending_referrals").delete().eq("invited_user_id", userId);
       }
-      const botUser = env.BOT_USERNAME || "ChumiPetBot";
-      await sendMessage(env, chatId, T[lang].pairCreated(code), inviteButton(code, lang, botUser));
+      const botUser = env2.BOT_USERNAME || "ChumiPetBot";
+      await sendMessage(env2, chatId, T[lang].pairCreated(code), inviteButton(code, lang, botUser));
       return new Response("OK");
     }
     if (text.startsWith("/join")) {
       const code = text.split(" ")[1]?.trim()?.toUpperCase();
       if (!code) {
-        await sendMessage(env, chatId, T[lang].joinNoCode);
+        await sendMessage(env2, chatId, T[lang].joinNoCode);
         return new Response("OK");
       }
       const maxPairs = await getMaxPairs2(supabase, userId);
       const isAdmin = ADMIN_IDS2.includes(userId);
       const { data: existing } = await supabase.from("pair_users").select("pair_code").eq("user_id", userId);
       if (!isAdmin && existing && existing.length >= maxPairs) {
-        await sendMessage(env, chatId, T[lang].maxPairsLimit(maxPairs), webAppButton);
+        await sendMessage(env2, chatId, T[lang].maxPairsLimit(maxPairs), webAppButton);
         return new Response("OK");
       }
       const { data: pair } = await supabase.from("pairs").select("*").eq("code", code).single();
       if (!pair) {
-        await sendMessage(env, chatId, T[lang].pairNotFound(code));
+        await sendMessage(env2, chatId, T[lang].pairNotFound(code));
         return new Response("OK");
       }
       const { data: members } = await supabase.from("pair_users").select("user_id").eq("pair_code", code);
       if (members?.some((m) => m.user_id === userId)) {
-        await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton);
+        await sendMessage(env2, chatId, T[lang].alreadyInPair, webAppButton);
         return new Response("OK");
       }
       if (members && members.length >= 2) {
-        await sendMessage(env, chatId, T[lang].pairFull);
+        await sendMessage(env2, chatId, T[lang].pairFull);
         return new Response("OK");
       }
       await supabase.from("pair_users").insert({ pair_code: code, user_id: userId, display_name: firstName, username, timezone: "UTC" });
@@ -23010,11 +23664,11 @@ ID: \`${userId}\`
         });
         await supabase.from("pending_referrals").delete().eq("invited_user_id", userId);
       }
-      await sendMessage(env, chatId, T[lang].joined(code), webAppButton);
+      await sendMessage(env2, chatId, T[lang].joined(code), webAppButton);
       for (const m of members || []) {
         if (m.user_id !== userId) {
           const partnerLang = await getUserLang(supabase, m.user_id);
-          await sendMessage(env, m.user_id, T[partnerLang].joinedNotify(escapeMd2(firstName), code), webAppButton);
+          await sendMessage(env2, m.user_id, T[partnerLang].joinedNotify(escapeMd2(firstName), code), webAppButton);
         }
       }
       return new Response("OK");
@@ -23022,7 +23676,7 @@ ID: \`${userId}\`
     if (text === "/mypairs") {
       const { data: userPairs } = await supabase.from("pair_users").select("pair_code").eq("user_id", userId);
       if (!userPairs || userPairs.length === 0) {
-        await sendMessage(env, chatId, T[lang].noPairs);
+        await sendMessage(env2, chatId, T[lang].noPairs);
         return new Response("OK");
       }
       let msg = T[lang].myPairsTitle;
@@ -23033,13 +23687,13 @@ ID: \`${userId}\`
         const name = escapeMd2(pair.pet_name || lv.name);
         msg += T[lang].pairLine(lv.emoji, name, lv.name, pair.code, pair.growth_points || 0, pair.streak_days || 0);
       }
-      await sendMessage(env, chatId, msg, webAppButton);
+      await sendMessage(env2, chatId, msg, webAppButton);
       return new Response("OK");
     }
     if (text === "/status") {
       const { data: userPairs } = await supabase.from("pair_users").select("pair_code").eq("user_id", userId);
       if (!userPairs || userPairs.length === 0) {
-        await sendMessage(env, chatId, T[lang].noPairs);
+        await sendMessage(env2, chatId, T[lang].noPairs);
         return new Response("OK");
       }
       let msg = T[lang].statusTitle;
@@ -23062,7 +23716,7 @@ ID: \`${userId}\`
           pair.is_dead
         );
       }
-      await sendMessage(env, chatId, msg, webAppButton);
+      await sendMessage(env2, chatId, msg, webAppButton);
       return new Response("OK");
     }
     if (text === "/stats") {
@@ -23079,7 +23733,7 @@ ID: \`${userId}\`
 \u{1F43E} Pairs: *${totalPairs ?? 0}* (alive: ${alivePairs ?? 0}, dead: ${deadPairs ?? 0})
 \u2B50 Premium subs: *${activeSubs ?? 0}*
 \u{1F3A8} Skins owned: *${totalSkins ?? 0}*`;
-      await sendMessage(env, chatId, msg, webAppButton);
+      await sendMessage(env2, chatId, msg, webAppButton);
       return new Response("OK");
     }
     if (text === "/users") {
@@ -23087,7 +23741,7 @@ ID: \`${userId}\`
       const { data: allUsers } = await supabase.from("user_settings").select("telegram_user_id, lang, created_at").order("created_at", { ascending: false });
       const list = allUsers || [];
       if (list.length === 0) {
-        await sendMessage(env, chatId, "\u{1F465} \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u0439 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442.");
+        await sendMessage(env2, chatId, "\u{1F465} \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u0439 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442.");
         return new Response("OK");
       }
       const { data: named } = await supabase.from("pair_users").select("user_id, display_name, username");
@@ -23101,9 +23755,9 @@ ID: \`${userId}\`
         }
       }
       const lines = list.map((u, i) => {
-        const info = nameMap.get(u.telegram_user_id) || {};
-        const name = info.display_name ? escapeMd2(info.display_name) : "\u2014";
-        const uname = info.username ? "@" + escapeMd2(info.username) : "no username";
+        const info3 = nameMap.get(u.telegram_user_id) || {};
+        const name = info3.display_name ? escapeMd2(info3.display_name) : "\u2014";
+        const uname = info3.username ? "@" + escapeMd2(info3.username) : "no username";
         const date = u.created_at ? new Date(u.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "\u2014";
         return `${i + 1}. ${name} (${uname}) \`${u.telegram_user_id}\` [${u.lang || "\u2014"}] ${date}`;
       });
@@ -23121,33 +23775,33 @@ ID: \`${userId}\`
       }
       if (chunk.trim()) chunks.push(chunk);
       for (const part of chunks) {
-        await sendMessage(env, chatId, part);
+        await sendMessage(env2, chatId, part);
       }
       return new Response("OK");
     }
     if (text === "/summary") {
       if (!ADMIN_IDS2.includes(userId)) return new Response("OK");
-      const r = await fetch(`${env.BASE_URL || WEBAPP_URL}/api/admin-daily-summary`, {
+      const r = await fetch(`${env2.BASE_URL || WEBAPP_URL}/api/admin-daily-summary`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${env.CRON_SECRET || ""}`
+          "Authorization": `Bearer ${env2.CRON_SECRET || ""}`
         }
       });
       if (!r.ok) {
-        await sendMessage(env, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: ${r.status}`);
+        await sendMessage(env2, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: ${r.status}`);
       } else {
-        await sendMessage(env, chatId, "\u2705 \u0421\u0432\u043E\u0434\u043A\u0430 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430.");
+        await sendMessage(env2, chatId, "\u2705 \u0421\u0432\u043E\u0434\u043A\u0430 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430.");
       }
       return new Response("OK");
     }
     if (text === "/setcommands") {
       if (!ADMIN_IDS2.includes(userId)) return new Response("OK");
       try {
-        await setBotCommands(env);
-        await sendMessage(env, chatId, "\u2705 \u0421\u043F\u0438\u0441\u043E\u043A \u043A\u043E\u043C\u0430\u043D\u0434 \u043E\u0431\u043D\u043E\u0432\u043B\u0451\u043D.\n\u0412 \u0447\u0430\u0442\u0435 \u0441 \u0431\u043E\u0442\u043E\u043C \u043D\u0430\u0436\u043C\u0438 \u043A\u043D\u043E\u043F\u043A\u0443 \xAB\u041C\u0435\u043D\u044E\xBB \u0440\u044F\u0434\u043E\u043C \u0441 \u043F\u043E\u043B\u0435\u043C \u0432\u0432\u043E\u0434\u0430.");
+        await setBotCommands(env2);
+        await sendMessage(env2, chatId, "\u2705 \u0421\u043F\u0438\u0441\u043E\u043A \u043A\u043E\u043C\u0430\u043D\u0434 \u043E\u0431\u043D\u043E\u0432\u043B\u0451\u043D.\n\u0412 \u0447\u0430\u0442\u0435 \u0441 \u0431\u043E\u0442\u043E\u043C \u043D\u0430\u0436\u043C\u0438 \u043A\u043D\u043E\u043F\u043A\u0443 \xAB\u041C\u0435\u043D\u044E\xBB \u0440\u044F\u0434\u043E\u043C \u0441 \u043F\u043E\u043B\u0435\u043C \u0432\u0432\u043E\u0434\u0430.");
       } catch (e) {
-        await sendMessage(env, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: ${e?.message || e}`);
+        await sendMessage(env2, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: ${e?.message || e}`);
       }
       return new Response("OK");
     }
@@ -23156,17 +23810,17 @@ ID: \`${userId}\`
       const parts = text.split(/\s+/);
       const targetId = (parts[1] || "").trim();
       if (!targetId || !/^\d+$/.test(targetId)) {
-        await sendMessage(env, chatId, "\u26A0\uFE0F \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435: `/grantbee USER_ID`");
+        await sendMessage(env2, chatId, "\u26A0\uFE0F \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435: `/grantbee USER_ID`");
         return new Response("OK");
       }
       const { data: already } = await supabase.from("user_skins").select("id").eq("user_id", targetId).eq("skin_id", "bee").maybeSingle();
       if (already) {
-        await sendMessage(env, chatId, `\u2139\uFE0F \u0423 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \`${targetId}\` \u0443\u0436\u0435 \u0435\u0441\u0442\u044C \u043D\u0430\u0440\u044F\u0434 *\u041F\u0447\u0451\u043B\u043A\u0430*.`);
+        await sendMessage(env2, chatId, `\u2139\uFE0F \u0423 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \`${targetId}\` \u0443\u0436\u0435 \u0435\u0441\u0442\u044C \u043D\u0430\u0440\u044F\u0434 *\u041F\u0447\u0451\u043B\u043A\u0430*.`);
         return new Response("OK");
       }
       const { error: insErr } = await supabase.from("user_skins").insert({ user_id: targetId, skin_id: "bee" });
       if (insErr) {
-        await sendMessage(env, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: \`${insErr.message}\``);
+        await sendMessage(env2, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: \`${insErr.message}\``);
         return new Response("OK");
       }
       const targetLang = await getUserLang(supabase, targetId);
@@ -23176,13 +23830,13 @@ ID: \`${userId}\`
 
 Open Chumi \u2192 *Outfits* \u2192 *Shop* \u2014 it's yours.`;
       try {
-        await sendMessage(env, targetId, notifyText, webAppButton);
+        await sendMessage(env2, targetId, notifyText, webAppButton);
       } catch (e) {
-        await sendMessage(env, chatId, `\u26A0\uFE0F \u0421\u043A\u0438\u043D \u0432\u044B\u0434\u0430\u043D, \u043D\u043E \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u0435: \`${e.message}\``);
+        await sendMessage(env2, chatId, `\u26A0\uFE0F \u0421\u043A\u0438\u043D \u0432\u044B\u0434\u0430\u043D, \u043D\u043E \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u0435: \`${e.message}\``);
         return new Response("OK");
       }
       await sendMessage(
-        env,
+        env2,
         chatId,
         `\u2705 \u041D\u0430\u0440\u044F\u0434 *\u041F\u0447\u0451\u043B\u043A\u0430* \u0432\u044B\u0434\u0430\u043D \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E \`${targetId}\` \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043E \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u0435.`
       );
@@ -23193,7 +23847,7 @@ Open Chumi \u2192 *Outfits* \u2192 *Shop* \u2014 it's yours.`;
       const parts = text.split(/\s+/);
       const targetId = (parts[1] || "").trim();
       if (!targetId || !/^\d+$/.test(targetId)) {
-        await sendMessage(env, chatId, "\u26A0\uFE0F \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435: `/grantslot USER_ID`");
+        await sendMessage(env2, chatId, "\u26A0\uFE0F \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435: `/grantslot USER_ID`");
         return new Response("OK");
       }
       const { data: existing } = await supabase.from("user_slots").select("extra_slots").eq("telegram_user_id", targetId).maybeSingle();
@@ -23202,14 +23856,14 @@ Open Chumi \u2192 *Outfits* \u2192 *Shop* \u2014 it's yours.`;
         newTotal = (existing.extra_slots || 0) + 1;
         const { error: updErr } = await supabase.from("user_slots").update({ extra_slots: newTotal }).eq("telegram_user_id", targetId);
         if (updErr) {
-          await sendMessage(env, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: \`${updErr.message}\``);
+          await sendMessage(env2, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: \`${updErr.message}\``);
           return new Response("OK");
         }
       } else {
         newTotal = 1;
         const { error: insErr } = await supabase.from("user_slots").insert({ telegram_user_id: targetId, extra_slots: 1 });
         if (insErr) {
-          await sendMessage(env, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: \`${insErr.message}\``);
+          await sendMessage(env2, chatId, `\u274C \u041E\u0448\u0438\u0431\u043A\u0430: \`${insErr.message}\``);
           return new Response("OK");
         }
       }
@@ -23220,13 +23874,13 @@ Open Chumi \u2192 *Outfits* \u2192 *Shop* \u2014 it's yours.`;
 
 You can now create one more pair. Open Chumi and start a new one \u{1F43E}`;
       try {
-        await sendMessage(env, targetId, notifyText, webAppButton);
+        await sendMessage(env2, targetId, notifyText, webAppButton);
       } catch (e) {
-        await sendMessage(env, chatId, `\u26A0\uFE0F \u0421\u043B\u043E\u0442 \u0432\u044B\u0434\u0430\u043D, \u043D\u043E \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u0435: \`${e.message}\``);
+        await sendMessage(env2, chatId, `\u26A0\uFE0F \u0421\u043B\u043E\u0442 \u0432\u044B\u0434\u0430\u043D, \u043D\u043E \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u0435: \`${e.message}\``);
         return new Response("OK");
       }
       await sendMessage(
-        env,
+        env2,
         chatId,
         `\u2705 \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u043B\u043E\u0442 \u0432\u044B\u0434\u0430\u043D \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E \`${targetId}\`.
 \u0412\u0441\u0435\u0433\u043E \u0434\u043E\u043F. \u0441\u043B\u043E\u0442\u043E\u0432 \u0443 \u043D\u0435\u0433\u043E \u0442\u0435\u043F\u0435\u0440\u044C: *${newTotal}*.`
@@ -23234,7 +23888,7 @@ You can now create one more pair. Open Chumi and start a new one \u{1F43E}`;
       return new Response("OK");
     }
     if (text === "/paysupport") {
-      await sendMessage(env, chatId, T[lang].paySupport);
+      await sendMessage(env2, chatId, T[lang].paySupport);
       return new Response("OK");
     }
   } catch (e) {
@@ -23260,7 +23914,8 @@ ${(e?.stack || e?.message || String(e)).slice(0, 1500)}
   return new Response("OK");
 }
 __name(onRequestPost, "onRequestPost");
-__name2(onRequestPost, "onRequestPost");
+
+// ../.wrangler/tmp/pages-i5gkVe/functionsRoutes-0.8655192569959325.mjs
 var routes = [
   {
     routePath: "/api/:path*",
@@ -23277,6 +23932,8 @@ var routes = [
     modules: [onRequestPost]
   }
 ];
+
+// ../node_modules/path-to-regexp/dist.es2015/index.js
 function lexer(str) {
   var tokens = [];
   var i = 0;
@@ -23322,7 +23979,7 @@ function lexer(str) {
       continue;
     }
     if (char === "(") {
-      var count = 1;
+      var count3 = 1;
       var pattern = "";
       var j = i + 1;
       if (str[j] === "?") {
@@ -23334,20 +23991,20 @@ function lexer(str) {
           continue;
         }
         if (str[j] === ")") {
-          count--;
-          if (count === 0) {
+          count3--;
+          if (count3 === 0) {
             j++;
             break;
           }
         } else if (str[j] === "(") {
-          count++;
+          count3++;
           if (str[j + 1] !== "?") {
             throw new TypeError("Capturing groups are not allowed at ".concat(j));
           }
         }
         pattern += str[j++];
       }
-      if (count)
+      if (count3)
         throw new TypeError("Unbalanced pattern at ".concat(i));
       if (!pattern)
         throw new TypeError("Missing pattern at ".concat(i));
@@ -23361,7 +24018,6 @@ function lexer(str) {
   return tokens;
 }
 __name(lexer, "lexer");
-__name2(lexer, "lexer");
 function parse(str, options) {
   if (options === void 0) {
     options = {};
@@ -23372,18 +24028,18 @@ function parse(str, options) {
   var key = 0;
   var i = 0;
   var path = "";
-  var tryConsume = /* @__PURE__ */ __name2(function(type) {
+  var tryConsume = /* @__PURE__ */ __name(function(type) {
     if (i < tokens.length && tokens[i].type === type)
       return tokens[i++].value;
   }, "tryConsume");
-  var mustConsume = /* @__PURE__ */ __name2(function(type) {
+  var mustConsume = /* @__PURE__ */ __name(function(type) {
     var value2 = tryConsume(type);
     if (value2 !== void 0)
       return value2;
     var _a2 = tokens[i], nextType = _a2.type, index = _a2.index;
     throw new TypeError("Unexpected ".concat(nextType, " at ").concat(index, ", expected ").concat(type));
   }, "mustConsume");
-  var consumeText = /* @__PURE__ */ __name2(function() {
+  var consumeText = /* @__PURE__ */ __name(function() {
     var result2 = "";
     var value2;
     while (value2 = tryConsume("CHAR") || tryConsume("ESCAPED_CHAR")) {
@@ -23391,7 +24047,7 @@ function parse(str, options) {
     }
     return result2;
   }, "consumeText");
-  var isSafe = /* @__PURE__ */ __name2(function(value2) {
+  var isSafe = /* @__PURE__ */ __name(function(value2) {
     for (var _i = 0, delimiter_1 = delimiter; _i < delimiter_1.length; _i++) {
       var char2 = delimiter_1[_i];
       if (value2.indexOf(char2) > -1)
@@ -23399,7 +24055,7 @@ function parse(str, options) {
     }
     return false;
   }, "isSafe");
-  var safePattern = /* @__PURE__ */ __name2(function(prefix2) {
+  var safePattern = /* @__PURE__ */ __name(function(prefix2) {
     var prev = result[result.length - 1];
     var prevText = prefix2 || (prev && typeof prev === "string" ? prev : "");
     if (prev && !prevText) {
@@ -23462,14 +24118,12 @@ function parse(str, options) {
   return result;
 }
 __name(parse, "parse");
-__name2(parse, "parse");
 function match(str, options) {
   var keys = [];
   var re = pathToRegexp(str, keys, options);
   return regexpToFunction(re, keys, options);
 }
 __name(match, "match");
-__name2(match, "match");
 function regexpToFunction(re, keys, options) {
   if (options === void 0) {
     options = {};
@@ -23483,7 +24137,7 @@ function regexpToFunction(re, keys, options) {
       return false;
     var path = m[0], index = m.index;
     var params = /* @__PURE__ */ Object.create(null);
-    var _loop_1 = /* @__PURE__ */ __name2(function(i2) {
+    var _loop_1 = /* @__PURE__ */ __name(function(i2) {
       if (m[i2] === void 0)
         return "continue";
       var key = keys[i2 - 1];
@@ -23502,17 +24156,14 @@ function regexpToFunction(re, keys, options) {
   };
 }
 __name(regexpToFunction, "regexpToFunction");
-__name2(regexpToFunction, "regexpToFunction");
 function escapeString(str) {
   return str.replace(/([.+*?=^!:${}()[\]|/\\])/g, "\\$1");
 }
 __name(escapeString, "escapeString");
-__name2(escapeString, "escapeString");
 function flags(options) {
   return options && options.sensitive ? "" : "i";
 }
 __name(flags, "flags");
-__name2(flags, "flags");
 function regexpToRegexp(path, keys) {
   if (!keys)
     return path;
@@ -23533,7 +24184,6 @@ function regexpToRegexp(path, keys) {
   return path;
 }
 __name(regexpToRegexp, "regexpToRegexp");
-__name2(regexpToRegexp, "regexpToRegexp");
 function arrayToRegexp(paths, keys, options) {
   var parts = paths.map(function(path) {
     return pathToRegexp(path, keys, options).source;
@@ -23541,12 +24191,10 @@ function arrayToRegexp(paths, keys, options) {
   return new RegExp("(?:".concat(parts.join("|"), ")"), flags(options));
 }
 __name(arrayToRegexp, "arrayToRegexp");
-__name2(arrayToRegexp, "arrayToRegexp");
 function stringToRegexp(path, keys, options) {
   return tokensToRegexp(parse(path, options), keys, options);
 }
 __name(stringToRegexp, "stringToRegexp");
-__name2(stringToRegexp, "stringToRegexp");
 function tokensToRegexp(tokens, keys, options) {
   if (options === void 0) {
     options = {};
@@ -23602,7 +24250,6 @@ function tokensToRegexp(tokens, keys, options) {
   return new RegExp(route, flags(options));
 }
 __name(tokensToRegexp, "tokensToRegexp");
-__name2(tokensToRegexp, "tokensToRegexp");
 function pathToRegexp(path, keys, options) {
   if (path instanceof RegExp)
     return regexpToRegexp(path, keys);
@@ -23611,7 +24258,8 @@ function pathToRegexp(path, keys, options) {
   return stringToRegexp(path, keys, options);
 }
 __name(pathToRegexp, "pathToRegexp");
-__name2(pathToRegexp, "pathToRegexp");
+
+// ../node_modules/wrangler/templates/pages-template-worker.ts
 var escapeRegex = /[.+?^${}()|[\]\\]/g;
 function* executeRequest(request) {
   const requestPath = new URL(request.url).pathname;
@@ -23662,14 +24310,13 @@ function* executeRequest(request) {
   }
 }
 __name(executeRequest, "executeRequest");
-__name2(executeRequest, "executeRequest");
 var pages_template_worker_default = {
-  async fetch(originalRequest, env, workerContext) {
+  async fetch(originalRequest, env2, workerContext) {
     let request = originalRequest;
     const handlerIterator = executeRequest(request);
     let data = {};
     let isFailOpen = false;
-    const next = /* @__PURE__ */ __name2(async (input, init) => {
+    const next = /* @__PURE__ */ __name(async (input, init) => {
       if (input !== void 0) {
         let url = input;
         if (typeof input === "string") {
@@ -23680,7 +24327,7 @@ var pages_template_worker_default = {
       const result = handlerIterator.next();
       if (result.done === false) {
         const { handler, params, path } = result.value;
-        const context = {
+        const context2 = {
           request: new Request(request.clone()),
           functionPath: path,
           next,
@@ -23694,19 +24341,19 @@ var pages_template_worker_default = {
             }
             data = value;
           },
-          env,
+          env: env2,
           waitUntil: workerContext.waitUntil.bind(workerContext),
-          passThroughOnException: /* @__PURE__ */ __name2(() => {
+          passThroughOnException: /* @__PURE__ */ __name(() => {
             isFailOpen = true;
           }, "passThroughOnException")
         };
-        const response = await handler(context);
+        const response = await handler(context2);
         if (!(response instanceof Response)) {
           throw new Error("Your Pages function should return a Response");
         }
         return cloneResponse(response);
       } else if ("ASSETS") {
-        const response = await env["ASSETS"].fetch(request);
+        const response = await env2["ASSETS"].fetch(request);
         return cloneResponse(response);
       } else {
         const response = await fetch(request);
@@ -23715,25 +24362,27 @@ var pages_template_worker_default = {
     }, "next");
     try {
       return await next();
-    } catch (error) {
+    } catch (error3) {
       if (isFailOpen) {
-        const response = await env["ASSETS"].fetch(request);
+        const response = await env2["ASSETS"].fetch(request);
         return cloneResponse(response);
       }
-      throw error;
+      throw error3;
     }
   }
 };
-var cloneResponse = /* @__PURE__ */ __name2((response) => (
+var cloneResponse = /* @__PURE__ */ __name((response) => (
   // https://fetch.spec.whatwg.org/#null-body-status
   new Response(
     [101, 204, 205, 304].includes(response.status) ? null : response.body,
     response
   )
 ), "cloneResponse");
-var drainBody = /* @__PURE__ */ __name2(async (request, env, _ctx, middlewareCtx) => {
+
+// ../node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts
+var drainBody = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx) => {
   try {
-    return await middlewareCtx.next(request, env);
+    return await middlewareCtx.next(request, env2);
   } finally {
     try {
       if (request.body !== null && !request.bodyUsed) {
@@ -23747,6 +24396,8 @@ var drainBody = /* @__PURE__ */ __name2(async (request, env, _ctx, middlewareCtx
   }
 }, "drainBody");
 var middleware_ensure_req_body_drained_default = drainBody;
+
+// ../node_modules/wrangler/templates/middleware/middleware-miniflare3-json-error.ts
 function reduceError(e) {
   return {
     name: e?.name,
@@ -23756,31 +24407,33 @@ function reduceError(e) {
   };
 }
 __name(reduceError, "reduceError");
-__name2(reduceError, "reduceError");
-var jsonError = /* @__PURE__ */ __name2(async (request, env, _ctx, middlewareCtx) => {
+var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx) => {
   try {
-    return await middlewareCtx.next(request, env);
+    return await middlewareCtx.next(request, env2);
   } catch (e) {
-    const error = reduceError(e);
-    return Response.json(error, {
+    const error3 = reduceError(e);
+    return Response.json(error3, {
       status: 500,
       headers: { "MF-Experimental-Error-Stack": "true" }
     });
   }
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
+
+// ../.wrangler/tmp/bundle-s0bmZf/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
 ];
 var middleware_insertion_facade_default = pages_template_worker_default;
+
+// ../node_modules/wrangler/templates/middleware/common.ts
 var __facade_middleware__ = [];
 function __facade_register__(...args) {
   __facade_middleware__.push(...args.flat());
 }
 __name(__facade_register__, "__facade_register__");
-__name2(__facade_register__, "__facade_register__");
-function __facade_invokeChain__(request, env, ctx, dispatch, middlewareChain) {
+function __facade_invokeChain__(request, env2, ctx, dispatch, middlewareChain) {
   const [head2, ...tail] = middlewareChain;
   const middlewareCtx = {
     dispatch,
@@ -23788,29 +24441,26 @@ function __facade_invokeChain__(request, env, ctx, dispatch, middlewareChain) {
       return __facade_invokeChain__(newRequest, newEnv, ctx, dispatch, tail);
     }
   };
-  return head2(request, env, ctx, middlewareCtx);
+  return head2(request, env2, ctx, middlewareCtx);
 }
 __name(__facade_invokeChain__, "__facade_invokeChain__");
-__name2(__facade_invokeChain__, "__facade_invokeChain__");
-function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
-  return __facade_invokeChain__(request, env, ctx, dispatch, [
+function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
+  return __facade_invokeChain__(request, env2, ctx, dispatch, [
     ...__facade_middleware__,
     finalMiddleware
   ]);
 }
 __name(__facade_invoke__, "__facade_invoke__");
-__name2(__facade_invoke__, "__facade_invoke__");
+
+// ../.wrangler/tmp/bundle-s0bmZf/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
-  static {
-    __name(this, "___Facade_ScheduledController__");
-  }
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
     this.cron = cron;
     this.#noRetry = noRetry;
   }
   static {
-    __name2(this, "__Facade_ScheduledController__");
+    __name(this, "__Facade_ScheduledController__");
   }
   #noRetry;
   noRetry() {
@@ -23827,16 +24477,16 @@ function wrapExportedHandler(worker) {
   for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__) {
     __facade_register__(middleware);
   }
-  const fetchDispatcher = /* @__PURE__ */ __name2(function(request, env, ctx) {
+  const fetchDispatcher = /* @__PURE__ */ __name(function(request, env2, ctx) {
     if (worker.fetch === void 0) {
       throw new Error("Handler does not export a fetch() function.");
     }
-    return worker.fetch(request, env, ctx);
+    return worker.fetch(request, env2, ctx);
   }, "fetchDispatcher");
   return {
     ...worker,
-    fetch(request, env, ctx) {
-      const dispatcher = /* @__PURE__ */ __name2(function(type, init) {
+    fetch(request, env2, ctx) {
+      const dispatcher = /* @__PURE__ */ __name(function(type, init) {
         if (type === "scheduled" && worker.scheduled !== void 0) {
           const controller = new __Facade_ScheduledController__(
             Date.now(),
@@ -23844,15 +24494,14 @@ function wrapExportedHandler(worker) {
             () => {
             }
           );
-          return worker.scheduled(controller, env, ctx);
+          return worker.scheduled(controller, env2, ctx);
         }
       }, "dispatcher");
-      return __facade_invoke__(request, env, ctx, dispatcher, fetchDispatcher);
+      return __facade_invoke__(request, env2, ctx, dispatcher, fetchDispatcher);
     }
   };
 }
 __name(wrapExportedHandler, "wrapExportedHandler");
-__name2(wrapExportedHandler, "wrapExportedHandler");
 function wrapWorkerEntrypoint(klass) {
   if (__INTERNAL_WRANGLER_MIDDLEWARE__ === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__.length === 0) {
     return klass;
@@ -23861,15 +24510,15 @@ function wrapWorkerEntrypoint(klass) {
     __facade_register__(middleware);
   }
   return class extends klass {
-    #fetchDispatcher = /* @__PURE__ */ __name2((request, env, ctx) => {
-      this.env = env;
+    #fetchDispatcher = /* @__PURE__ */ __name((request, env2, ctx) => {
+      this.env = env2;
       this.ctx = ctx;
       if (super.fetch === void 0) {
         throw new Error("Entrypoint class does not define a fetch() function.");
       }
       return super.fetch(request);
     }, "#fetchDispatcher");
-    #dispatcher = /* @__PURE__ */ __name2((type, init) => {
+    #dispatcher = /* @__PURE__ */ __name((type, init) => {
       if (type === "scheduled" && super.scheduled !== void 0) {
         const controller = new __Facade_ScheduledController__(
           Date.now(),
@@ -23892,7 +24541,6 @@ function wrapWorkerEntrypoint(klass) {
   };
 }
 __name(wrapWorkerEntrypoint, "wrapWorkerEntrypoint");
-__name2(wrapWorkerEntrypoint, "wrapWorkerEntrypoint");
 var WRAPPED_ENTRY;
 if (typeof middleware_insertion_facade_default === "object") {
   WRAPPED_ENTRY = wrapExportedHandler(middleware_insertion_facade_default);
@@ -23900,236 +24548,8 @@ if (typeof middleware_insertion_facade_default === "object") {
   WRAPPED_ENTRY = wrapWorkerEntrypoint(middleware_insertion_facade_default);
 }
 var middleware_loader_entry_default = WRAPPED_ENTRY;
-
-// node_modules/wrangler/templates/pages-dev-util.ts
-function isRoutingRuleMatch(pathname, routingRule) {
-  if (!pathname) {
-    throw new Error("Pathname is undefined.");
-  }
-  if (!routingRule) {
-    throw new Error("Routing rule is undefined.");
-  }
-  const ruleRegExp = transformRoutingRuleToRegExp(routingRule);
-  return pathname.match(ruleRegExp) !== null;
-}
-__name(isRoutingRuleMatch, "isRoutingRuleMatch");
-function transformRoutingRuleToRegExp(rule) {
-  let transformedRule;
-  if (rule === "/" || rule === "/*") {
-    transformedRule = rule;
-  } else if (rule.endsWith("/*")) {
-    transformedRule = `${rule.substring(0, rule.length - 2)}(/*)?`;
-  } else if (rule.endsWith("/")) {
-    transformedRule = `${rule.substring(0, rule.length - 1)}(/)?`;
-  } else if (rule.endsWith("*")) {
-    transformedRule = rule;
-  } else {
-    transformedRule = `${rule}(/)?`;
-  }
-  transformedRule = `^${transformedRule.replaceAll(/\./g, "\\.").replaceAll(/\*/g, ".*")}$`;
-  return new RegExp(transformedRule);
-}
-__name(transformRoutingRuleToRegExp, "transformRoutingRuleToRegExp");
-
-// .wrangler/tmp/pages-vyeKxg/ww9g2amgvt.js
-var define_ROUTES_default = {
-  version: 1,
-  include: ["/api/*", "/bot"],
-  exclude: []
-};
-var routes2 = define_ROUTES_default;
-var pages_dev_pipeline_default = {
-  fetch(request, env, context) {
-    const { pathname } = new URL(request.url);
-    for (const exclude of routes2.exclude) {
-      if (isRoutingRuleMatch(pathname, exclude)) {
-        return env.ASSETS.fetch(request);
-      }
-    }
-    for (const include of routes2.include) {
-      if (isRoutingRuleMatch(pathname, include)) {
-        const workerAsHandler = middleware_loader_entry_default;
-        if (workerAsHandler.fetch === void 0) {
-          throw new TypeError("Entry point missing `fetch` handler");
-        }
-        return workerAsHandler.fetch(request, env, context);
-      }
-    }
-    return env.ASSETS.fetch(request);
-  }
-};
-
-// node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts
-var drainBody2 = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
-  try {
-    return await middlewareCtx.next(request, env);
-  } finally {
-    try {
-      if (request.body !== null && !request.bodyUsed) {
-        const reader = request.body.getReader();
-        while (!(await reader.read()).done) {
-        }
-      }
-    } catch (e) {
-      console.error("Failed to drain the unused request body.", e);
-    }
-  }
-}, "drainBody");
-var middleware_ensure_req_body_drained_default2 = drainBody2;
-
-// node_modules/wrangler/templates/middleware/middleware-miniflare3-json-error.ts
-function reduceError2(e) {
-  return {
-    name: e?.name,
-    message: e?.message ?? String(e),
-    stack: e?.stack,
-    cause: e?.cause === void 0 ? void 0 : reduceError2(e.cause)
-  };
-}
-__name(reduceError2, "reduceError");
-var jsonError2 = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
-  try {
-    return await middlewareCtx.next(request, env);
-  } catch (e) {
-    const error = reduceError2(e);
-    return Response.json(error, {
-      status: 500,
-      headers: { "MF-Experimental-Error-Stack": "true" }
-    });
-  }
-}, "jsonError");
-var middleware_miniflare3_json_error_default2 = jsonError2;
-
-// .wrangler/tmp/bundle-ED4GUQ/middleware-insertion-facade.js
-var __INTERNAL_WRANGLER_MIDDLEWARE__2 = [
-  middleware_ensure_req_body_drained_default2,
-  middleware_miniflare3_json_error_default2
-];
-var middleware_insertion_facade_default2 = pages_dev_pipeline_default;
-
-// node_modules/wrangler/templates/middleware/common.ts
-var __facade_middleware__2 = [];
-function __facade_register__2(...args) {
-  __facade_middleware__2.push(...args.flat());
-}
-__name(__facade_register__2, "__facade_register__");
-function __facade_invokeChain__2(request, env, ctx, dispatch, middlewareChain) {
-  const [head2, ...tail] = middlewareChain;
-  const middlewareCtx = {
-    dispatch,
-    next(newRequest, newEnv) {
-      return __facade_invokeChain__2(newRequest, newEnv, ctx, dispatch, tail);
-    }
-  };
-  return head2(request, env, ctx, middlewareCtx);
-}
-__name(__facade_invokeChain__2, "__facade_invokeChain__");
-function __facade_invoke__2(request, env, ctx, dispatch, finalMiddleware) {
-  return __facade_invokeChain__2(request, env, ctx, dispatch, [
-    ...__facade_middleware__2,
-    finalMiddleware
-  ]);
-}
-__name(__facade_invoke__2, "__facade_invoke__");
-
-// .wrangler/tmp/bundle-ED4GUQ/middleware-loader.entry.ts
-var __Facade_ScheduledController__2 = class ___Facade_ScheduledController__2 {
-  constructor(scheduledTime, cron, noRetry) {
-    this.scheduledTime = scheduledTime;
-    this.cron = cron;
-    this.#noRetry = noRetry;
-  }
-  static {
-    __name(this, "__Facade_ScheduledController__");
-  }
-  #noRetry;
-  noRetry() {
-    if (!(this instanceof ___Facade_ScheduledController__2)) {
-      throw new TypeError("Illegal invocation");
-    }
-    this.#noRetry();
-  }
-};
-function wrapExportedHandler2(worker) {
-  if (__INTERNAL_WRANGLER_MIDDLEWARE__2 === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__2.length === 0) {
-    return worker;
-  }
-  for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__2) {
-    __facade_register__2(middleware);
-  }
-  const fetchDispatcher = /* @__PURE__ */ __name(function(request, env, ctx) {
-    if (worker.fetch === void 0) {
-      throw new Error("Handler does not export a fetch() function.");
-    }
-    return worker.fetch(request, env, ctx);
-  }, "fetchDispatcher");
-  return {
-    ...worker,
-    fetch(request, env, ctx) {
-      const dispatcher = /* @__PURE__ */ __name(function(type, init) {
-        if (type === "scheduled" && worker.scheduled !== void 0) {
-          const controller = new __Facade_ScheduledController__2(
-            Date.now(),
-            init.cron ?? "",
-            () => {
-            }
-          );
-          return worker.scheduled(controller, env, ctx);
-        }
-      }, "dispatcher");
-      return __facade_invoke__2(request, env, ctx, dispatcher, fetchDispatcher);
-    }
-  };
-}
-__name(wrapExportedHandler2, "wrapExportedHandler");
-function wrapWorkerEntrypoint2(klass) {
-  if (__INTERNAL_WRANGLER_MIDDLEWARE__2 === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__2.length === 0) {
-    return klass;
-  }
-  for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__2) {
-    __facade_register__2(middleware);
-  }
-  return class extends klass {
-    #fetchDispatcher = /* @__PURE__ */ __name((request, env, ctx) => {
-      this.env = env;
-      this.ctx = ctx;
-      if (super.fetch === void 0) {
-        throw new Error("Entrypoint class does not define a fetch() function.");
-      }
-      return super.fetch(request);
-    }, "#fetchDispatcher");
-    #dispatcher = /* @__PURE__ */ __name((type, init) => {
-      if (type === "scheduled" && super.scheduled !== void 0) {
-        const controller = new __Facade_ScheduledController__2(
-          Date.now(),
-          init.cron ?? "",
-          () => {
-          }
-        );
-        return super.scheduled(controller);
-      }
-    }, "#dispatcher");
-    fetch(request) {
-      return __facade_invoke__2(
-        request,
-        this.env,
-        this.ctx,
-        this.#dispatcher,
-        this.#fetchDispatcher
-      );
-    }
-  };
-}
-__name(wrapWorkerEntrypoint2, "wrapWorkerEntrypoint");
-var WRAPPED_ENTRY2;
-if (typeof middleware_insertion_facade_default2 === "object") {
-  WRAPPED_ENTRY2 = wrapExportedHandler2(middleware_insertion_facade_default2);
-} else if (typeof middleware_insertion_facade_default2 === "function") {
-  WRAPPED_ENTRY2 = wrapWorkerEntrypoint2(middleware_insertion_facade_default2);
-}
-var middleware_loader_entry_default2 = WRAPPED_ENTRY2;
 export {
-  __INTERNAL_WRANGLER_MIDDLEWARE__2 as __INTERNAL_WRANGLER_MIDDLEWARE__,
-  middleware_loader_entry_default2 as default
+  __INTERNAL_WRANGLER_MIDDLEWARE__,
+  middleware_loader_entry_default as default
 };
-//# sourceMappingURL=ww9g2amgvt.js.map
+//# sourceMappingURL=functionsWorker-0.1255179365461837.mjs.map
