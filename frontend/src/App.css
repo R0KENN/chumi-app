@@ -245,9 +245,11 @@ body {
 }
 .sk-outfits-btn:active { transform: scale(0.96); }
 .sk-outfits-icon {
-  display: flex; align-items: center; gap: 2px;
-  background: rgba(255,100,0,0.12); border-radius: 10px; padding: 3px 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,100,0,0.12); border-radius: 10px; padding: 5px;
+  color: #FF7A00;
 }
+.sk-outfits-icon svg { width: 20px; height: 20px; display: block; }
 .sk-outfits-text { font-weight: 600; color: #333; margin-left: 4px; font-size: 14px; }
 
 /* ── Progress ── */
@@ -417,18 +419,17 @@ body {
   gap: 2px;
   padding: 6px;
   border-radius: 30px;
-  /* frost */
-  background: rgba(255, 248, 225, 0.55);          /* тёплый кремовый тинт темы */
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  /* specular + lift */
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  /* нейтральный холодный glass без жёлтого тинта */
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(24px) saturate(1.7);
+  -webkit-backdrop-filter: blur(24px) saturate(1.7);
+  /* specular highlight + мягкая тень */
+  border: 1px solid rgba(255, 255, 255, 0.65);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.14),
-    0 2px 8px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.04);
-  /* refraction по краям через SVG-фильтр (см. <svg> в JSX) */
+    0 10px 36px rgba(0, 0, 0, 0.16),
+    0 2px 10px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.05);
 }
 
 /* refraction только там, где фильтр поддержан (Safari/iOS лучше всего) */
@@ -448,7 +449,7 @@ body {
 
 /* Фолбэк: нет backdrop-filter (часть Android-WebView в Telegram) */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .lg-dock { background: rgba(255, 248, 225, 0.96); }
+  .lg-dock { background: rgba(255, 255, 255, 0.92); }
 }
 
 .lg-tab {
@@ -468,7 +469,12 @@ body {
   transition: color 0.25s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.lg-tab-ico { font-size: 21px; line-height: 1; transition: transform 0.25s ease; }
+.lg-tab-ico {
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+  transition: transform 0.25s ease;
+}
+.lg-tab-ico svg { width: 23px; height: 23px; display: block; }
 .lg-tab-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1px; }
 .lg-tab:active .lg-tab-ico { transform: scale(0.88); }
 
@@ -479,10 +485,11 @@ body {
   position: absolute;
   inset: 3px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.85);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 2px 8px rgba(0, 0, 0, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.04),
+    0 3px 10px rgba(0, 0, 0, 0.1);
   z-index: -1;
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -513,7 +520,7 @@ body {
   animation: lgMoreUp 0.28s ease;
 }
 .lg-more button {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 12px;
   width: 100%; text-align: left;
   padding: 13px 16px; border: none; background: none;
   font-size: 15px; font-weight: 500; color: #333;
@@ -521,6 +528,16 @@ body {
 }
 .lg-more button:active { background: rgba(0,0,0,0.05); }
 .lg-more .lg-more-danger { color: #e53935; }
+
+/* контейнер иконки в пунктах меню «Ещё» */
+.lg-more-ico {
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: rgba(0, 0, 0, 0.55);
+}
+.lg-more-ico svg { width: 21px; height: 21px; display: block; }
+/* иконка наследует красный цвет у пункта удаления */
+.lg-more-danger .lg-more-ico { color: inherit; }
 
 /* поднимаем нижний контент, чтобы плашка его не перекрывала */
 .sk { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }

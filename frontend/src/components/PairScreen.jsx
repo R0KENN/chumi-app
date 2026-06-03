@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
 import { usePairs, getInitData } from '../context/PairsContext';
 import { LEVELS, getLevel } from '../_levels-meta.js';
+import {
+  IconPet, IconCalendar, IconDiary, IconTrophy, IconMore,
+  IconPostcard, IconShare, IconGlobe, IconTrash, IconShirt,
+} from './Icons';
 
 
 const API = '/api';
@@ -130,13 +134,10 @@ export default function PairScreen() {
   const [deleting, setDeleting] = useState(false);
   const [petTapped, setPetTapped] = useState(false);
   const [maxPairs, setMaxPairs] = useState(3);
-  const [showPremium, setShowPremium] = useState(false);
   const [showOutfits, setShowOutfits] = useState(false);
   const [ownedSkins, setOwnedSkins] = useState([]);
   const [referralCount, setReferralCount] = useState(0);
   const [skinsLoading, setSkinsLoading] = useState(false);
-  const [premiumActive, setPremiumActive] = useState(false);
-  const [premiumExpires, setPremiumExpires] = useState(null);
   const [reviving, setReviving] = useState(false);
   const [reviveError, setReviveError] = useState('');
   const [recoveriesLeft, setRecoveriesLeft] = useState(5);
@@ -445,24 +446,6 @@ useEffect(() => {
       } catch (e) {}
     });
   }, [pair?.members]);
-
-  // ══════ Premium status ══════
-  useEffect(() => {
-    // Админ всегда премиум — не ждём ответа сервера
-    if (isAdmin) {
-      setPremiumActive(true);
-      setPremiumExpires('2099-12-31T23:59:59Z');
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(`${API}/premium/${userId}`, { headers: authGetHeaders() });
-        const data = await res.json();
-        setPremiumActive(data.premium || false);
-        setPremiumExpires(data.expires_at || null);
-      } catch (e) {}
-    })();
-  }, [userId, isAdmin]);
 
   const loadRankingAvatars = useCallback((entries) => {
     const ids = new Set();
@@ -1450,22 +1433,6 @@ const handleShareInvite = () => {
   else window.open(shareUrl, '_blank');
 };
 
-  // ══════ Premium подписка ══════
-  const handleSubscribe = async () => {
-    try {
-      const res = await fetch(`${API}/create-invoice`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ userId, productId: 'premium_monthly' }),
-      });
-      const data = await res.json();
-      if (data.invoiceUrl && tg?.openInvoice) {
-        tg.openInvoice(data.invoiceUrl, (st) => {
-          if (st === 'paid') { haptic('heavy'); setShowPremium(false); load(); }
-        });
-      } else if (data.invoiceUrl) window.open(data.invoiceUrl, '_blank');
-    } catch (e) {}
-  };
 
     // Воскрешение питомца
   const handleRevive = async () => {
@@ -1524,7 +1491,6 @@ const handleShareInvite = () => {
       const data = await res.json();
       setOwnedSkins(data.owned || []);
       setReferralCount(data.referral_count || 0);
-      if (data.premium !== undefined) setPremiumActive(data.premium);
     } catch (e) {}
     finally { setSkinsLoading(false); }
   };
@@ -1722,15 +1688,15 @@ const renderPet = () => (
 </svg>
 
 {/* ══════ Liquid Glass нижняя плашка ══════ */}
-{hasPartner && !showOutfits && (
+{!showOutfits && (
   <>
     <nav className={`lg-dock ${isDark ? 'lg-dark' : ''}`}>
       {[
-        { key: 'home',     ico: '🐾', label: lang === 'ru' ? 'Питомец'  : 'Pet' },
-        { key: 'calendar', ico: '📅', label: lang === 'ru' ? 'Календарь': 'Calendar' },
-        { key: 'diary',    ico: '📔', label: lang === 'ru' ? 'Дневник'  : 'Diary' },
-        { key: 'ranking',  ico: '🏆', label: lang === 'ru' ? 'Рейтинг'  : 'Rating' },
-        { key: 'more',     ico: '⋯',  label: lang === 'ru' ? 'Ещё'      : 'More' },
+        { key: 'home',     Ico: IconPet,      label: lang === 'ru' ? 'Питомец'  : 'Pet' },
+        { key: 'calendar', Ico: IconCalendar, label: lang === 'ru' ? 'Календарь': 'Calendar' },
+        { key: 'diary',    Ico: IconDiary,    label: lang === 'ru' ? 'Дневник'  : 'Diary' },
+        { key: 'ranking',  Ico: IconTrophy,   label: lang === 'ru' ? 'Рейтинг'  : 'Rating' },
+        { key: 'more',     Ico: IconMore,     label: lang === 'ru' ? 'Ещё'      : 'More' },
       ].map(tab => {
         const isActive =
           (tab.key === 'calendar' && showCalendar) ||
@@ -1738,24 +1704,26 @@ const renderPet = () => (
           (tab.key === 'ranking'  && showRanking) ||
           (tab.key === 'more'     && showMenu) ||
           (tab.key === 'home'     && !showCalendar && !showDiary && !showRanking && !showMenu);
+          const isDisabled = !hasPartner && tab.key !== 'more';
         return (
-          <button
-            key={tab.key}
-            className={`lg-tab ${isActive ? 'lg-tab-active' : ''}`}
-            onClick={() => {
-              haptic('light');
-              // всегда закрываем всё перед открытием нужного
-              setShowCalendar(false); setShowDiary(false);
-              setShowRanking(false); setShowMenu(false);
-              if (tab.key === 'calendar') setShowCalendar(true);
-              else if (tab.key === 'diary') setShowDiary(true);
-              else if (tab.key === 'ranking') { loadRanking(); setShowRanking(true); }
-              else if (tab.key === 'more') setShowMenu(true);
-              // 'home' — просто всё закрыли выше
-            }}
-          >
+<button
+  key={tab.key}
+  disabled={isDisabled}
+  className={`lg-tab ${isActive ? 'lg-tab-active' : ''}`}
+  style={isDisabled ? { opacity: 0.35, cursor: 'default' } : {}}
+  onClick={() => {
+    if (isDisabled) return;
+    haptic('light');
+    setShowCalendar(false); setShowDiary(false);
+    setShowRanking(false); setShowMenu(false);
+    if (tab.key === 'calendar') setShowCalendar(true);
+    else if (tab.key === 'diary') setShowDiary(true);
+    else if (tab.key === 'ranking') { loadRanking(); setShowRanking(true); }
+    else if (tab.key === 'more') setShowMenu(true);
+  }}
+>
             {isActive && <span className="lg-pill" />}
-            <span className="lg-tab-ico">{tab.ico}</span>
+            <span className="lg-tab-ico"><tab.Ico /></span>
             <span className="lg-tab-label">{tab.label}</span>
           </button>
         );
@@ -1768,22 +1736,24 @@ const renderPet = () => (
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)} />
         <div className="lg-more" onClick={e => e.stopPropagation()}>
           <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>
-            🐾 {lang === 'ru' ? 'Мои пары' : 'My pairs'}
+            <span className="lg-more-ico"><IconPet /></span>
+            {lang === 'ru' ? 'Мои пары' : 'My pairs'}
           </button>
           <button onClick={() => { setPostcardUrl(null); setShowPostcard(true); setShowMenu(false); }}>
-            💌 {lang === 'ru' ? 'Открытка' : 'Postcard'}
+            <span className="lg-more-ico"><IconPostcard /></span>
+            {lang === 'ru' ? 'Открытка' : 'Postcard'}
           </button>
           <button onClick={() => { handleShareMessage(); setShowMenu(false); }}>
-            📤 {lang === 'ru' ? 'Поделиться' : 'Share'}
-          </button>
-          <button onClick={() => { setShowPremium(true); setShowMenu(false); }}>
-            ⭐ {lang === 'ru' ? 'Премиум' : 'Premium'}
+            <span className="lg-more-ico"><IconShare /></span>
+            {lang === 'ru' ? 'Поделиться' : 'Share'}
           </button>
           <button onClick={() => { const nl = lang === 'ru' ? 'en' : 'ru'; setLang(nl); setShowMenu(false); haptic('light'); }}>
-            🌐 {lang === 'ru' ? 'English 🇬🇧' : 'Русский 🇷🇺'}
+            <span className="lg-more-ico"><IconGlobe /></span>
+            {lang === 'ru' ? 'English' : 'Русский'}
           </button>
           <button className="lg-more-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
-            🗑️ {lang === 'ru' ? 'Удалить пару' : 'Delete pair'}
+            <span className="lg-more-ico"><IconTrash /></span>
+            {lang === 'ru' ? 'Удалить пару' : 'Delete pair'}
           </button>
         </div>
       </>
@@ -1869,8 +1839,8 @@ const renderPet = () => (
         </div>
       )}
 
-      {!hasPartner ? (
-        <div className="sk-waiting-partner">
+{!hasPartner ? (
+  <div className="sk-waiting-partner" style={{ paddingBottom: 100 }}>
           <div className="sk-waiting-emoji">🥚</div>
           <div className="sk-waiting-title">{lang === 'ru' ? 'Ожидаем партнёра' : 'Waiting for partner'}</div>
           <div className="sk-waiting-desc">
@@ -1932,7 +1902,7 @@ const renderPet = () => (
           {!isEgg && (
             <div className="sk-outfits-btn" 
             onClick={() => { loadSkins(); setPreviewSkin(pair?.active_skin ?? null); setOutfitTab('levels'); setShowOutfits(true); }}>
-              <div className="sk-outfits-icon"><span>🐾</span><span>👕</span></div>
+              <div className="sk-outfits-icon"><IconShirt /></div>
               <span className="sk-outfits-text">{lang === 'ru' ? 'Наряды' : 'Outfits'}</span>
             </div>
           )}
@@ -2060,7 +2030,6 @@ const renderPet = () => (
                       })()}
                     </div>
                     <span className={expandedRankingName === r.code ? 'sk-ranking-name-full' : 'sk-ranking-name'}>
-                      {r.members?.some(m => m.is_premium) && <span style={{ marginRight: 4, fontSize: 11 }}>⭐</span>}
                       {r.pet_name || '—'}
                     </span>
                     <span className="sk-ranking-stats">
@@ -2165,7 +2134,7 @@ const renderPet = () => (
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
               {SKINS.map(skin => {
-                const owned = ownedSkins.includes(skin.id) || premiumActive;
+const owned = ownedSkins.includes(skin.id) || isAdmin;
                 const isActive = pair.active_skin === skin.id;
                 const isPreviewing = previewSkin === skin.id;
                 return (
@@ -2213,8 +2182,8 @@ const renderPet = () => (
             (previewSkin === null && pair.active_skin === null) ||
             (isLevelSkin && parseInt(previewSkin.split('_')[1]) === lv.idx && !pair.active_skin);
           const canApply = (previewSkin === null && pair.active_skin !== null) || isLevelSkin ||
-            (!isLevelSkin && previewSkin && (ownedSkins.includes(previewSkin) || premiumActive));
-          const isBee = previewSkin === 'bee' && !ownedSkins.includes('bee') && !premiumActive;
+            (!isLevelSkin && previewSkin && (ownedSkins.includes(previewSkin) || isAdmin));
+          const isBee = previewSkin === 'bee' && !ownedSkins.includes('bee') && !isAdmin;
 
           if (isSame) return (
             <button disabled style={{
@@ -2335,48 +2304,6 @@ const renderPet = () => (
             <button className="sk-popup-close" onClick={() => setLevelUpData(null)}>
               {lang === 'ru' ? 'Позже' : 'Later'}
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Premium popup */}
-      {showPremium && (
-        <div className="sk-overlay" onClick={() => setShowPremium(false)}>
-          <div className="sk-popup" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 12 }}>⭐</div>
-            <h3>Chumi Premium</h3>
-            {premiumActive ? (
-              <>
-                <p style={{ fontSize: 14, color: '#4CAF50', textAlign: 'center', marginBottom: 8, fontWeight: 600 }}>
-                  {lang === 'ru' ? '✅ Активен' : '✅ Active'}
-                </p>
-                <p style={{ fontSize: 13, color: '#666', textAlign: 'center', marginBottom: 20 }}>
-                  {lang === 'ru' ? 'Действует до' : 'Valid until'}{' '}
-                  {premiumExpires ? new Date(premiumExpires).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US') : '—'}
-                </p>
-                <div style={{ fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 1.6, marginBottom: 16 }}>
-                  {lang === 'ru' ? (
-                    <>• Безлимит пар<br/>• Все наряды открыты<br/>• Премиум-бейдж в рейтинге</>
-                  ) : (
-                    <>• Unlimited pairs<br/>• All outfits unlocked<br/>• Premium badge in ranking</>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
-                  {lang === 'ru' ? (
-                    <>• Безлимит пар<br/>• Все наряды без покупки<br/>• Премиум-бейдж в рейтинге</>
-                  ) : (
-                    <>• Unlimited pairs<br/>• All outfits unlocked<br/>• Premium badge in ranking</>
-                  )}
-                </p>
-                <button onClick={handleSubscribe} className="sk-btn-primary" style={{ background: '#F5A623' }}>
-                  ⭐ 150 Stars / {lang === 'ru' ? 'месяц' : 'month'}
-                </button>
-              </>
-            )}
-            <button className="sk-popup-close" onClick={() => setShowPremium(false)}>{lang === 'ru' ? 'Закрыть' : 'Close'}</button>
           </div>
         </div>
       )}

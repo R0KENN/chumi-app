@@ -28,6 +28,40 @@ async function generateUniqueCode(supabase) {
   throw new Error('Could not generate unique pair code');
 }
 
+// Пытается «застолбить» платёж. Возвращает один из статусов:
+//   'new'  — charge новый, товар можно выдавать;
+//   'dup'  — charge уже обрабатывался (дубликат вебхука), выдавать НЕ нужно;
+//   'error'— ошибка БД (не дубликат); товар не выдан, нужно вмешательство.
+// Атомарность обеспечивается UNIQUE-констрейнтом processed_charges.charge_id.
+async function claimCharge(supabase, chargeId, userId, product) {
+  if (!chargeId) return 'new'; // нет id — выдаём (поведение как раньше)
+  const { error } = await supabase
+    .from('processed_charges')
+    .insert({ charge_id: chargeId, user_id: userId, product });
+  if (!error) return 'new';
+  if (error.code === '23505') return 'dup'; // unique_violation
+  console.error('claimCharge insert error:', error);
+  return 'error';
+}
+
+// Возвращает true, если товар нужно выдавать. При 'dup' и 'error' возвращает false.
+// При 'error' дополнительно уведомляет админов о застрявшем платеже.
+async function shouldFulfill(env, status, ctx) {
+  if (status === 'new') return true;
+  if (status === 'dup') return false;
+  // status === 'error' — платёж прошёл, но БД не дала застолбить charge.
+  await notifyAdmins(env,
+    `⚠️ *Платёж не обработан (сбой БД)*\n\n` +
+    `Товар НЕ выдан автоматически — нужна ручная выдача!\n\n` +
+    `Продукт: *${escapeMd(ctx.product)}*\n` +
+    `Покупатель ID: \`${ctx.userId}\`\n` +
+    (ctx.recipientId ? `Получатель ID: \`${ctx.recipientId}\`\n` : '') +
+    (ctx.skinId ? `Скин: *${escapeMd(ctx.skinId)}*\n` : '') +
+    `Сумма: ⭐ ${ctx.amount}\n` +
+    `Charge: \`${ctx.chargeId || '—'}\``
+  );
+  return false;
+}
 
 async function sendMessage(env, chatId, text, extra = {}) {
   const body = {
@@ -140,20 +174,8 @@ async function setBotCommands(env) {
   }
 }
 
-
 async function getMaxPairs(supabase, userId) {
   if (ADMIN_IDS.includes(userId)) return 999;
-  // Check premium
-  const { data: sub } = await supabase
-    .from('user_subscriptions')
-    .select('expires_at')
-    .eq('telegram_user_id', userId)
-    .eq('status', 'active')
-    .order('expires_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (sub && new Date(sub.expires_at) > new Date()) return 999;
-
   const { data } = await supabase
     .from('user_slots')
     .select('extra_slots')
@@ -448,27 +470,15 @@ export async function onRequestPost(context) {
         return new Response('OK');
       }
 
-
-      // Idempotency: если такой charge уже обработан — просто отвечаем OK
-      if (chargeId) {
-        const { data: dup } = await supabase
-          .from('user_subscriptions')
-          .select('id')
-          .eq('telegram_payment_charge_id', chargeId)
-          .maybeSingle();
-        if (dup) return new Response('OK');
-      }
-
       // ── Skin purchase ──
       if (pType === 'skin' && pSkinId) {
-        // Идемпотентность: платёж уже обработан — выходим
-        if (chargeId) {
-          const { data: dup } = await supabase
-            .from('processed_charges')
-            .select('charge_id')
-            .eq('charge_id', chargeId)
-            .maybeSingle();
-          if (dup) return new Response('OK');
+        // Идемпотентность: атомарно столбим платёж ДО выдачи товара
+        const skinClaim = await claimCharge(supabase, chargeId, userId, 'skin');
+        if (!(await shouldFulfill(env, skinClaim, {
+          product: 'skin', userId, skinId: pSkinId,
+          amount: payment.total_amount, chargeId,
+        }))) {
+          return new Response('OK');
         }
 
         const { data: alreadyOwned } = await supabase
@@ -482,15 +492,6 @@ export async function onRequestPost(context) {
             user_id: userId,
             skin_id: pSkinId,
           });
-        }
-
-        // Помечаем платёж обработанным
-        if (chargeId) {
-          await supabase.from('processed_charges').insert({
-            charge_id: chargeId,
-            user_id: userId,
-            product: 'skin',
-          }).then(() => {}, () => {});
         }
 
         const skinName = pSkinId.charAt(0).toUpperCase() + pSkinId.slice(1);
@@ -515,14 +516,13 @@ export async function onRequestPost(context) {
 
       // ── Skin GIFT (подарок партнёру) ──
       if (pType === 'skin_gift' && pSkinId && pRecipientId) {
-                // Идемпотентность: платёж уже обработан — выходим
-        if (chargeId) {
-          const { data: dup } = await supabase
-            .from('processed_charges')
-            .select('charge_id')
-            .eq('charge_id', chargeId)
-            .maybeSingle();
-          if (dup) return new Response('OK');
+        // Идемпотентность: атомарно столбим платёж ДО выдачи товара
+        const giftClaim = await claimCharge(supabase, chargeId, userId, 'skin_gift');
+        if (!(await shouldFulfill(env, giftClaim, {
+          product: 'skin_gift', userId, recipientId: String(pRecipientId),
+          skinId: pSkinId, amount: payment.total_amount, chargeId,
+        }))) {
+          return new Response('OK');
         }
 
         const recipientId = String(pRecipientId);
@@ -540,15 +540,6 @@ export async function onRequestPost(context) {
             user_id: recipientId,
             skin_id: pSkinId,
           });
-        }
-
-                // Помечаем платёж обработанным
-        if (chargeId) {
-          await supabase.from('processed_charges').insert({
-            charge_id: chargeId,
-            user_id: userId,
-            product: 'skin_gift',
-          }).then(() => {}, () => {});
         }
 
         // Имя дарителя
@@ -589,14 +580,13 @@ export async function onRequestPost(context) {
 
       // ── Extra slot ──
       if (pProductId === 'extra_slot') {
-        // Идемпотентность: если этот платёж уже обработан — выходим
-        if (chargeId) {
-          const { data: dupSlot } = await supabase
-            .from('processed_charges')
-            .select('charge_id')
-            .eq('charge_id', chargeId)
-            .maybeSingle();
-          if (dupSlot) return new Response('OK');
+        // Идемпотентность: атомарно столбим платёж ДО выдачи слота
+        const slotClaim = await claimCharge(supabase, chargeId, userId, 'extra_slot');
+        if (!(await shouldFulfill(env, slotClaim, {
+          product: 'extra_slot', userId,
+          amount: payment.total_amount, chargeId,
+        }))) {
+          return new Response('OK');
         }
 
         const { data: existing } = await supabase
@@ -616,15 +606,6 @@ export async function onRequestPost(context) {
         }
         await sendMessage(env, update.message.chat.id, T[lang].slotBought, webAppButton);
 
-        // Помечаем платёж обработанным
-        if (chargeId) {
-          await supabase.from('processed_charges').insert({
-            charge_id: chargeId,
-            user_id: userId,
-            product: 'extra_slot',
-          }).then(() => {}, () => {});
-        }
-
         // Уведомление админу
         const slotBuyer = update.message.from.first_name || 'User';
         const slotBuyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
@@ -637,63 +618,6 @@ export async function onRequestPost(context) {
         );
         return new Response('OK');
       }
-
-      // ── Premium monthly ──
-      if (pProductId === 'premium_monthly') {
-        const now = new Date();
-
-        // Берём максимум(текущая_активная_подписка.expires_at, now) + 30 дней
-        const { data: currentSub } = await supabase
-          .from('user_subscriptions')
-          .select('expires_at')
-          .eq('telegram_user_id', userId)
-          .eq('status', 'active')
-          .order('expires_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const baseTs = (currentSub && new Date(currentSub.expires_at) > now)
-          ? new Date(currentSub.expires_at).getTime()
-          : now.getTime();
-        const expiresAt = new Date(baseTs + 30 * 24 * 60 * 60 * 1000);
-
-        // Деактивируем все старые активные
-        await supabase
-          .from('user_subscriptions')
-          .update({ status: 'expired', updated_at: now.toISOString() })
-          .eq('telegram_user_id', userId)
-          .eq('status', 'active');
-
-        // Создаём новую
-        await supabase.from('user_subscriptions').insert({
-          telegram_user_id: userId,
-          plan: 'premium_monthly',
-          status: 'active',
-          telegram_payment_charge_id: chargeId,
-          starts_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-        });
-
-        await sendMessage(env, update.message.chat.id,
-          lang === 'ru'
-            ? `⭐ *Chumi Premium активирован!*\n\nТеперь у тебя:\n• Безлимит пар\n• Все наряды открыты\n• Премиум-бейдж в рейтинге\n\nДействует до ${expiresAt.toLocaleDateString('ru-RU')}`
-            : `⭐ *Chumi Premium activated!*\n\nYou now have:\n• Unlimited pairs\n• All outfits unlocked\n• Premium badge in ranking\n\nValid until ${expiresAt.toLocaleDateString('en-US')}`,
-          webAppButton
-        );
-                // Уведомление админу
-        const premBuyer = update.message.from.first_name || 'User';
-        const premBuyerUser = update.message.from.username ? '@' + update.message.from.username : '—';
-        await notifyAdmins(env,
-          `⭐ *Покупка Premium*\n\n` +
-          `Пользователь: ${escapeMd(premBuyer)} (${escapeMd(premBuyerUser)})\n` +
-          `ID: \`${userId}\`\n` +
-          `Сумма: ⭐ ${payment.total_amount} Stars\n` +
-          `Действует до: ${expiresAt.toLocaleDateString('ru-RU')}\n` +
-          `Charge: \`${chargeId || '—'}\``
-        );
-        return new Response('OK');
-      }
-
       return new Response('OK');
     }
 
@@ -774,7 +698,7 @@ if (startParam.startsWith('ref_')) {
         const { data: ex } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
         const isAdmin = ADMIN_IDS.includes(userId);
         if (!isAdmin && ex && ex.length >= maxP) { await sendMessage(env, chatId, T[lang].maxPairs(ex.length, maxP), webAppButton); return new Response('OK'); }
-        const { data: pair } = await supabase.from('pairs').select('*').eq('code', joinCode).single();
+        const { data: pair } = await supabase.from('pairs').select('*').eq('code', joinCode).maybeSingle();
         if (!pair) { await sendMessage(env, chatId, T[lang].pairNotFound(joinCode)); return new Response('OK'); }
         const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', joinCode);
         if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
@@ -882,7 +806,7 @@ if (startParam.startsWith('ref_')) {
       const isAdmin = ADMIN_IDS.includes(userId);
       const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
       if (!isAdmin && existing && existing.length >= maxPairs) { await sendMessage(env, chatId, T[lang].maxPairsLimit(maxPairs), webAppButton); return new Response('OK'); }
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).single();
+      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).maybeSingle();
       if (!pair) { await sendMessage(env, chatId, T[lang].pairNotFound(code)); return new Response('OK'); }
       const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', code);
       if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
@@ -920,7 +844,7 @@ if (startParam.startsWith('ref_')) {
       if (!userPairs || userPairs.length === 0) { await sendMessage(env, chatId, T[lang].noPairs); return new Response('OK'); }
       let msg = T[lang].myPairsTitle;
       for (const up of userPairs) {
-        const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
+        const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).maybeSingle();
         if (!pair) continue;
         const lv = getLevel(pair.growth_points || 0);
         const name = escapeMd(pair.pet_name || lv.name);
@@ -936,7 +860,7 @@ if (startParam.startsWith('ref_')) {
       if (!userPairs || userPairs.length === 0) { await sendMessage(env, chatId, T[lang].noPairs); return new Response('OK'); }
       let msg = T[lang].statusTitle;
       for (const up of userPairs) {
-        const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).single();
+        const { data: pair } = await supabase.from('pairs').select('*').eq('code', up.pair_code).maybeSingle();
         if (!pair) continue;
         const { data: members } = await supabase.from('pair_users').select('user_id, display_name').eq('pair_code', up.pair_code);
         const lv = getLevel(pair.growth_points || 0);
@@ -964,16 +888,12 @@ if (startParam.startsWith('ref_')) {
         .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', false);
       const { count: deadPairs } = await supabase
         .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', true);
-      const { count: activeSubs } = await supabase
-        .from('user_subscriptions').select('id', { count: 'exact', head: true })
-        .eq('status', 'active').gt('expires_at', new Date().toISOString());
       const { count: totalSkins } = await supabase
         .from('user_skins').select('id', { count: 'exact', head: true });
 
       const msg = `📊 *Chumi stats*\n\n` +
         `👥 Users: *${totalUsers ?? 0}*\n` +
         `🐾 Pairs: *${totalPairs ?? 0}* (alive: ${alivePairs ?? 0}, dead: ${deadPairs ?? 0})\n` +
-        `⭐ Premium subs: *${activeSubs ?? 0}*\n` +
         `🎨 Skins owned: *${totalSkins ?? 0}*`;
       await sendMessage(env, chatId, msg, webAppButton);
       return new Response('OK');

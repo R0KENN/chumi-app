@@ -104,25 +104,12 @@ function json(data, status = 200, request = null) {
 }
 
 async function isPremium(supabase, userId) {
-  // Админам премиум выдаётся всегда
-  if (ADMIN_IDS.includes(String(userId))) return true;
-
-  const { data } = await supabase
-    .from('user_subscriptions')
-    .select('id, expires_at')
-    .eq('telegram_user_id', userId)
-    .eq('status', 'active')
-    .order('expires_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!data) return false;
-  return new Date(data.expires_at) > new Date();
+  // Премиум как функция удалён. Все привилегии остаются только у админа.
+  return ADMIN_IDS.includes(String(userId));
 }
 
 async function getMaxPairs(supabase, userId) {
   if (ADMIN_IDS.includes(userId)) return 999;
-  const premium = await isPremium(supabase, userId);
-  if (premium) return 999;
   const { data } = await supabase
     .from('user_slots')
     .select('extra_slots')
@@ -212,13 +199,25 @@ function validateInitData(initDataRaw, botToken, maxAgeSec = 86400) {
   }
 }
 
+// Разрешаем dev-обход авторизации ТОЛЬКО когда запрос реально с localhost.
+// Это страхует от случайно выставленной ALLOW_DEV_AUTH=1 в продакшене.
+function isLocalDev(request, env) {
+  if (env.ALLOW_DEV_AUTH !== '1') return false;
+  try {
+    const host = new URL(request.url).hostname;
+    return host === 'localhost' || host === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
 function extractUserId(request, env, bodyUserId, opts = {}) {
   const initData = request.headers.get('X-Telegram-Init-Data');
   if (initData) {
     const validated = validateInitData(initData, env.BOT_TOKEN, opts.maxAgeSec);
     if (validated) return validated.userId;
   }
-  if (env.ALLOW_DEV_AUTH === '1' && bodyUserId) return String(bodyUserId);
+  if (isLocalDev(request, env) && bodyUserId) return String(bodyUserId);
   return null;
 }
 
@@ -230,7 +229,7 @@ function getAuthedUserId(request, env) {
     const validated = validateInitData(initData, env.BOT_TOKEN);
     if (validated) return validated.userId;
   }
-  if (env.ALLOW_DEV_AUTH === '1') {
+  if (isLocalDev(request, env)) {
     // 1) Заголовок (если фронт его прислал)
     const devId = request.headers.get('X-Dev-User-Id');
     if (devId) return String(devId);
@@ -356,7 +355,7 @@ export async function onRequest(context) {
       const pairs = [];
       for (const up of userPairs) {
         const { data: pair } = await supabase
-          .from('pairs').select('*').eq('code', up.pair_code).single();
+          .from('pairs').select('*').eq('code', up.pair_code).maybeSingle();
         if (!pair) continue;
 
         const today = getTodayDate(pair.timezone || 'UTC');
@@ -484,7 +483,7 @@ export async function onRequest(context) {
             headers: {
               'Content-Type': contentType,
               'Cache-Control': 'public, max-age=86400',
-              'Access-Control-Allow-Origin': '*',
+              ...corsHeaders(request),
             },
           });
         }
@@ -801,7 +800,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       }
 
       const { data: pair } = await supabase
-        .from('pairs').select('*').eq('code', code).single();
+        .from('pairs').select('*').eq('code', code).maybeSingle();
       if (!pair) return json({ error: 'Pair not found' }, 404);
 
       const { data: members } = await supabase
@@ -910,20 +909,18 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
 
       // One-time task (add_to_home)
       if (taskKey === 'add_to_home') {
-        const { data: alreadyDone } = await supabase
-          .from('one_time_tasks').select('id')
-          .eq('pair_code', code)
-          .eq('user_id', userId)
-          .eq('task_key', taskKey)
-          .maybeSingle();
-        if (alreadyDone) return json({ error: 'Already completed' }, 400);
-
-        await supabase.from('one_time_tasks').insert({
+        // Полагаемся на UNIQUE-индекс one_time_tasks_unique: если строка уже
+        // есть, insert вернёт ошибку 23505 — значит задача уже выполнена.
+        const { error: otErr } = await supabase.from('one_time_tasks').insert({
           pair_code: code,
           user_id: userId,
           task_key: taskKey,
           completed_at: new Date().toISOString(),
         });
+        if (otErr) {
+          // 23505 = дубликат (уже выполнено), любую другую ошибку тоже не начисляем
+          return json({ error: 'Already completed' }, 400);
+        }
 
         const { data: pair } = await supabase
           .from('pairs').select('growth_points').eq('code', code).single();
@@ -935,17 +932,9 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         return json({ success: true, points_added: points });
       }
 
-      // Daily tasks
-      const { data: existing } = await supabase
-        .from('daily_tasks').select('id')
-        .eq('pair_code', code)
-        .eq('user_id', userId)
-        .eq('task_key', taskKey)
-        .eq('task_date', today)
-        .maybeSingle();
-      if (existing) return json({ error: 'Already completed' }, 400);
-
-      await supabase.from('daily_tasks').insert({
+      // Daily tasks — полагаемся на UNIQUE-индекс daily_tasks_unique.
+      // Если insert упал с конфликтом, задача уже выполнена сегодня → не начисляем.
+      const { error: dtErr } = await supabase.from('daily_tasks').insert({
         pair_code: code,
         user_id: userId,
         task_key: taskKey,
@@ -953,6 +942,9 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         completed: true,
         completed_at: new Date().toISOString(),
       });
+      if (dtErr) {
+        return json({ error: 'Already completed' }, 400);
+      }
 
       const { data: members } = await supabase
         .from('pair_users').select('user_id')
@@ -1176,7 +1168,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403);
 
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).single();
+      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).maybeSingle();
       if (!pair) return json({ error: 'Pair not found' }, 404);
       if (!pair.is_dead) return json({ error: 'Pet is not dead' }, 400);
 
@@ -1272,20 +1264,6 @@ try {
         return json({ invoiceUrl: data.result });
       }
 
-      if (productId === 'premium_monthly') {
-        const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
-          title: 'Chumi Premium',
-          description: 'Exclusive skins, unlimited pairs, unique outfits',
-          payload: JSON.stringify({ userId, productId: 'premium_monthly', timestamp: Date.now() }),
-          provider_token: '',
-          currency: 'XTR',
-          prices: [{ amount: 150, label: 'Premium Monthly' }],
-          subscription_period: 2592000,
-        });
-        if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
-        return json({ invoiceUrl });
-      }
-
       return json({ error: 'Invalid product' }, 400);
     }
 
@@ -1345,16 +1323,7 @@ try {
         .in('pair_code', codes);
 
       const userIds = [...new Set((allMembers || []).map(m => m.user_id))];
-      const nowIso = new Date().toISOString();
-      const { data: activeSubs } = await supabase
-        .from('user_subscriptions')
-        .select('telegram_user_id')
-        .in('telegram_user_id', userIds)
-        .eq('status', 'active')
-        .gt('expires_at', nowIso);
-      const premiumSet = new Set((activeSubs || []).map(s => String(s.telegram_user_id)));
-      // Админы всегда считаются премиумом
-      ADMIN_IDS.forEach(id => premiumSet.add(String(id)));
+      const premiumSet = new Set(ADMIN_IDS.map(id => String(id)));
 
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
@@ -1408,16 +1377,7 @@ try {
         .in('pair_code', codes);
 
       const userIds = [...new Set((allMembers || []).map(m => m.user_id))];
-      const nowIso = new Date().toISOString();
-      const { data: activeSubs } = await supabase
-        .from('user_subscriptions')
-        .select('telegram_user_id')
-        .in('telegram_user_id', userIds)
-        .eq('status', 'active')
-        .gt('expires_at', nowIso);
-      const premiumSet = new Set((activeSubs || []).map(s => String(s.telegram_user_id)));
-      // Админы всегда считаются премиумом
-      ADMIN_IDS.forEach(id => premiumSet.add(String(id)));
+      const premiumSet = new Set(ADMIN_IDS.map(id => String(id)));
 
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
@@ -2040,9 +2000,6 @@ if (!opened) {
         .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', false);
       const { count: deadPairs } = await supabase
         .from('pairs').select('code', { count: 'exact', head: true }).eq('is_dead', true);
-      const { count: activeSubs } = await supabase
-        .from('user_subscriptions').select('id', { count: 'exact', head: true })
-        .eq('status', 'active').gt('expires_at', now.toISOString());
       const { count: totalSkinsOwned } = await supabase
         .from('user_skins').select('id', { count: 'exact', head: true });
 
@@ -2050,9 +2007,6 @@ if (!opened) {
       const { count: newPairs24h } = await supabase
         .from('pairs').select('code', { count: 'exact', head: true })
         .gte('created_at', yesterdayIso);
-      const { count: newSubs24h } = await supabase
-        .from('user_subscriptions').select('id', { count: 'exact', head: true })
-        .gte('starts_at', yesterdayIso);
       const { count: newSkins24h } = await supabase
         .from('user_skins').select('id', { count: 'exact', head: true })
         .gte('created_at', yesterdayIso);
@@ -2091,9 +2045,7 @@ if (!opened) {
         `   💀 Мёртвые: ${deadPairs ?? 0}\n\n` +
         `*За последние 24 часа:*\n` +
         `   🆕 Новых пар: ${newPairs24h ?? 0}\n` +
-        `   ⭐ Новых Premium: ${newSubs24h ?? 0}\n` +
         `   🎨 Куплено скинов: ${newSkins24h ?? 0}\n\n` +
-        `💎 *Активных Premium:* ${activeSubs ?? 0}\n` +
         `🎨 *Скинов в собственности:* ${totalSkinsOwned ?? 0}\n\n` +
         `🏆 *Топ-3 серии:*\n${topStreaksText}`;
 
@@ -2326,7 +2278,9 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
         .eq('user_id', userId).eq('skin_id', 'bee').maybeSingle();
       if (alreadyOwned) return json({ error: 'Already claimed' }, 400);
 
-      await supabase.from('user_skins').insert({ user_id: userId, skin_id: 'bee' });
+      const { error: beeErr } = await supabase
+        .from('user_skins').insert({ user_id: userId, skin_id: 'bee' });
+      if (beeErr) return json({ error: 'Already claimed' }, 400);
       return json({ success: true });
     }
 
@@ -2373,31 +2327,11 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     // ── GET /api/premium/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/premium\/[^/]+$/)) {
       const userId = path.split('/')[3];
-
       const authedId = getAuthedUserId(request, env);
       if (!authedId) return json({ error: 'Unauthorized' }, 401);
       if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
-
-      const premium = await isPremium(supabase, userId);
-      let expiresAt = null;
-
-      // У админа премиум вечный — отдаём дату далеко в будущем
-      if (ADMIN_IDS.includes(String(userId))) {
-        return json({ premium: true, expires_at: '2099-12-31T23:59:59Z' });
-      }
-
-      if (premium) {
-        const { data } = await supabase
-          .from('user_subscriptions')
-          .select('expires_at')
-          .eq('telegram_user_id', userId)
-          .eq('status', 'active')
-          .order('expires_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        expiresAt = data?.expires_at || null;
-      }
-      return json({ premium, expires_at: expiresAt });
+      const premium = ADMIN_IDS.includes(String(userId));
+      return json({ premium, expires_at: premium ? '2099-12-31T23:59:59Z' : null });
     }
 
     // ── GET /api/recoveries-left/:pairCode ──
