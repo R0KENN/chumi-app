@@ -153,6 +153,7 @@ export default function PairScreen() {
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
+  const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
 const [showCalendar, setShowCalendar] = useState(false);
 const [showPostcard, setShowPostcard] = useState(false);
@@ -245,6 +246,21 @@ const handleSaveDiary = async () => {
 }
   } catch (e) { haptic('error'); }
   finally { setDiarySaving(false); }
+};
+
+const handleDeleteDiary = async (entryId) => {
+  try {
+    const res = await fetch(`${API}/diary-delete`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ userId, entryId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      haptic('light');
+      await loadDiary();
+    }
+  } catch (e) {}
 };
 
 // Когда открывается календарь — сбрасываем месяц на текущий
@@ -843,6 +859,15 @@ useEffect(() => {
   const bgColors = skinBg || lv.bg;
   const accentColor = skinAccent || lv.accent;
   const checkColor = skinCheck || lv.check;
+
+    // ── Postcard helpers ──
+  const loadImage = (src) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 
     // Кеш загруженных изображений по URL — чтобы смена фона открытки не
   // перегружала тяжёлый кадр питомца и фон заново.
@@ -2804,4 +2829,3 @@ calendarData.days.forEach(d => {
     </div>
   );
 }
-
