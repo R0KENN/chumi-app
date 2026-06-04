@@ -2124,6 +2124,7 @@ if (!opened) {
         `👋 ${safePet} is waiting! Streak: ${streak} days 🐾`,
       ];
 
+      let deliveredCount = 0;
       for (const m of (members || [])) {
         if (m.user_id === userId) continue;
         const { data: ps } = await supabase
@@ -2133,24 +2134,39 @@ if (!opened) {
         const pool = targetLang === 'ru' ? RU : EN;
         const text = pool[Math.floor(Math.random() * pool.length)];
 
-const btnText = targetLang === 'ru' ? '🐾Chumi' : '🐾Chumi';
-await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    chat_id: m.user_id,
-    text,
-    parse_mode: 'Markdown',
-    reply_markup: { inline_keyboard: [[{ text: btnText, web_app: { url: WEBAPP_URL } }]] },
-  }),
-});
+        const btnText = '🐾 Chumi';
+        let delivered = false;
+        try {
+          const tgRes = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: m.user_id,
+              text,
+              parse_mode: 'Markdown',
+              reply_markup: { inline_keyboard: [[{ text: btnText, web_app: { url: WEBAPP_URL } }]] },
+            }),
+          });
+          delivered = tgRes.ok;
+        } catch (e) {
+          delivered = false;
+        }
 
-        // Записываем факт отправки — для rate-limit (1 раз в час)
-        await supabase.from('notification_log').insert({
-          sender_user_id: String(userId),
-          target_user_id: String(m.user_id),
-          sent_at: new Date().toISOString(),
-        });
+        if (delivered) {
+          deliveredCount++;
+          // Записываем факт отправки — для rate-limit (1 раз в час)
+          await supabase.from('notification_log').insert({
+            sender_user_id: String(userId),
+            target_user_id: String(m.user_id),
+            sent_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      // Если ни одному партнёру не доставлено (например, бот заблокирован) —
+      // возвращаем ошибку, чтобы фронт НЕ засчитывал задание.
+      if (deliveredCount === 0) {
+        return json({ error: 'Delivery failed' }, 502);
       }
       return json({ success: true });
     }
