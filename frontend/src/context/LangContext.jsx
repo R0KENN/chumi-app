@@ -229,7 +229,11 @@ export function LangProvider({ children }) {
       }
 
       try {
-        const res = await fetch(`/api/user-lang/${uid}`);
+        const headers = {};
+        const initData = getInitData();
+        if (initData) headers['X-Telegram-Init-Data'] = initData;
+
+        const res = await fetch(`/api/user-lang/${uid}`, { headers });
         const data = await res.json();
         if (data.lang && (data.lang === 'ru' || data.lang === 'en')) {
           setLangState(data.lang);

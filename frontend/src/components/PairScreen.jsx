@@ -142,6 +142,7 @@ export default function PairScreen() {
   const [reviveError, setReviveError] = useState('');
   const [recoveriesLeft, setRecoveriesLeft] = useState(5);
   const idleVideoRef = useRef(null);
+  const imageCacheRef = useRef({});
   const lastLevelUpShownRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
@@ -829,22 +830,57 @@ useEffect(() => {
   const isMaxLevel = lv.idx === LEVELS.length - 1 && lv.remaining === 0;
   const isDark = !isEgg && lv.idx === 5;
 
-  // Если активен покупной скин с собственным фоном — используем его, иначе цвета уровня
-  const activeSkinData = (showOutfits && previewSkin !== undefined && previewSkin !== null && !String(previewSkin).startsWith('level_'))
-    ? SKINS.find(s => s.id === previewSkin)
-    : (pair.active_skin && !pair.active_skin.startsWith('level_'))
-      ? SKINS.find(s => s.id === pair.active_skin)
-      : null;
+  // Определяем, какой скин показываем в данный момент: при открытом окне
+  // нарядов — превью, иначе активный скин пары.
+  const effectiveSkin = (showOutfits && previewSkin !== undefined) ? previewSkin : pair.active_skin;
 
-  const bgColors = activeSkinData?.bg || lv.bg;
-  const accentColor = activeSkinData?.accent || lv.accent;
-  const checkColor = activeSkinData?.accent || lv.check;
+  // Цвета фона/акцента берём из выбранного скина:
+  //  • level_N  → из LEVELS[N] (уровневый персонаж со своим фоном);
+  //  • покупной → из SKINS;
+  //  • иначе    → цвета текущего уровня.
+  let skinBg = null, skinAccent = null, skinCheck = null;
+  if (effectiveSkin && String(effectiveSkin).startsWith('level_')) {
+    const lvNum = parseInt(String(effectiveSkin).split('_')[1], 10);
+    const lvData = LEVELS[lvNum];
+    if (lvData) {
+      skinBg = lvData.bg;
+      skinAccent = lvData.accent;
+      skinCheck = lvData.check;
+    }
+  } else if (effectiveSkin) {
+    const sd = SKINS.find(s => s.id === effectiveSkin);
+    if (sd) {
+      skinBg = sd.bg;
+      skinAccent = sd.accent;
+      skinCheck = sd.accent;
+    }
+  }
+
+  const bgColors = skinBg || lv.bg;
+  const accentColor = skinAccent || lv.accent;
+  const checkColor = skinCheck || lv.check;
 
     // ── Postcard helpers ──
   const loadImage = (src) => new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
+    // Кеш загруженных изображений по URL — чтобы смена фона открытки не
+  // перегружала тяжёлый кадр питомца и фон заново.
+  const loadImageCached = (src) => new Promise((resolve, reject) => {
+    const cached = imageCacheRef.current[src];
+    // Используем кеш только для уже успешно загруженного и «годного» изображения
+    if (cached && cached.complete && cached.naturalWidth > 0) {
+      resolve(cached);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { imageCacheRef.current[src] = img; resolve(img); };
     img.onerror = reject;
     img.src = src;
   });
@@ -881,18 +917,16 @@ useEffect(() => {
 // Размер исходных PNG: 770×1024 (но рисуем в canvas 1080×1440 → координаты ниже масштабированы под 1080×1440)
 // Хелпер для рисования питомца с fallback
 const drawPetSafe = (ctx, url, x, y, size) => new Promise((resolve) => {
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = () => { ctx.drawImage(img, x, y, size, size); resolve(); };
-  img.onerror = () => {
-    ctx.font = `${Math.floor(size * 0.55)}px -apple-system, system-ui, sans-serif`;
-    ctx.fillStyle = '#888';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🐾', x + size / 2, y + size / 2);
-    resolve();
-  };
-  img.src = url;
+  loadImageCached(url)
+    .then(img => { ctx.drawImage(img, x, y, size, size); resolve(); })
+    .catch(() => {
+      ctx.font = `${Math.floor(size * 0.55)}px -apple-system, system-ui, sans-serif`;
+      ctx.fillStyle = '#888';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🐾', x + size / 2, y + size / 2);
+      resolve();
+    });
 });
 
 // Хелпер для аватара с fallback на эмодзи
@@ -1020,26 +1054,26 @@ const POSTCARD_BACKGROUNDS = [
 ];
 
   // Открытка 1080×1920 (тот же размер что и Stories) — фон + полароид
-const generatePostcard = () => new Promise((resolve) => {
+const generatePostcard = () => new Promise(async (resolve) => {
   const W = 1080, H = 1440;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   const bg = (postcardBg && postcardBg.file) ? postcardBg : POSTCARD_BACKGROUNDS[0];
 
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = async () => {
+  try {
+    const img = await loadImageCached(bg.file);
     ctx.drawImage(img, 0, 0, W, H);                  // фон с уже нарисованным полароидом
-    await drawPolaroidContent(ctx, bg);              // контент поверх
-    ctx.font = '22px -apple-system, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.textAlign = 'right';
-    ctx.fillText('@ChumiPetBot', W - 28, H - 22);
-    resolve(canvas.toDataURL('image/png', 0.95));
-  };
-  img.onerror = () => resolve(canvas.toDataURL('image/png', 0.95));
-  img.src = bg.file;
+  } catch (e) {
+    // если фон не загрузился — рисуем контент на пустом холсте
+  }
+
+  await drawPolaroidContent(ctx, bg);                // контент поверх (питомец тоже кешируется)
+  ctx.font = '22px -apple-system, system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.textAlign = 'right';
+  ctx.fillText('@ChumiPetBot', W - 28, H - 22);
+  resolve(canvas.toDataURL('image/jpeg', 0.9));      // JPEG вместо PNG — легче payload
 });
 
 const wrapPostcardForStory = () => new Promise((resolve) => {
@@ -1222,13 +1256,6 @@ const wrapPostcardForStory = () => new Promise((resolve) => {
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
   const isDeadBlocked = pair.is_dead && hasPartner;
-const platform = tg?.platform || '';
-const isIOS = platform === 'ios';
-const supportsAddToHome = !!tg?.addToHomeScreen && !isIOS;
-
-if (!addToHomeDone && supportsAddToHome) {
-  allTasks.push({ key: 'add_to_home', points: 3, ru: 'Добавить на главный экран', en: 'Add to Home Screen', icon: '📌', action: 'add_home', completed: false, oneTime: true });
-}
   const doneCount = allTasks.filter(t => t.completed).length;
   const totalCount = allTasks.length;
 
@@ -1241,22 +1268,6 @@ if (!addToHomeDone && supportsAddToHome) {
       // Открываем попап открытки. Задание засчитается после успешного «Поделиться».
       setPostcardUrl(null);
       setShowPostcard(true);
-      return;
-    }
-    if (task.action === 'add_home') {
-      if (!tg?.addToHomeScreen) return;
-      // Слушаем результат: засчитываем XP только при реальном добавлении
-      const onAdded = () => {
-        try { tg.offEvent?.('homeScreenAdded', onAdded); } catch (e) {}
-        setCompleting(true);
-        completeTask('add_to_home').then(() => load()).finally(() => setCompleting(false));
-      };
-      try { tg.onEvent?.('homeScreenAdded', onAdded); } catch (e) {}
-      tg.addToHomeScreen();
-      // Fallback: если события нет (старые версии), засчитываем через таймаут как раньше
-      setTimeout(() => {
-        try { tg.offEvent?.('homeScreenAdded', onAdded); } catch (e) {}
-      }, 30000);
       return;
     }
 
@@ -1678,12 +1689,12 @@ const renderPet = () => (
 
 {/* SVG-фильтр для liquid-glass refraction (рендерится один раз, невидим) */}
 <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
-  <filter id="lg-distortion" x="0%" y="0%" width="100%" height="100%">
-    <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008"
-      numOctaves="2" seed="42" result="noise" />
-    <feGaussianBlur in="noise" stdDeviation="2" result="blurred" />
+  <filter id="lg-distortion" x="-20%" y="-20%" width="140%" height="140%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.012 0.014"
+      numOctaves="2" seed="7" result="noise" />
+    <feGaussianBlur in="noise" stdDeviation="1.4" result="blurred" />
     <feDisplacementMap in="SourceGraphic" in2="blurred"
-      scale="40" xChannelSelector="R" yChannelSelector="G" />
+      scale="26" xChannelSelector="R" yChannelSelector="G" />
   </filter>
 </svg>
 
@@ -1691,43 +1702,67 @@ const renderPet = () => (
 {!showOutfits && (
   <>
     <nav className={`lg-dock ${isDark ? 'lg-dark' : ''}`}>
-      {[
-        { key: 'home',     Ico: IconPet,      label: lang === 'ru' ? 'Питомец'  : 'Pet' },
-        { key: 'calendar', Ico: IconCalendar, label: lang === 'ru' ? 'Календарь': 'Calendar' },
-        { key: 'diary',    Ico: IconDiary,    label: lang === 'ru' ? 'Дневник'  : 'Diary' },
-        { key: 'ranking',  Ico: IconTrophy,   label: lang === 'ru' ? 'Рейтинг'  : 'Rating' },
-        { key: 'more',     Ico: IconMore,     label: lang === 'ru' ? 'Ещё'      : 'More' },
-      ].map(tab => {
-        const isActive =
-          (tab.key === 'calendar' && showCalendar) ||
-          (tab.key === 'diary'    && showDiary) ||
-          (tab.key === 'ranking'  && showRanking) ||
-          (tab.key === 'more'     && showMenu) ||
-          (tab.key === 'home'     && !showCalendar && !showDiary && !showRanking && !showMenu);
-          const isDisabled = !hasPartner && tab.key !== 'more';
+      {(() => {
+        const dockTabs = [
+          { key: 'home',     Ico: IconPet,      label: lang === 'ru' ? 'Питомец'  : 'Pet' },
+          { key: 'calendar', Ico: IconCalendar, label: lang === 'ru' ? 'Календарь': 'Calendar' },
+          { key: 'diary',    Ico: IconDiary,    label: lang === 'ru' ? 'Дневник'  : 'Diary' },
+          { key: 'ranking',  Ico: IconTrophy,   label: lang === 'ru' ? 'Рейтинг'  : 'Rating' },
+          { key: 'more',     Ico: IconMore,     label: lang === 'ru' ? 'Ещё'      : 'More' },
+        ];
+        const activeKey =
+          showCalendar ? 'calendar' :
+          showDiary    ? 'diary' :
+          showRanking  ? 'ranking' :
+          showMenu     ? 'more' : 'home';
+        const activeTabIndex = dockTabs.findIndex(t => t.key === activeKey);
+
         return (
-<button
-  key={tab.key}
-  disabled={isDisabled}
-  className={`lg-tab ${isActive ? 'lg-tab-active' : ''}`}
-  style={isDisabled ? { opacity: 0.35, cursor: 'default' } : {}}
-  onClick={() => {
-    if (isDisabled) return;
-    haptic('light');
-    setShowCalendar(false); setShowDiary(false);
-    setShowRanking(false); setShowMenu(false);
-    if (tab.key === 'calendar') setShowCalendar(true);
-    else if (tab.key === 'diary') setShowDiary(true);
-    else if (tab.key === 'ranking') { loadRanking(); setShowRanking(true); }
-    else if (tab.key === 'more') setShowMenu(true);
-  }}
->
-            {isActive && <span className="lg-pill" />}
-            <span className="lg-tab-ico"><tab.Ico /></span>
-            <span className="lg-tab-label">{tab.label}</span>
-          </button>
+          <>
+            {/* Единая скользящая пилюля: едет к активной вкладке */}
+            <span
+              className="lg-pill-slider"
+              style={{
+                width: `calc((100% - 12px) / ${dockTabs.length})`,
+                transform: `translateX(${activeTabIndex * 100}%)`,
+              }}
+            />
+            {dockTabs.map(tab => {
+              const isActive = tab.key === activeKey;
+              const isDisabled = !hasPartner && tab.key !== 'more';
+              return (
+                <button
+                  key={tab.key}
+                  disabled={isDisabled}
+                  className={`lg-tab ${isActive ? 'lg-tab-active' : ''}`}
+                  style={isDisabled ? { opacity: 0.35, cursor: 'default' } : {}}
+                  onClick={() => {
+                    if (isDisabled) return;
+                    haptic('light');
+
+                    // Повторный тап по активному табу — закрыть окно и вернуться на «Питомца».
+                    if (isActive) {
+                      setShowCalendar(false); setShowDiary(false);
+                      setShowRanking(false); setShowMenu(false);
+                      return;
+                    }
+
+                    setShowCalendar(false); setShowDiary(false);
+                    setShowRanking(false); setShowMenu(false);
+                    if (tab.key === 'calendar') setShowCalendar(true);
+                    else if (tab.key === 'diary') setShowDiary(true);
+                    else if (tab.key === 'ranking') { loadRanking(); setShowRanking(true); }
+                    else if (tab.key === 'more') setShowMenu(true);
+                  }}
+                >
+                  <span className="lg-tab-ico"><tab.Ico /></span>
+                  <span className="lg-tab-label">{tab.label}</span>
+                </button>
+              );
+            })}
+          </>
         );
-      })}
+      })()}
     </nav>
 
     {/* мини-лист «Ещё» */}
@@ -1996,7 +2031,7 @@ const renderPet = () => (
       {showRanking && (
         <div className="sk-overlay" onClick={() => setShowRanking(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
-            <h3>🏆 {lang === 'ru' ? 'Рейтинг' : 'Ranking'}</h3>
+            <h3>{lang === 'ru' ? 'Рейтинг' : 'Ranking'}</h3>
             <div className="sk-ranking-tabs">
               <button className={`sk-ranking-tab ${rankingTab === 'top' ? 'sk-ranking-tab-active' : ''}`} onClick={() => setRankingTab('top')}>{lang === 'ru' ? 'Топ 100' : 'Top 100'}</button>
               <button className={`sk-ranking-tab ${rankingTab === 'random' ? 'sk-ranking-tab-active' : ''}`} onClick={() => setRankingTab('random')}>{lang === 'ru' ? 'Случайно' : 'Random'}</button>
@@ -2312,7 +2347,7 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
       {showCalendar && (
         <div className="sk-overlay" onClick={() => setShowCalendar(false)}>
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
-            <h3>📅 {lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}</h3>
+            <h3>{lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}</h3>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <button onClick={() => changeMonth(-1)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>‹</button>
               <span style={{ fontWeight: 600, fontSize: 15 }}>
@@ -2378,7 +2413,7 @@ calendarData.days.forEach(d => {
 {showDiary && (
   <div className="sk-overlay" onClick={() => setShowDiary(false)}>
     <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-      <h3>📔 {lang === 'ru' ? 'Наш дневник' : 'Our diary'}</h3>
+      <h3>{lang === 'ru' ? 'Наш дневник' : 'Our diary'}</h3>
 
       {/* Форма ввода */}
       <div style={{ background: '#f5f5f7', borderRadius: 14, padding: 12, marginBottom: 12 }}>
@@ -2565,7 +2600,7 @@ calendarData.days.forEach(d => {
       }}
     >
       <h3 style={{ margin: 0, fontSize: 16, textAlign: 'center' }}>
-        💌 {lang === 'ru' ? 'Наша открытка' : 'Our postcard'}
+        {lang === 'ru' ? 'Наша открытка' : 'Our postcard'}
       </h3>
 
       {/* Превью */}
@@ -2588,8 +2623,11 @@ calendarData.days.forEach(d => {
         alt="postcard"
         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
       />
-    : <div style={{ color: '#888', fontSize: 14 }}>
-        ⏳ {lang === 'ru' ? 'Создаём...' : 'Generating...'}
+    : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: '#888' }}>
+        <div className="sk-spinner" />
+        <div style={{ fontSize: 13 }}>
+          {lang === 'ru' ? 'Готовим открытку…' : 'Preparing postcard…'}
+        </div>
       </div>}
 </div>
 
@@ -2648,36 +2686,21 @@ calendarData.days.forEach(d => {
         📱 {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
       </button>
 
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button
-          onClick={handleSharePostcardChat}
-          disabled={postcardGenerating || !postcardUrl || postcardSharing}
-          style={{
-            flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
-            background: '#3390EC', color: '#fff',
-            fontSize: 13, fontWeight: 600,
-            cursor: postcardUrl ? 'pointer' : 'default',
-            opacity: postcardUrl ? 1 : 0.6,
-          }}
-        >
-          📤 {postcardSharing
-            ? (lang === 'ru' ? '...' : '...')
-            : (lang === 'ru' ? 'Поделиться' : 'Share')}
-        </button>
-        <button
-          onClick={handleDownloadPostcard}
-          disabled={postcardGenerating || !postcardUrl}
-          style={{
-            flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
-            background: '#4CAF50', color: '#fff',
-            fontSize: 13, fontWeight: 600,
-            cursor: postcardUrl ? 'pointer' : 'default',
-            opacity: postcardUrl ? 1 : 0.6,
-          }}
-        >
-          💾 {lang === 'ru' ? 'Сохранить' : 'Save'}
-        </button>
-      </div>
+      <button
+        onClick={handleSharePostcardChat}
+        disabled={postcardGenerating || !postcardUrl || postcardSharing}
+        style={{
+          width: '100%', padding: '11px 0', borderRadius: 12, border: 'none',
+          background: '#3390EC', color: '#fff',
+          fontSize: 13, fontWeight: 600,
+          cursor: (postcardUrl && !postcardSharing) ? 'pointer' : 'default',
+          opacity: (postcardUrl && !postcardSharing) ? 1 : 0.6,
+        }}
+      >
+        {postcardSharing
+          ? (lang === 'ru' ? '⏳ Отправляем…' : '⏳ Sending…')
+          : `📤 ${lang === 'ru' ? 'Поделиться' : 'Share'}`}
+      </button>
 
       <button
         onClick={() => setShowPostcard(false)}
@@ -2710,7 +2733,7 @@ calendarData.days.forEach(d => {
       }}
     >
       <h3 style={{ margin: 0, fontSize: 16, textAlign: 'center' }}>
-        📤 {lang === 'ru' ? 'Поделиться Chumi' : 'Share Chumi'}
+        {lang === 'ru' ? 'Поделиться Chumi' : 'Share Chumi'}
       </h3>
 
       {/* Превью 1:1 */}

@@ -154,6 +154,21 @@ body {
   from { transform: translateX(-50%) translateY(12px); opacity: 0; }
   to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
 }
+/* ── Живой specular-блик: медленно смещается и пульсирует ── */
+@keyframes lgSheen {
+  0%   { transform: translate(0, 0) scale(1);      opacity: 0.9; }
+  50%  { transform: translate(8%, 6%) scale(1.08); opacity: 1;   }
+  100% { transform: translate(0, 0) scale(1);      opacity: 0.9; }
+}
+/* ── Появление оверлеев и попапов ── */
+@keyframes skOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes skPopupIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 /* ── ••• button ── */
 .sk-topbar-btn {
@@ -276,8 +291,10 @@ body {
 
 .sk-task {
   display: flex; align-items: center; gap: 14px; padding: 13px 0;
-  cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.04); transition: opacity 0.3s;
+  cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.04);
+  transition: opacity 0.3s, transform 0.12s ease;
 }
+.sk-task:active { transform: scale(0.985); }
 .sk-task:last-child { border-bottom: none; }
 .sk-task-done { opacity: 0.45; pointer-events: none; }
 
@@ -286,7 +303,15 @@ body {
   border: 2.5px solid rgba(0,0,0,0.12); flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; transition: all 0.3s;
 }
-.sk-task-check span { color: #fff; font-size: 14px; font-weight: 700; }
+.sk-task-check span {
+  color: #fff; font-size: 14px; font-weight: 700;
+  animation: checkPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes checkPop {
+  0%   { transform: scale(0); }
+  60%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
 
 .sk-task-body { flex: 1; }
 .sk-task-title { font-size: clamp(14px, 4vw, 15px); font-weight: 600; color: #1a1a1a; }
@@ -315,6 +340,7 @@ body {
   position: fixed; inset: 0; background: rgba(0,0,0,0.45);
   display: flex; align-items: center; justify-content: center; z-index: 1000;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  animation: skOverlayIn 0.22s ease;
 }
 .sk-popup {
   border-radius: 24px; padding: clamp(18px, 5vw, 24px); width: 92%; max-width: clamp(300px, 90vw, 340px);
@@ -323,8 +349,30 @@ body {
   -webkit-backdrop-filter: blur(32px) saturate(1.8);
   border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  animation: skPopupIn 0.32s cubic-bezier(0.34, 1.4, 0.5, 1);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
 }
+/* specular-блик попапов */
+.sk-popup::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(90% 50% at 30% -5%,
+      rgba(255,255,255,0.28) 0%,
+      rgba(255,255,255,0) 55%);
+  mix-blend-mode: screen;
+  animation: lgSheen 8s ease-in-out infinite;
+}
+/* содержимое попапа — над бликом */
+.sk-popup > * { position: relative; z-index: 1; }
 .sk-popup-wide { max-width: 400px; }
+.sk-popup-wide::before { display: none; }
 .sk-popup h3 { text-align: center; margin-bottom: 16px; color: #1a1a1a; font-size: 18px; }
 .sk-lvl-row {
   display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; margin-bottom: 4px;
@@ -430,8 +478,24 @@ body {
     0 2px 10px rgba(0, 0, 0, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     inset 0 -1px 2px rgba(0, 0, 0, 0.05);
+  isolation: isolate;
+  overflow: visible;
 }
-
+/* specular-блик дока — живой, как у плашки «Ещё» */
+.lg-dock::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(120% 90% at 25% -20%,
+      rgba(255,255,255,0.5) 0%,
+      rgba(255,255,255,0) 50%);
+  mix-blend-mode: screen;
+  animation: lgSheen 9s ease-in-out infinite;
+}
 /* refraction только там, где фильтр поддержан (Safari/iOS лучше всего) */
 @supports (filter: url(#lg-distortion)) {
   .lg-dock::before {
@@ -468,6 +532,7 @@ body {
   color: rgba(0, 0, 0, 0.55);
   transition: color 0.25s ease;
   -webkit-tap-highlight-color: transparent;
+  z-index: 2;
 }
 .lg-tab-ico {
   display: flex; align-items: center; justify-content: center;
@@ -480,27 +545,45 @@ body {
 
 /* активная вкладка — «жидкая пилюля» */
 .lg-tab-active { color: #1a1a1a; }
-.lg-tab-active .lg-tab-ico { transform: scale(1.06); }
-.lg-pill {
+.lg-tab-active .lg-tab-ico {
+  animation: tabIcoBump 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes tabIcoBump {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.18); }
+  100% { transform: scale(1.06); }
+}
+/* Единая скользящая пилюля дока — едет к активной вкладке */
+.lg-pill-slider {
   position: absolute;
-  inset: 3px;
+  left: 6px;            /* паддинг дока */
+  top: 6px;
+  bottom: 6px;
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.85);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 1),
     inset 0 -1px 2px rgba(0, 0, 0, 0.04),
     0 3px 10px rgba(0, 0, 0, 0.1);
-  z-index: -1;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 1;
+  pointer-events: none;
+  /* пружинистое скольжение */
+  transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.5, 1);
+  will-change: transform;
 }
 
 /* тёмные уровни питомца — делаем плашку светлее текстом */
 .lg-dock.lg-dark .lg-tab { color: rgba(255, 255, 255, 0.6); }
 .lg-dock.lg-dark .lg-tab-active { color: #fff; }
 .lg-dock.lg-dark { background: rgba(40, 40, 50, 0.5); border-color: rgba(255,255,255,0.18); }
-.lg-dock.lg-dark .lg-pill { background: rgba(255,255,255,0.18); }
+.lg-dock.lg-dark .lg-pill-slider { background: rgba(255,255,255,0.18); }
 
 /* мини-лист «Ещё» над плашкой */
+/* ══════════════════════════════════════
+   Liquid Glass — плашка «Ещё»
+   Слои: blur+saturate фон · цветная кромка ·
+   внутренний edge-highlight · specular-блик · тень
+   ══════════════════════════════════════ */
 .lg-more {
   position: fixed;
   left: 50%;
@@ -509,17 +592,73 @@ body {
   z-index: 1101;
   width: min(320px, calc(100vw - 32px));
   max-height: 60vh;
-  overflow-y: auto;
+  overflow: hidden auto;
   padding: 6px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(28px) saturate(1.8);
-  -webkit-backdrop-filter: blur(28px) saturate(1.8);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255,255,255,0.9);
-  animation: lgMoreUp 0.28s ease;
+  border-radius: 26px;
+  isolation: isolate;            /* свой контекст наложения для слоёв-псевдоэлементов */
+
+  /* СЛОЙ 1 — фон стекла: лёгкая заливка + сильный блюр с насыщением.
+     saturate делает фон «сочнее» — это половина ощущения стекла. */
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.55), rgba(255,255,255,0.28));
+  backdrop-filter: blur(30px) saturate(1.9) brightness(1.06);
+  -webkit-backdrop-filter: blur(30px) saturate(1.9) brightness(1.06);
+
+  /* СЛОЙ 2 — цветная кромка стекла (тонкая, чуть холодная) */
+  border: 1px solid rgba(255,255,255,0.55);
+
+  /* СЛОЙ 3 — объём: внутренний edge-highlight (светлый верх, тёмный низ)
+     + внешняя мягкая тень для отрыва от фона */
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.95),       /* яркий кант сверху */
+    inset 0 -1px 2px rgba(0,0,0,0.06),            /* притенение снизу */
+    inset 0 0 22px rgba(255,255,255,0.25),        /* мягкое внутреннее свечение */
+    0 16px 44px rgba(0,0,0,0.20),                 /* основная тень */
+    0 2px 8px rgba(0,0,0,0.08);                   /* контактная тень */
+
+  animation: lgMoreUp 0.34s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
+
+/* СЛОЙ 4 — specular-блик: диагональное светлое пятно, как отражение света.
+   Не перехватывает тапы (pointer-events:none). */
+.lg-more::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    radial-gradient(120% 80% at 20% -10%,
+      rgba(255,255,255,0.55) 0%,
+      rgba(255,255,255,0.0) 45%),
+    linear-gradient(180deg,
+      rgba(255,255,255,0.25) 0%,
+      rgba(255,255,255,0.0) 30%);
+  mix-blend-mode: screen;        /* блик «светится», а не закрашивает */
+  animation: lgSheen 7s ease-in-out infinite;
+}
+
+/* СЛОЙ 5 (прогрессивное улучшение) — настоящая рефракция краёв.
+   Работает только в Chromium-WebView (Android). На iOS просто игнорируется,
+   и плашка остаётся красивой за счёт слоёв 1–4. */
+@supports (backdrop-filter: url(#lg-distortion)) {
+  .lg-more::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+    backdrop-filter: url(#lg-distortion);
+    -webkit-backdrop-filter: url(#lg-distortion);
+  }
+}
+
+/* Контент плашки должен быть НАД блик-слоем */
 .lg-more button {
+  position: relative;
+  z-index: 3;                 /* над блик-слоем */
   display: flex; align-items: center; gap: 12px;
   width: 100%; text-align: left;
   padding: 13px 16px; border: none; background: none;

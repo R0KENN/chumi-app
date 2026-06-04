@@ -1,32 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
 import { LEVELS, getLevel } from './_levels.js';
+import { expectedAmount } from './_prices.js';
+import {
+  ADMIN_IDS, MAX_PAIRS_BASE, WEBAPP_URL,
+  getSupabase, generateCode, generateUniqueCode, escapeMd, getMaxPairs,
+} from './_shared.js';
 
 // ── Глобальные константы (объявлены до функций, которые их используют) ──
-const ADMIN_IDS = ['713156118'];
-const MAX_PAIRS_BASE = 2;
-const WEBAPP_URL = 'https://chumi-app.pages.dev';
 const FIRE_EMOJI_ID = '5368324170671202286';
-
-function getSupabase(env) {
-  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
-}
-
-function generateCode() {
-  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += c[Math.floor(Math.random() * c.length)];
-  return code;
-}
-
-async function generateUniqueCode(supabase) {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const code = generateCode();
-    const { data } = await supabase
-      .from('pairs').select('code').eq('code', code).maybeSingle();
-    if (!data) return code;
-  }
-  throw new Error('Could not generate unique pair code');
-}
 
 // Пытается «застолбить» платёж. Возвращает один из статусов:
 //   'new'  — charge новый, товар можно выдавать;
@@ -34,7 +14,12 @@ async function generateUniqueCode(supabase) {
 //   'error'— ошибка БД (не дубликат); товар не выдан, нужно вмешательство.
 // Атомарность обеспечивается UNIQUE-констрейнтом processed_charges.charge_id.
 async function claimCharge(supabase, chargeId, userId, product) {
-  if (!chargeId) return 'new'; // нет id — выдаём (поведение как раньше)
+  if (!chargeId) {
+    // Telegram Stars всегда присылает charge_id; его отсутствие — аномалия.
+    // Выдаём товар (как раньше), но логируем, чтобы заметить дубли.
+    console.warn(`claimCharge: no chargeId for user ${userId}, product ${product} — fulfilling without idempotency guard`);
+    return 'new';
+  }
   const { error } = await supabase
     .from('processed_charges')
     .insert({ charge_id: chargeId, user_id: userId, product });
@@ -121,15 +106,6 @@ async function notifyAdmins(env, text) {
   }
 }
 
-// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку.
-// ВАЖНО: обратный слеш экранируем ПЕРВЫМ, иначе он испортит уже добавленные слеши.
-// Набор символов — под legacy parse_mode: 'Markdown' (_ * ` [ ]).
-function escapeMd(s) {
-  return String(s || '')
-    .replace(/\\/g, '\\\\')
-    .replace(/([_*`\[\]])/g, '\\$1');
-}
-
 // Команды для обычных пользователей
 const PUBLIC_COMMANDS = [
   { command: 'start', description: 'Начать работу с ботом' },
@@ -172,16 +148,6 @@ async function setBotCommands(env) {
       }),
     });
   }
-}
-
-async function getMaxPairs(supabase, userId) {
-  if (ADMIN_IDS.includes(userId)) return 999;
-  const { data } = await supabase
-    .from('user_slots')
-    .select('extra_slots')
-    .eq('telegram_user_id', userId)
-    .maybeSingle();
-  return MAX_PAIRS_BASE + (data?.extra_slots || 0);
 }
 
 // ─── Получить язык пользователя из базы ───
@@ -451,12 +417,6 @@ export async function onRequestPost(context) {
       const pProductId = payload.productId || null;             // 'extra_slot' | 'premium_monthly'
 
       // ── Sanity-check: проверяем что заплатили правильную сумму ──
-      const EXPECTED_AMOUNT = {
-        extra_slot: 50,
-        premium_monthly: 150,
-        skin: 25,
-        skin_gift: 25,
-      };
       // productKey определяется ОДИН раз и используется и для проверки суммы,
       // и для дальнейшей обработки — они не могут разойтись.
       let productKey;
@@ -464,7 +424,9 @@ export async function onRequestPost(context) {
       else if (pType === 'skin_gift') productKey = 'skin_gift';
       else productKey = pProductId;
 
-      const expected = EXPECTED_AMOUNT[productKey];
+      // Цена берётся из общего модуля _prices.js — единый источник правды
+      // для скинов (по skinId) и товаров (extra_slot и т.п.).
+      const expected = expectedAmount(productKey, pSkinId);
       if (expected !== undefined && payment.total_amount !== expected) {
         console.error(`Payment amount mismatch: got ${payment.total_amount}, expected ${expected}`);
         return new Response('OK');

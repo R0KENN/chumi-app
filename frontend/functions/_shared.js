@@ -1,0 +1,52 @@
+// Общие хелперы и константы для bot.js и api/[[path]].js.
+// Единый источник правды — чтобы не было копипасты и рассинхрона.
+
+import { createClient } from '@supabase/supabase-js';
+
+// ── Константы ──
+export const ADMIN_IDS = ['713156118'];
+export const MAX_PAIRS_BASE = 2;
+export const WEBAPP_URL = 'https://chumi-app.pages.dev';
+
+// ── Supabase ──
+export function getSupabase(env) {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
+}
+
+// ── Генерация кода пары ──
+export function generateCode() {
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += c[Math.floor(Math.random() * c.length)];
+  return code;
+}
+
+// attempts по умолчанию 10 (как в bot.js); api вызывал с 20 — передаём параметром.
+export async function generateUniqueCode(supabase, attempts = 10) {
+  for (let i = 0; i < attempts; i++) {
+    const code = generateCode();
+    const { data } = await supabase
+      .from('pairs').select('code').eq('code', code).maybeSingle();
+    if (!data) return code;
+  }
+  throw new Error('Could not generate unique pair code');
+}
+
+// ── Экранирование Markdown (legacy parse_mode: 'Markdown') ──
+// Обратный слеш экранируем ПЕРВЫМ, иначе он испортит уже добавленные слеши.
+export function escapeMd(s) {
+  return String(s || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/([_*`\[\]])/g, '\\$1');
+}
+
+// ── Лимит пар ──
+export async function getMaxPairs(supabase, userId) {
+  if (ADMIN_IDS.includes(userId)) return 999;
+  const { data } = await supabase
+    .from('user_slots')
+    .select('extra_slots')
+    .eq('telegram_user_id', userId)
+    .maybeSingle();
+  return MAX_PAIRS_BASE + (data?.extra_slots || 0);
+}

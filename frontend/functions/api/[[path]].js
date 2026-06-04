@@ -1,10 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
 import { createHmac } from 'node:crypto';
 import { LEVELS, getLevel } from '../_levels.js';
+import { SKIN_PRICES } from '../_prices.js';
+import {
+  ADMIN_IDS, MAX_PAIRS_BASE, WEBAPP_URL,
+  getSupabase, generateCode, generateUniqueCode, escapeMd, getMaxPairs,
+} from '../_shared.js';
 
 // ────────── CONFIG ──────────
-const ADMIN_IDS = ['713156118'];
-const MAX_PAIRS_BASE = 2;
 
 const TASK_POINTS = {
   daily_open: 1,
@@ -14,39 +16,6 @@ const TASK_POINTS = {
   pet_touch: 1,
   add_to_home: 3,
 };
-
-// Экранирует символы Markdown, чтобы пользовательские имена не ломали разметку.
-// ВАЖНО: обратный слеш экранируем ПЕРВЫМ, иначе он испортит уже добавленные слеши.
-// Набор символов — под legacy parse_mode: 'Markdown' (_ * ` [ ]).
-function escapeMd(s) {
-  return String(s || '')
-    .replace(/\\/g, '\\\\')
-    .replace(/([_*`\[\]])/g, '\\$1');
-}
-
-
-// ────────── HELPERS ──────────
-function getSupabase(env) {
-  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
-}
-
-function generateCode() {
-  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += c[Math.floor(Math.random() * c.length)];
-  return code;
-}
-
-async function generateUniqueCode(supabase) {
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const code = generateCode();
-    const { data } = await supabase
-      .from('pairs').select('code').eq('code', code).maybeSingle();
-    if (!data) return code;
-  }
-  // Крайне маловероятно, но fail-safe
-  throw new Error('Could not generate unique pair code');
-}
 
 // Дата YYYY-MM-DD в указанной таймзоне (UTC по умолчанию)
 function getTodayDate(tz) {
@@ -421,6 +390,14 @@ export async function onRequest(context) {
       const BOT_TOKEN = env.BOT_TOKEN;
       const wantProxy = url.searchParams.get('proxy');
 
+      // ── Авторизация: JSON-ответ со ссылкой на аватар отдаём только
+      // авторизованным. Бинарный proxy (?proxy=1) грузится тегом <img> без
+      // заголовков, поэтому его не блокируем — он и так требует точный путь.
+      if (wantProxy !== '1') {
+        const avatarAuthedId = getAuthedUserId(request, env);
+        if (!avatarAuthedId) return json({ error: 'Unauthorized' }, 401);
+      }
+
             // Только аватары пользователей, которые состоят в паре, доступны.
       // Это предотвращает утечку аватара любого Telegram-пользователя.
       const { data: targetPairUser } = await supabase
@@ -734,7 +711,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
       }
 
-      const code = await generateUniqueCode(supabase);
+      const code = await generateUniqueCode(supabase, 20);
 
       await supabase.from('pairs').insert({
         code,
@@ -993,38 +970,64 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
             .eq('code', code).single();
 
           if (pair) {
-            const newPoints = (pair.growth_points || 0) + points;
-            const updates = { growth_points: newPoints };
-
-            // streak растёт ТОЛЬКО для daily_open и только один раз в день
-            if (taskKey === 'daily_open' && pair.last_pair_streak_date !== today) {
-              const prev = pair.last_pair_streak_date;
-              if (!prev) {
-                updates.streak_days = 1;
-              } else {
-                const lastDate = new Date(prev + 'T00:00:00Z');
-                const todayDate = new Date(today + 'T00:00:00Z');
-                const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
-                if (diffDays === 1) {
-                  updates.streak_days = (pair.streak_days || 0) + 1;
-                } else if (diffDays > 1) {
-                  updates.streak_days = 1;
+            if (taskKey === 'daily_open') {
+              // ── Совместный daily_open засчитывается РОВНО один раз в день ──
+              // XP и streak привязаны к одной отметке last_pair_streak_date.
+              // Это убирает гонку: при одновременном заходе обоих партнёров
+              // только один запрос пройдёт условие eq(last_pair_streak_date, prev).
+              const alreadyCountedToday = pair.last_pair_streak_date === today;
+              if (!alreadyCountedToday) {
+                const prev = pair.last_pair_streak_date;
+                let newStreak;
+                if (!prev) {
+                  newStreak = 1;
                 } else {
-                  // diffDays === 0 — этого не должно случиться (есть проверка !== today выше),
-                  // но на всякий случай не трогаем streak
-                  updates.streak_days = pair.streak_days || 0;
+                  const lastDate = new Date(prev + 'T00:00:00Z');
+                  const todayDate = new Date(today + 'T00:00:00Z');
+                  const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+                  if (diffDays === 1) newStreak = (pair.streak_days || 0) + 1;
+                  else if (diffDays > 1) newStreak = 1;
+                  else newStreak = pair.streak_days || 0;
                 }
-              }
-              updates.last_pair_streak_date = today;
-              updates.last_streak_date = today;
 
-              if (!pair.hatched && newPoints >= LEVELS[0].maxPoints) {
-                updates.hatched = true;
+                const newPoints = (pair.growth_points || 0) + points;
+                const updates = {
+                  growth_points: newPoints,
+                  streak_days: newStreak,
+                  last_pair_streak_date: today,
+                  last_streak_date: today,
+                };
+                if (!pair.hatched && newPoints >= LEVELS[0].maxPoints) {
+                  updates.hatched = true;
+                }
+
+                // Оптимистическая блокировка: апдейт применится, только если
+                // last_pair_streak_date всё ещё равен prev (т.е. сегодня ещё не
+                // засчитан). Второй из гонящихся запросов получит 0 строк и НЕ
+                // начислит очки повторно.
+                let q = supabase.from('pairs').update(updates).eq('code', code);
+                q = prev === null
+                  ? q.is('last_pair_streak_date', null)
+                  : q.eq('last_pair_streak_date', prev);
+                const { data: changedRows } = await q.select('code');
+
+                if (changedRows && changedRows.length > 0) {
+                  pointsAdded = points;
+                }
+                // если changedRows пуст — день уже засчитал параллельный запрос,
+                // pointsAdded остаётся 0, ничего не начисляем
               }
+            } else {
+              // ── Прочие парные задачи (не daily_open) ──
+              // У них нет дневной отметки, поэтому полагаемся на UNIQUE-индекс
+              // daily_tasks: каждый участник может выполнить задачу один раз в день,
+              // а XP за «оба выполнили» начисляем при подтверждённом allMembersDone.
+              const newPoints = (pair.growth_points || 0) + points;
+              await supabase.from('pairs')
+                .update({ growth_points: newPoints })
+                .eq('code', code);
+              pointsAdded = points;
             }
-
-            await supabase.from('pairs').update(updates).eq('code', code);
-            pointsAdded = points;
           }
         }
       }
@@ -1770,9 +1773,18 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
     // ── GET /api/user-lang/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/user-lang\/[^/]+$/)) {
       const userId = path.split('/')[3];
+
+      // Язык — некритичные данные, нужные на самом старте (ещё до полной
+      // инициализации). Если initData недоступен, не валим старт ошибкой —
+      // отдаём дефолтный язык. При наличии авторизации читаем язык того,
+      // кто запрашивает (а не произвольного userId из пути), чтобы не было
+      // утечки чужих настроек.
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ lang: 'ru' });
+
       const { data } = await supabase
         .from('user_settings').select('lang')
-        .eq('telegram_user_id', userId).maybeSingle();
+        .eq('telegram_user_id', authedId).maybeSingle();
       return json({ lang: data?.lang || 'ru' });
     }
 
@@ -2181,7 +2193,6 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       const skinId = body.skinId;
       if (!skinId) return json({ error: 'skinId required' }, 400);
 
-      const SKIN_PRICES = { strawberry: 25, floral: 25, astronaut: 25 };
       const price = SKIN_PRICES[skinId];
       if (price === undefined) return json({ error: 'Invalid skin' }, 400);
 
@@ -2215,7 +2226,6 @@ await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       if (!skinId) return json({ error: 'skinId required' }, 400);
       if (!pairCode) return json({ error: 'pairCode required' }, 400);
 
-      const SKIN_PRICES = { strawberry: 25, floral: 25, astronaut: 25 };
       const price = SKIN_PRICES[skinId];
       if (price === undefined) return json({ error: 'Invalid skin' }, 400);
 
