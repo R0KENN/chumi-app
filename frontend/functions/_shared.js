@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 // ── Константы ──
 export const ADMIN_IDS = ['713156118'];
 export const MAX_PAIRS_BASE = 2;
-export const WEBAPP_URL = 'https://chumi-app.pages.dev';
+export const WEBAPP_URL = 'https://app.chumi.space';
 
 // ── Supabase ──
 export function getSupabase(env) {
