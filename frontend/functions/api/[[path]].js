@@ -77,16 +77,6 @@ async function isPremium(supabase, userId) {
   return ADMIN_IDS.includes(String(userId));
 }
 
-async function getMaxPairs(supabase, userId) {
-  if (ADMIN_IDS.includes(userId)) return 999;
-  const { data } = await supabase
-    .from('user_slots')
-    .select('extra_slots')
-    .eq('telegram_user_id', userId)
-    .maybeSingle();
-  return MAX_PAIRS_BASE + (data?.extra_slots || 0);
-}
-
 async function sendTelegramMessage(env, chatId, text, extra = {}) {
   try {
     const body = { chat_id: chatId, text, parse_mode: 'Markdown', ...extra };
