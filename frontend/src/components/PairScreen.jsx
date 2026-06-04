@@ -1073,7 +1073,7 @@ const generatePostcard = () => new Promise(async (resolve) => {
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.textAlign = 'right';
   ctx.fillText('@ChumiPetBot', W - 28, H - 22);
-  resolve(canvas.toDataURL('image/jpeg', 0.9));      // JPEG вместо PNG — легче payload
+  resolve(canvas.toDataURL('image/png'));
 });
 
 const wrapPostcardForStory = () => new Promise((resolve) => {
