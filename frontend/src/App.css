@@ -597,12 +597,11 @@ body {
   border-radius: 26px;
   isolation: isolate;            /* свой контекст наложения для слоёв-псевдоэлементов */
 
-  /* СЛОЙ 1 — фон стекла: лёгкая заливка + сильный блюр с насыщением.
-     saturate делает фон «сочнее» — это половина ощущения стекла. */
+  /* СЛОЙ 1 — фон стекла: плотная заливка (как у попапов) + блюр с насыщением */
   background:
-    linear-gradient(135deg, rgba(255,255,255,0.55), rgba(255,255,255,0.28));
-  backdrop-filter: blur(30px) saturate(1.9) brightness(1.06);
-  -webkit-backdrop-filter: blur(30px) saturate(1.9) brightness(1.06);
+    linear-gradient(135deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94));
+  backdrop-filter: blur(30px) saturate(1.8);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
 
   /* СЛОЙ 2 — цветная кромка стекла (тонкая, чуть холодная) */
   border: 1px solid rgba(255,255,255,0.55);
