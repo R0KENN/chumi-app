@@ -1275,9 +1275,6 @@ try {
 
     // ── GET /api/ranking ──
     if (request.method === 'GET' && path === '/api/ranking') {
-      const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-
       const { data: allPairs } = await supabase
         .from('pairs')
         .select('code, pet_name, growth_points, streak_days')
@@ -1317,9 +1314,6 @@ try {
 
     // ── GET /api/ranking-random ──
     if (request.method === 'GET' && path === '/api/ranking-random') {
-      const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-
       // Активные = заходили в последние 2 дня (вчера или сегодня)
       // Используем UTC как точку отсчёта, чтобы покрыть все таймзоны
       const todayUtc = new Date().toISOString().split('T')[0];
