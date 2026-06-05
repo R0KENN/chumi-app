@@ -5,7 +5,7 @@ import { usePairs, getInitData } from '../context/PairsContext';
 import { LEVELS, getLevel } from '../_levels-meta.js';
 import {
   IconPet, IconCalendar, IconDiary, IconTrophy, IconMore,
-  IconPostcard, IconShare, IconGlobe, IconTrash, IconShirt,
+  IconPostcard, IconShare, IconGlobe, IconTrash, IconShirt, IconPairs,
 } from './Icons';
 
 
@@ -153,7 +153,6 @@ export default function PairScreen() {
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
-  const addToHomeDone = pair?.one_time_tasks?.some(t => t.task_key === 'add_to_home') || false;
 
 const [showCalendar, setShowCalendar] = useState(false);
 const [showPostcard, setShowPostcard] = useState(false);
@@ -390,11 +389,8 @@ useEffect(() => {
         body: JSON.stringify({ code: pairId, userId, taskKey }),
       });
       const data = await res.json();
-      // Если бэк сбросил пару из-за долгой неактивности — перезагружаем данные
-      if (data.reset) {
-        await new Promise(r => setTimeout(r, 100));
-        return false;
-      }
+      // Бэк сбросил пару из-за долгой неактивности — сигналим вызывающему
+      if (data.reset) return 'reset';
       return !data.error;
     } catch (e) { return false; }
   }, [pairId, userId]);
@@ -411,7 +407,10 @@ useEffect(() => {
       if (data.member_count >= 2) {
         const alreadyOpened = data.daily_tasks?.some(t => t.task_key === 'daily_open');
         if (!alreadyOpened) {
-          await completeTask('daily_open');
+          const res2 = await completeTask('daily_open');
+          // После любого исхода (успех / reset / отказ) перечитываем пару,
+          // чтобы UI показал актуальное состояние: живой питомец после reset
+          // или корректное окно воскрешения, если он мёртв.
           const r2 = await fetch(`${API}/pair/${pairId}/${userId}`, { headers: authGetHeaders() });
           const d2 = await r2.json();
           if (!d2.error) setPair(d2);
@@ -1467,6 +1466,15 @@ const handleShareInvite = () => {
         haptic('heavy');
         if (typeof data.remaining === 'number') setRecoveriesLeft(data.remaining);
         await load();
+        // Питомец ожил. Если это было последнее воскрешение в месяце —
+        // предупреждаем, что следующая смерть без воскрешения сбросит прогресс.
+        if (data.remaining === 0) {
+          const warn = lang === 'ru'
+            ? '✨ Питомец воскрешён!\n\nЭто было последнее воскрешение в этом месяце. Берегите серию — иначе на 3-й день без воскрешения прогресс обнулится.'
+            : '✨ Pet revived!\n\nThat was your last revive this month. Keep the streak — otherwise progress resets after 3 days without a revive.';
+          if (tg?.showAlert) tg.showAlert(warn);
+          else alert(warn);
+        }
       }
     } catch (e) {
       setReviveError(lang === 'ru' ? 'Ошибка сети' : 'Network error');
@@ -1704,16 +1712,16 @@ const renderPet = () => (
     <nav className={`lg-dock ${isDark ? 'lg-dark' : ''}`}>
       {(() => {
         const dockTabs = [
+          { key: 'mypairs',  Ico: IconPairs,    label: lang === 'ru' ? 'Мои пары' : 'My pairs' },
+          { key: 'diary',    Ico: IconDiary,    label: lang === 'ru' ? 'Дневник'  : 'Diary' },
           { key: 'home',     Ico: IconPet,      label: lang === 'ru' ? 'Питомец'  : 'Pet' },
           { key: 'calendar', Ico: IconCalendar, label: lang === 'ru' ? 'Календарь': 'Calendar' },
-          { key: 'diary',    Ico: IconDiary,    label: lang === 'ru' ? 'Дневник'  : 'Diary' },
-          { key: 'ranking',  Ico: IconTrophy,   label: lang === 'ru' ? 'Рейтинг'  : 'Rating' },
           { key: 'more',     Ico: IconMore,     label: lang === 'ru' ? 'Ещё'      : 'More' },
         ];
         const activeKey =
+          showMyPairs  ? 'mypairs' :
           showCalendar ? 'calendar' :
           showDiary    ? 'diary' :
-          showRanking  ? 'ranking' :
           showMenu     ? 'more' : 'home';
         const activeTabIndex = dockTabs.findIndex(t => t.key === activeKey);
 
@@ -1744,14 +1752,16 @@ const renderPet = () => (
                     if (isActive) {
                       setShowCalendar(false); setShowDiary(false);
                       setShowRanking(false); setShowMenu(false);
+                      setShowMyPairs(false);
                       return;
                     }
 
                     setShowCalendar(false); setShowDiary(false);
                     setShowRanking(false); setShowMenu(false);
+                    setShowMyPairs(false);
                     if (tab.key === 'calendar') setShowCalendar(true);
                     else if (tab.key === 'diary') setShowDiary(true);
-                    else if (tab.key === 'ranking') { loadRanking(); setShowRanking(true); }
+                    else if (tab.key === 'mypairs') setShowMyPairs(true);
                     else if (tab.key === 'more') setShowMenu(true);
                   }}
                 >
@@ -1770,9 +1780,9 @@ const renderPet = () => (
       <>
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)} />
         <div className="lg-more" onClick={e => e.stopPropagation()}>
-          <button onClick={() => { setShowMyPairs(true); setShowMenu(false); }}>
-            <span className="lg-more-ico"><IconPet /></span>
-            {lang === 'ru' ? 'Мои пары' : 'My pairs'}
+          <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>
+            <span className="lg-more-ico"><IconTrophy /></span>
+            {lang === 'ru' ? 'Рейтинг' : 'Rating'}
           </button>
           <button onClick={() => { setPostcardUrl(null); setShowPostcard(true); setShowMenu(false); }}>
             <span className="lg-more-ico"><IconPostcard /></span>

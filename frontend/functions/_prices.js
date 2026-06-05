@@ -9,8 +9,7 @@ export const SKIN_PRICES = {
 };
 
 export const PRODUCT_PRICES = {
-  extra_slot: 50,
-  premium_monthly: 150,
+  extra_slot: 33,
 };
 
 // Ожидаемая сумма платежа по «ключу продукта».

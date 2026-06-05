@@ -129,3 +129,15 @@ export function IconShirt(props) {
     </svg>
   );
 }
+
+// 💕 Мои пары — два сердца
+export function IconPairs(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M8.2 7.2c-1-1.1-2.8-0.9-3.4 0.5-0.4 0.9 0 1.9 0.8 2.7l4.4 4.3 4.4-4.3c0.8-0.8 1.2-1.8 0.8-2.7-0.6-1.4-2.4-1.6-3.4-0.5l-0.8 0.9-0.8-0.9Z"
+        fill="currentColor" stroke="none" opacity="0.45" />
+      <path d="M13.4 10.6c-1-1.1-2.8-0.9-3.4 0.5-0.4 0.9 0 1.9 0.8 2.7l4.4 4.3 4.4-4.3c0.8-0.8 1.2-1.8 0.8-2.7-0.6-1.4-2.4-1.6-3.4-0.5l-0.8 0.9-0.8-0.9Z"
+        fill="currentColor" stroke="none" />
+    </svg>
+  );
+}

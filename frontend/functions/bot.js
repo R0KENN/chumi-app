@@ -1,8 +1,8 @@
 import { LEVELS, getLevel } from './_levels.js';
 import { expectedAmount } from './_prices.js';
 import {
-  ADMIN_IDS, MAX_PAIRS_BASE, WEBAPP_URL,
-  getSupabase, generateCode, generateUniqueCode, escapeMd, getMaxPairs,
+  ADMIN_IDS, WEBAPP_URL,
+  getSupabase, generateUniqueCode, escapeMd, getMaxPairs,
 } from './_shared.js';
 
 // ── Глобальные константы (объявлены до функций, которые их используют) ──

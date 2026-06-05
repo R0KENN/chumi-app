@@ -1,9 +1,9 @@
 import { createHmac } from 'node:crypto';
 import { LEVELS, getLevel } from '../_levels.js';
-import { SKIN_PRICES } from '../_prices.js';
+import { SKIN_PRICES, PRODUCT_PRICES } from '../_prices.js';
 import {
   ADMIN_IDS, MAX_PAIRS_BASE, WEBAPP_URL,
-  getSupabase, generateCode, generateUniqueCode, escapeMd, getMaxPairs,
+  getSupabase, generateUniqueCode, escapeMd, getMaxPairs,
 } from '../_shared.js';
 
 // ────────── CONFIG ──────────
@@ -14,7 +14,6 @@ const TASK_POINTS = {
   send_sticker: 2,
   send_media: 4,
   pet_touch: 1,
-  add_to_home: 3,
 };
 
 // Дата YYYY-MM-DD в указанной таймзоне (UTC по умолчанию)
@@ -218,7 +217,7 @@ function isCronAuthorized(request, env) {
   return auth === `Bearer ${env.CRON_SECRET}`;
 }
 
-function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
+function formatPair(pair, members, tasksToday, userId) {
   const lv = getLevel(pair.growth_points || 0);
   const partner = members?.find(m => m.user_id !== userId);
   const me = members?.find(m => m.user_id === userId);
@@ -249,7 +248,6 @@ function formatPair(pair, members, tasksToday, userId, oneTimeTasks) {
     my_name: me?.display_name || null,
     member_count: members?.length || 0,
     daily_tasks: tasksToday || [],
-    one_time_tasks: oneTimeTasks || [],
   };
 }
 
@@ -329,12 +327,7 @@ export async function onRequest(context) {
           .eq('user_id', userId)
           .eq('task_date', today);
 
-        const { data: otTasks } = await supabase
-          .from('one_time_tasks').select('task_key')
-          .eq('pair_code', up.pair_code)
-          .eq('user_id', userId);
-
-        pairs.push(formatPair(pair, members, tasks, userId, otTasks));
+        pairs.push(formatPair(pair, members, tasks, userId));
       }
 
       return json({ pairs });
@@ -367,12 +360,7 @@ export async function onRequest(context) {
         .eq('user_id', userId)
         .eq('task_date', today);
 
-      const { data: otTasks } = await supabase
-        .from('one_time_tasks').select('task_key')
-        .eq('pair_code', pairCode)
-        .eq('user_id', userId);
-
-      return json(formatPair(pair, members, tasks, userId, otTasks));
+      return json(formatPair(pair, members, tasks, userId));
     }
 
     // ── GET /api/avatar/:userId ──
@@ -875,31 +863,6 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         .maybeSingle();
       if (!membership) return json({ error: 'Not a member of this pair' }, 403);
 
-      // One-time task (add_to_home)
-      if (taskKey === 'add_to_home') {
-        // Полагаемся на UNIQUE-индекс one_time_tasks_unique: если строка уже
-        // есть, insert вернёт ошибку 23505 — значит задача уже выполнена.
-        const { error: otErr } = await supabase.from('one_time_tasks').insert({
-          pair_code: code,
-          user_id: userId,
-          task_key: taskKey,
-          completed_at: new Date().toISOString(),
-        });
-        if (otErr) {
-          // 23505 = дубликат (уже выполнено), любую другую ошибку тоже не начисляем
-          return json({ error: 'Already completed' }, 400);
-        }
-
-        const { data: pair } = await supabase
-          .from('pairs').select('growth_points').eq('code', code).single();
-        if (pair) {
-          await supabase.from('pairs')
-            .update({ growth_points: (pair.growth_points || 0) + points })
-            .eq('code', code);
-        }
-        return json({ success: true, points_added: points });
-      }
-
       // Daily tasks — полагаемся на UNIQUE-индекс daily_tasks_unique.
       // Если insert упал с конфликтом, задача уже выполнена сегодня → не начисляем.
       const { error: dtErr } = await supabase.from('daily_tasks').insert({
@@ -1170,9 +1133,13 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       const currentMonth = getCurrentMonth(tz);
       const today = getTodayDate(tz);
 
+      const MAX_RECOVERIES = 5;
+
       let used = pair.streak_recoveries_used || 0;
       if (pair.last_recovery_month !== currentMonth) used = 0;
-      if (used >= 5) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
+      if (used >= MAX_RECOVERIES) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
+
+      const remainingAfter = MAX_RECOVERIES - (used + 1);
 
       // При воскрешении серия и XP полностью сохраняются.
       // last_streak_date = сегодня — питомец оживает «сегодня», cron его не убьёт.
@@ -1205,9 +1172,16 @@ try {
     const petName = pair.pet_name || (pLang === 'ru' ? 'Питомец' : 'Pet');
     const safeReviver = escapeMd(reviverName);
     const safePet = escapeMd(petName);
+    const tail = remainingAfter > 0
+      ? (pLang === 'ru'
+          ? `Осталось воскрешений в этом месяце: ${remainingAfter}/${MAX_RECOVERIES}.`
+          : `Revives left this month: ${remainingAfter}/${MAX_RECOVERIES}.`)
+      : (pLang === 'ru'
+          ? `Воскрешения на этот месяц закончились — берегите серию, иначе прогресс сбросится!`
+          : `No revives left this month — keep the streak or progress will reset!`);
     const text = pLang === 'ru'
-      ? `✨ *${safeReviver}* воскресил(а) *${safePet}*! Серия (${pair.streak_days} дн.) сохранена 🐾\nОсталось воскрешений в этом месяце: ${5 - (used + 1)}/5.`
-      : `✨ *${safeReviver}* revived *${safePet}*! Streak (${pair.streak_days} days) preserved 🐾\nRevives left this month: ${5 - (used + 1)}/5.`;
+      ? `✨ *${safeReviver}* воскресил(а) *${safePet}*! Серия (${pair.streak_days} дн.) сохранена 🐾\n${tail}`
+      : `✨ *${safeReviver}* revived *${safePet}*! Streak (${pair.streak_days} days) preserved 🐾\n${tail}`;
     const btnText = pLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
     await sendTelegramMessage(env, p.user_id, text, {
       reply_markup: {
@@ -1221,7 +1195,7 @@ try {
 
       return json({
         success: true,
-        remaining: 5 - (used + 1),
+        remaining: remainingAfter,
         streak_days: updated?.streak_days ?? pair.streak_days,
         growth_points: updated?.growth_points ?? pair.growth_points,
         is_dead: false,
@@ -1250,7 +1224,7 @@ try {
             payload,
             provider_token: '',
             currency: 'XTR',
-            prices: [{ label: 'Extra pair slot', amount: 50 }],
+            prices: [{ label: 'Extra pair slot', amount: PRODUCT_PRICES.extra_slot }],
           }),
         });
         const data = await res.json();
@@ -1301,6 +1275,9 @@ try {
 
     // ── GET /api/ranking ──
     if (request.method === 'GET' && path === '/api/ranking') {
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+
       const { data: allPairs } = await supabase
         .from('pairs')
         .select('code, pet_name, growth_points, streak_days')
@@ -1315,9 +1292,6 @@ try {
         .from('pair_users')
         .select('pair_code, user_id, display_name, username')
         .in('pair_code', codes);
-
-      const userIds = [...new Set((allMembers || []).map(m => m.user_id))];
-      const premiumSet = new Set(ADMIN_IDS.map(id => String(id)));
 
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
@@ -1343,6 +1317,9 @@ try {
 
     // ── GET /api/ranking-random ──
     if (request.method === 'GET' && path === '/api/ranking-random') {
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+
       // Активные = заходили в последние 2 дня (вчера или сегодня)
       // Используем UTC как точку отсчёта, чтобы покрыть все таймзоны
       const todayUtc = new Date().toISOString().split('T')[0];
@@ -1914,7 +1891,63 @@ if (!opened) {
           }
         }
       }
-      return json({ success: true, killed });
+      // ── Сброс питомцев, которые мертвы 3+ дня без воскрешения ──
+      // Серия и XP обнуляются, питомец «начинается заново» с яйца.
+      // last_streak_date у мёртвой пары не меняется при смерти, поэтому
+      // считаем дни именно от него.
+      const { data: deadPairs } = await supabase
+        .from('pairs')
+        .select('code, last_streak_date, streak_days, pet_name, timezone')
+        .eq('is_dead', true);
+
+      let reset = 0;
+      for (const pair of (deadPairs || [])) {
+        if (!pair.last_streak_date) continue;
+        const tz = pair.timezone || 'UTC';
+        const today = getTodayDate(tz);
+        const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
+        const todayDate = new Date(today + 'T00:00:00Z');
+        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+
+        // 3 полных дня без захода/воскрешения → полный сброс
+        if (diffDays >= 3) {
+          await supabase.from('pairs').update({
+            is_dead: false,
+            streak_days: 0,
+            growth_points: 0,
+            hatched: false,
+            active_skin: null,
+            last_streak_date: today,
+            last_pair_streak_date: today,
+          }).eq('code', pair.code);
+          await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
+          await supabase.from('feedings').delete().eq('pair_code', pair.code);
+          reset++;
+
+          // Уведомляем обоих участников о сбросе
+          const { data: rstMembers } = await supabase
+            .from('pair_users').select('user_id').eq('pair_code', pair.code);
+          for (const rm of (rstMembers || [])) {
+            const { data: ps } = await supabase
+              .from('user_settings').select('lang')
+              .eq('telegram_user_id', rm.user_id).maybeSingle();
+            const rLang = ps?.lang || 'ru';
+            const petName = pair.pet_name || (rLang === 'ru' ? 'Питомец' : 'Pet');
+            const safePet = escapeMd(petName);
+            const text = rLang === 'ru'
+              ? `🥚 *${safePet}* не воскресили 3 дня — прогресс обнулён.\nНачните заново: зайдите в Chumi и вырастите нового питомца вместе!`
+              : `🥚 *${safePet}* wasn't revived for 3 days — progress was reset.\nStart over: open Chumi and grow a new pet together!`;
+            const rBtn = rLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+            await sendTelegramMessage(env, rm.user_id, text, {
+              reply_markup: {
+                inline_keyboard: [[{ text: rBtn, web_app: { url: 'https://app.chumi.space' } }]],
+              },
+            });
+          }
+        }
+      }
+
+      return json({ success: true, killed, reset });
     }
 
     // ── POST /api/cleanup-empty-pairs (cron) ──
