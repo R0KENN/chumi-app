@@ -2118,13 +2118,13 @@ const renderPet = () => (
           fontSize: 13, fontWeight: 600,
           color: outfitTab === 'levels' ? accentColor : '#aaa',
           borderBottom: outfitTab === 'levels' ? `2px solid ${accentColor}` : '2px solid transparent',
-        }}>🎖 {lang === 'ru' ? 'Уровни' : 'Levels'}</button>
+        }}>{lang === 'ru' ? 'Уровни' : 'Levels'}</button>
         <button onClick={() => setOutfitTab('shop')} style={{
           flex: 1, padding: '12px 0', border: 'none', background: 'none', cursor: 'pointer',
           fontSize: 13, fontWeight: 600,
           color: outfitTab === 'shop' ? accentColor : '#aaa',
           borderBottom: outfitTab === 'shop' ? `2px solid ${accentColor}` : '2px solid transparent',
-        }}>🛍 {lang === 'ru' ? 'Магазин' : 'Shop'}</button>
+        }}>{lang === 'ru' ? 'Магазин' : 'Shop'}</button>
       </div>
 
       {/* Сетка */}

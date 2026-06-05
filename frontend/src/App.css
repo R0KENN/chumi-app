@@ -468,9 +468,9 @@ body {
   padding: 6px;
   border-radius: 30px;
   /* нейтральный холодный glass без жёлтого тинта */
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(60px) saturate(1.9);
-  -webkit-backdrop-filter: blur(60px) saturate(1.9);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(30px) saturate(1.8);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
   /* specular highlight + мягкая тень */
   border: 1px solid rgba(255, 255, 255, 0.65);
   box-shadow:
@@ -575,7 +575,7 @@ body {
 /* тёмные уровни питомца — делаем плашку светлее текстом */
 .lg-dock.lg-dark .lg-tab { color: rgba(255, 255, 255, 0.6); }
 .lg-dock.lg-dark .lg-tab-active { color: #fff; }
-.lg-dock.lg-dark { background: rgba(40, 40, 50, 0.5); border-color: rgba(255,255,255,0.18); }
+.lg-dock.lg-dark { background: rgba(40, 40, 50, 0.82); border-color: rgba(255,255,255,0.18); }
 .lg-dock.lg-dark .lg-pill-slider { background: rgba(255,255,255,0.18); }
 
 /* мини-лист «Ещё» над плашкой */

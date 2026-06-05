@@ -1284,6 +1284,7 @@ try {
 
       const codes = (allPairs || []).map(p => p.code);
       if (codes.length === 0) return json({ ranking: [] });
+      const premiumSet = new Set(ADMIN_IDS.map(id => String(id)));
 
       const { data: allMembers } = await supabase
         .from('pair_users')
@@ -1297,7 +1298,6 @@ try {
           user_id: m.user_id,
           display_name: m.display_name || null,
           avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
-          is_premium: premiumSet.has(String(m.user_id)),
         });
       }
 
@@ -1341,9 +1341,6 @@ try {
         .select('pair_code, user_id, display_name, username')
         .in('pair_code', codes);
 
-      const userIds = [...new Set((allMembers || []).map(m => m.user_id))];
-      const premiumSet = new Set(ADMIN_IDS.map(id => String(id)));
-
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
         if (!membersByPair.has(m.pair_code)) membersByPair.set(m.pair_code, []);
@@ -1351,7 +1348,6 @@ try {
           user_id: m.user_id,
           display_name: m.display_name || null,
           avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
-          is_premium: premiumSet.has(String(m.user_id)),
         });
       }
 
