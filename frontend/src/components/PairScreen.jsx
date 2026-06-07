@@ -6,6 +6,7 @@ import { LEVELS, getLevel } from '../_levels-meta.js';
 import {
   IconPet, IconCalendar, IconDiary, IconTrophy, IconMore,
   IconPostcard, IconShare, IconGlobe, IconTrash, IconShirt, IconPairs,
+  IconSun, IconMoon,
 } from './Icons';
 
 
@@ -65,6 +66,16 @@ const EGG_VIDEOS = {
 
 
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// Превращает светлый hex в тёмный того же оттенка (для ночной темы)
+function darkenHex(hex, factor = 0.42) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const d = (c) => Math.round(c * factor).toString(16).padStart(2, '0');
+  return `#${d(r)}${d(g)}${d(b)}`;
+}
 
 function getShareMessages(petName, streak, pairCode, lang) {
   const msg = lang === 'ru' ? {
@@ -151,6 +162,52 @@ export default function PairScreen() {
   const [previewSkin, setPreviewSkin] = useState(undefined);
   const [levelUpData, setLevelUpData] = useState(null); // { level, name, skinName, petPreview }
   const [outfitTab, setOutfitTab] = useState('levels');
+    // Ручная тема: 'day' | 'night' | null (null = авто по уровню)
+  const [theme, setTheme] = useState(() => localStorage.getItem('chumi_theme') || null);
+  const toggleTheme = () => {
+    setTheme(prev => {
+      const next = prev === 'night' ? 'day' : 'night';
+      localStorage.setItem('chumi_theme', next);
+      haptic('light');
+      return next;
+    });
+  };
+
+  const chooseBg = async (id) => {
+    haptic('light');
+    // оптимистично обновим локально, чтобы фон сменился сразу
+    setPair(p => p ? { ...p, active_bg: id } : p);
+    try {
+      await fetch(`${API}/setbg`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ code: pairId, userId, bgId: id }),
+      });
+    } catch (e) {}
+  };
+
+    // Порядок вкладок шторки нарядов для свайпа
+  const OUTFIT_TABS = ['levels', 'shop', 'bg'];
+  const touchStartRef = useRef({ x: 0, y: 0, t: 0 });
+
+  const onOutfitTouchStart = (e) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  };
+  const onOutfitTouchEnd = (e) => {
+    const start = touchStartRef.current;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.t;
+    // Считаем свайпом только явно горизонтальное быстрое движение
+    if (Math.abs(dx) < 50) return;            // слишком короткий
+    if (Math.abs(dx) < Math.abs(dy) * 1.8) return; // слишком вертикальный
+    if (dt > 600) return;                     // слишком медленный — это не свайп
+    const idx = OUTFIT_TABS.indexOf(outfitTab);
+    if (dx < 0 && idx < OUTFIT_TABS.length - 1) { setOutfitTab(OUTFIT_TABS[idx + 1]); haptic('light'); }
+    if (dx > 0 && idx > 0) { setOutfitTab(OUTFIT_TABS[idx - 1]); haptic('light'); }
+  };
 
   const petName = pair?.pet_name || (lang === 'ru' ? 'питомца' : 'pet');
   const hasPartner = pair?.member_count >= 2;
@@ -312,14 +369,15 @@ useEffect(() => {
   useEffect(() => {
     if (!tg || !pair) return;
     const lv = getLevel(pair.growth_points || 0);
-    const bgColors = lv.bg;
-    const isEggLocal = lv.idx === 0;
-    const isDark = !isEggLocal && lv.idx === 5;
+    const darkNow = theme === 'night';
+    const colors = darkNow
+      ? [darkenHex(lv.bg[0]), darkenHex(lv.bg[1])]
+      : lv.bg;
 
-    try { tg.setHeaderColor?.(bgColors[0]); } catch (e) {}
-    try { tg.setBackgroundColor?.(bgColors[1]); } catch (e) {}
-    try { tg.setBottomBarColor?.(isDark ? bgColors[1] : '#f5f5f5'); } catch (e) {}
-  }, [tg, pair]);
+    try { tg.setHeaderColor?.(colors[0]); } catch (e) {}
+    try { tg.setBackgroundColor?.(colors[1]); } catch (e) {}
+    try { tg.setBottomBarColor?.(darkNow ? colors[1] : '#f5f5f5'); } catch (e) {}
+  }, [tg, pair, theme]);
 
 // ══════ Уведомление + Emoji Status при повышении уровня ══════
 useEffect(() => {
@@ -825,10 +883,33 @@ useEffect(() => {
       bg: ['#E8F0FF', '#B8D0F4'], accent: '#4A7BD4' },
   ];
 
+    // 20 фонов. Каждый — пара цветов для дневного градиента.
+  // Ночью затемняются автоматически через darkenHex.
+  const BACKGROUNDS = [
+    { id: 'lavender',  nameRu: 'Лаванда',   name: 'Lavender',  bg: ['#F3EDF7','#D7C8E8'] },
+    { id: 'peach',     nameRu: 'Персик',    name: 'Peach',     bg: ['#FFF4EC','#FDDCBF'] },
+    { id: 'rose',      nameRu: 'Роза',      name: 'Rose',      bg: ['#FFF0F3','#F9C8D4'] },
+    { id: 'sky',       nameRu: 'Небо',      name: 'Sky',       bg: ['#EDF5FC','#B8D8F4'] },
+    { id: 'mint',      nameRu: 'Мята',      name: 'Mint',      bg: ['#EDFBF3','#C2EBD3'] },
+    { id: 'sunshine',  nameRu: 'Солнце',    name: 'Sunshine',  bg: ['#FFFBE6','#FFE89A'] },
+    { id: 'coral',     nameRu: 'Коралл',    name: 'Coral',     bg: ['#FFF0EC','#FFC9B8'] },
+    { id: 'ocean',     nameRu: 'Океан',     name: 'Ocean',     bg: ['#E8F8FA','#A8DDE0'] },
+    { id: 'grape',     nameRu: 'Виноград',  name: 'Grape',     bg: ['#F4ECFB','#D4BCEC'] },
+    { id: 'lemon',     nameRu: 'Лимон',     name: 'Lemon',     bg: ['#FCFBE8','#EDE89A'] },
+    { id: 'blush',     nameRu: 'Румянец',   name: 'Blush',     bg: ['#FFEFF4','#FFC2D6'] },
+    { id: 'forest',    nameRu: 'Лес',       name: 'Forest',    bg: ['#EBF5EC','#B6DCBB'] },
+    { id: 'cocoa',     nameRu: 'Какао',     name: 'Cocoa',     bg: ['#F6EFE9','#DCC4AE'] },
+    { id: 'ice',       nameRu: 'Лёд',       name: 'Ice',       bg: ['#EEF6F9','#C2DEE8'] },
+    { id: 'bubblegum', nameRu: 'Жвачка',    name: 'Bubblegum', bg: ['#FFEFFA','#F7C2E8'] },
+    { id: 'sand',      nameRu: 'Песок',     name: 'Sand',      bg: ['#FBF6EC','#EAD9B8'] },
+    { id: 'aqua',      nameRu: 'Аква',      name: 'Aqua',      bg: ['#E8FAF6','#A8E6D8'] },
+    { id: 'plum',      nameRu: 'Слива',     name: 'Plum',      bg: ['#F2ECF5','#CBB8D9'] },
+    { id: 'flamingo',  nameRu: 'Фламинго',  name: 'Flamingo',  bg: ['#FFF0F0','#FFBFC8'] },
+    { id: 'steel',     nameRu: 'Сталь',     name: 'Steel',     bg: ['#EEF1F5','#C2CDDB'] },
+  ];
 
   const partner = pair.members?.find(m => m.user_id !== userId);
   const isMaxLevel = lv.idx === LEVELS.length - 1 && lv.remaining === 0;
-  const isDark = !isEgg && lv.idx === 5;
 
   // Определяем, какой скин показываем в данный момент: при открытом окне
   // нарядов — превью, иначе активный скин пары.
@@ -859,6 +940,14 @@ useEffect(() => {
   const bgColors = skinBg || lv.bg;
   const accentColor = skinAccent || lv.accent;
   const checkColor = skinCheck || lv.check;
+  const isDark = theme === 'night';
+  // Если пользователь выбрал фон — берём его, иначе фон уровня/скина
+  const bgChoice = pair?.active_bg || null;
+  const chosenBgObj = BACKGROUNDS.find(b => b.id === bgChoice);
+  const baseBg = chosenBgObj ? chosenBgObj.bg : bgColors;
+  const themedBg = isDark
+    ? [darkenHex(baseBg[0]), darkenHex(baseBg[1])]
+    : baseBg;
 
     // ── Postcard helpers ──
   const loadImage = (src) => new Promise((resolve, reject) => {
@@ -1653,10 +1742,10 @@ const renderPet = () => (
 
 
   return (
-    <div className="sk" style={{
+    <div className={`sk ${isDark ? 'sk-night' : ''}`} style={{
       background: isDark
-        ? `linear-gradient(180deg, ${bgColors[0]} 0%, ${bgColors[1]} 100%)`
-        : `linear-gradient(180deg, ${bgColors[0]} 0%, ${bgColors[1]} 60%, #f5f5f5 100%)`,
+        ? `linear-gradient(180deg, ${themedBg[0]} 0%, ${themedBg[1]} 100%)`
+        : `linear-gradient(180deg, ${themedBg[0]} 0%, ${themedBg[1]} 60%, #f5f5f5 100%)`,
     }}>
       <div className="sk-info-row">
         <div className="sk-info-row-left">
@@ -1796,6 +1885,12 @@ const renderPet = () => (
           <button onClick={() => { const nl = lang === 'ru' ? 'en' : 'ru'; setLang(nl); setShowMenu(false); haptic('light'); }}>
             <span className="lg-more-ico"><IconGlobe /></span>
             {lang === 'ru' ? 'English' : 'Русский'}
+          </button>
+          <button onClick={() => { toggleTheme(); setShowMenu(false); }}>
+            <span className="lg-more-ico">{isDark ? <IconSun /> : <IconMoon />}</span>
+            {isDark
+              ? (lang === 'ru' ? 'Светлая тема' : 'Light theme')
+              : (lang === 'ru' ? 'Тёмная тема' : 'Dark theme')}
           </button>
           <button className="lg-more-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
             <span className="lg-more-ico"><IconTrash /></span>
@@ -2048,8 +2143,8 @@ const renderPet = () => (
               <button className={`sk-ranking-tab ${rankingTab === 'random' ? 'sk-ranking-tab-active' : ''}`} onClick={() => setRankingTab('random')}>{lang === 'ru' ? 'Случайно' : 'Random'}</button>
             </div>
             {rankingTab === 'random' && (
-              <div style={{ textAlign: 'center', fontSize: 11, color: 'rgba(0,0,0,0.35)', marginBottom: 8, fontWeight: 500 }}>
-                {lang === 'ru' ? '🔄 Обновляется раз в сутки' : '🔄 Updates once a day'}
+              <div style={{ textAlign: 'center', fontSize: 11, color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.35)', marginBottom: 8, fontWeight: 500 }}>
+                {lang === 'ru' ? 'Обновляется раз в сутки' : 'Updates once a day'}
               </div>
             )}
             {rankingLoading ? (
@@ -2103,13 +2198,13 @@ const renderPet = () => (
     {/* Шторка */}
     <div style={{
       position: 'relative', zIndex: 101,
-      background: '#fff', borderRadius: '20px 20px 0 0',
+      background: isDark ? '#2b2b30' : '#fff', borderRadius: '20px 20px 0 0',
       boxShadow: '0 -4px 20px rgba(0,0,0,0.12)',
-      maxHeight: '55vh', display: 'flex', flexDirection: 'column',
+      height: '44vh', display: 'flex', flexDirection: 'column',
     }}>
       {/* Хэндл */}
       <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 4px' }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: '#ddd' }} />
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: isDark ? 'rgba(255,255,255,0.25)' : '#ddd' }} />
       </div>
 
       {/* Табы */}
@@ -2126,10 +2221,20 @@ const renderPet = () => (
           color: outfitTab === 'shop' ? accentColor : '#aaa',
           borderBottom: outfitTab === 'shop' ? `2px solid ${accentColor}` : '2px solid transparent',
         }}>{lang === 'ru' ? 'Магазин' : 'Shop'}</button>
+        <button onClick={() => setOutfitTab('bg')} style={{
+          flex: 1, padding: '12px 0', border: 'none', background: 'none', cursor: 'pointer',
+          fontSize: 13, fontWeight: 600,
+          color: outfitTab === 'bg' ? accentColor : '#aaa',
+          borderBottom: outfitTab === 'bg' ? `2px solid ${accentColor}` : '2px solid transparent',
+        }}>{lang === 'ru' ? 'Фон' : 'Background'}</button>
       </div>
 
       {/* Сетка */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+      <div
+        style={{ flex: 1, overflowY: 'auto', padding: 12 }}
+        onTouchStart={onOutfitTouchStart}
+        onTouchEnd={onOutfitTouchEnd}
+      >
         {outfitTab === 'levels' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {LEVEL_SKINS.map(skin => {
@@ -2146,7 +2251,7 @@ const renderPet = () => (
                 }} style={{
                   textAlign: 'center', padding: 6, borderRadius: 14,
                   border: isPreviewing ? `2px solid ${accentColor}` : '2px solid transparent',
-                  background: skin.unlocked ? '#f5f5f7' : 'rgba(0,0,0,0.03)',
+                  background: skin.unlocked ? (isDark ? 'rgba(255,255,255,0.07)' : '#f5f5f7') : 'rgba(0,0,0,0.03)',
                   opacity: skin.unlocked ? 1 : 0.35,
                   cursor: skin.unlocked ? 'pointer' : 'default',
                   position: 'relative',
@@ -2155,11 +2260,11 @@ const renderPet = () => (
   <source src={`/pets/${skin.pet}_ios.mov`} type='video/mp4; codecs="hvc1"' />
   <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
 </video>
-                  <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: '#333' }}>
+                  <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: isDark ? '#f2f2f5' : '#333' }}>
                     {lang === 'ru' ? skin.nameRu : skin.name}
                   </div>
                   {!skin.unlocked && (
-                    <div style={{ fontSize: 8, color: '#999' }}>🔒 Ур.{skin.level}</div>
+                    <div style={{ fontSize: 8, color: isDark ? 'rgba(255,255,255,0.5)' : '#999' }}>🔒 Ур.{skin.level}</div>
                   )}
                   {isActive && (
                     <div style={{
@@ -2187,14 +2292,14 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
                   <div key={skin.id} onClick={() => setPreviewSkin(skin.id)} style={{
                     textAlign: 'center', padding: 6, borderRadius: 14,
                     border: isPreviewing ? `2px solid ${accentColor}` : '2px solid transparent',
-                    background: '#f5f5f7',
+                    background: isDark ? 'rgba(255,255,255,0.07)' : '#f5f5f7',
                     cursor: 'pointer', position: 'relative',
                   }}>
 <video autoPlay loop muted playsInline style={{ width: '100%', height: 60, objectFit: 'contain', background: 'transparent' }}>
   <source src={`/pets/${skin.pet}_ios.mov`} type='video/mp4; codecs="hvc1"' />
   <source src={`/pets/${skin.pet}.webm`} type="video/webm" />
 </video>
-                    <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: '#333' }}>
+                    <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: isDark ? '#f2f2f5' : '#333' }}>
                       {lang === 'ru' ? skin.nameRu : skin.name}
                     </div>
                     {owned ? (
@@ -2218,6 +2323,55 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
           )
         )}
       </div>
+
+        {outfitTab === 'bg' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            {/* Авто — фон по уровню/скину */}
+            <div onClick={() => chooseBg(null)} style={{
+              textAlign: 'center', padding: 6, borderRadius: 14,
+              border: !bgChoice ? `2px solid ${accentColor}` : '2px solid transparent',
+              cursor: 'pointer',
+            }}>
+              <div style={{
+                width: '100%', height: 48, borderRadius: 10,
+                background: 'linear-gradient(135deg,#ddd,#bbb)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+              }}>✦</div>
+              <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: isDark ? '#f2f2f5' : '#333' }}>
+                {lang === 'ru' ? 'Авто' : 'Auto'}
+              </div>
+            </div>
+
+            {BACKGROUNDS.map(b => {
+              const isSel = bgChoice === b.id;
+              const preview = isDark
+                ? [darkenHex(b.bg[0]), darkenHex(b.bg[1])]
+                : b.bg;
+              return (
+                <div key={b.id} onClick={() => chooseBg(b.id)} style={{
+                  textAlign: 'center', padding: 6, borderRadius: 14,
+                  border: isSel ? `2px solid ${accentColor}` : '2px solid transparent',
+                  cursor: 'pointer', position: 'relative',
+                }}>
+                  <div style={{
+                    width: '100%', height: 48, borderRadius: 10,
+                    background: `linear-gradient(135deg, ${preview[0]}, ${preview[1]})`,
+                  }} />
+                  <div style={{ fontSize: 9, fontWeight: 600, marginTop: 2, color: isDark ? '#f2f2f5' : '#333' }}>
+                    {lang === 'ru' ? b.nameRu : b.name}
+                  </div>
+                  {isSel && (
+                    <div style={{
+                      position: 'absolute', top: 3, right: 3, width: 16, height: 16,
+                      borderRadius: '50%', background: accentColor, color: '#fff',
+                      fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>✓</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
       {/* Кнопка */}
       <div style={{ padding: '8px 16px 20px', flexShrink: 0 }}>
@@ -2360,8 +2514,8 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
           <div className="sk-popup sk-popup-wide" onClick={e => e.stopPropagation()}>
             <h3>{lang === 'ru' ? 'Календарь серии' : 'Streak Calendar'}</h3>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <button onClick={() => changeMonth(-1)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>‹</button>
-              <span style={{ fontWeight: 600, fontSize: 15 }}>
+              <button onClick={() => changeMonth(-1)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: isDark ? '#f2f2f5' : '#1a1a1a' }}>‹</button>
+              <span style={{ fontWeight: 600, fontSize: 15, color: isDark ? '#f2f2f5' : '#1a1a1a' }}>
                 {new Date(calendarMonth + '-01').toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { month: 'long', year: 'numeric' })}
               </span>
         <button
@@ -2371,6 +2525,7 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
             background: 'none', border: 'none', fontSize: 20,
             cursor: calendarMonth >= currentMonthStr ? 'default' : 'pointer',
             opacity: calendarMonth >= currentMonthStr ? 0.3 : 1,
+            color: isDark ? '#f2f2f5' : '#1a1a1a',
           }}
         >›</button>
             </div>
@@ -2427,7 +2582,7 @@ calendarData.days.forEach(d => {
       <h3>{lang === 'ru' ? 'Наш дневник' : 'Our diary'}</h3>
 
       {/* Форма ввода */}
-      <div style={{ background: '#f5f5f7', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+      <div style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f5f5f7', borderRadius: 14, padding: 12, marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
           {lang === 'ru' ? 'Запись дня (1 в день)' : "Today's entry (1 per day)"}
         </div>
@@ -2455,8 +2610,11 @@ calendarData.days.forEach(d => {
           placeholder={lang === 'ru' ? 'Что-то приятное или просто как день...' : 'Something nice or just how the day was...'}
           rows={2}
           style={{
-            width: '100%', borderRadius: 10, border: '1px solid #ddd', padding: 8,
-            fontSize: 14, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+            width: '100%', borderRadius: 10,
+            border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #ddd',
+            background: isDark ? 'rgba(255,255,255,0.06)' : '#fff',
+            color: isDark ? '#f2f2f5' : '#1a1a1a',
+            padding: 8, fontSize: 14, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
           }}
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
@@ -2498,13 +2656,16 @@ calendarData.days.forEach(d => {
                   return (
                     <div key={i} style={{
                       display: 'flex', gap: 8, padding: 10, marginBottom: 6,
-                      background: isMine ? accentColor + '10' : '#f5f5f7', borderRadius: 12,
+                      background: isMine
+                        ? (isDark ? accentColor + '30' : accentColor + '10')
+                        : (isDark ? 'rgba(255,255,255,0.08)' : '#f5f5f7'),
+                      borderRadius: 12,
                       alignItems: 'flex-start',
                     }}>
                       <span style={{ fontSize: 22, lineHeight: 1 }}>{e.emoji}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>{author}</div>
-                        <div style={{ fontSize: 13, color: '#333', wordBreak: 'break-word' }}>{e.text}</div>
+                        <div style={{ fontSize: 13, color: isDark ? '#f2f2f5' : '#333', wordBreak: 'break-word' }}>{e.text}</div>
                       </div>
                     </div>
                   );
@@ -2537,7 +2698,7 @@ calendarData.days.forEach(d => {
       <h3 style={{ margin: 0, fontSize: 16, textAlign: 'center' }}>
         🎨 {lang === 'ru' ? 'Выбери стикер' : 'Pick a sticker'}
       </h3>
-      <p style={{ margin: 0, fontSize: 12, color: '#888', textAlign: 'center' }}>
+      <p style={{ margin: 0, fontSize: 12, color: isDark ? 'rgba(255,255,255,0.55)' : '#888', textAlign: 'center' }}>
         {lang === 'ru'
           ? 'Стикер откроется в окне выбора чата — отправь его партнёру'
           : 'Sticker will open in the chat picker — send it to your partner'}
@@ -2560,7 +2721,7 @@ calendarData.days.forEach(d => {
               aspectRatio: '1 / 1',
               borderRadius: 12,
               border: '2px solid rgba(0,0,0,0.06)',
-              background: '#f5f5f7',
+              background: isDark ? 'rgba(255,255,255,0.07)' : '#f5f5f7',
               fontSize: 32,
               cursor: stickerSending ? 'default' : 'pointer',
               display: 'flex',
@@ -2598,7 +2759,7 @@ calendarData.days.forEach(d => {
 {showPostcard && (
   <div className="sk-overlay" onClick={() => setShowPostcard(false)}>
     <div
-      className="sk-popup"
+      className="sk-popup sk-no-sheen"
       onClick={e => e.stopPropagation()}
       style={{
         maxWidth: 320,
@@ -2694,7 +2855,7 @@ calendarData.days.forEach(d => {
           opacity: postcardUrl ? 1 : 0.6,
         }}
       >
-        📱 {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
+        {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
       </button>
 
       <button
@@ -2709,8 +2870,8 @@ calendarData.days.forEach(d => {
         }}
       >
         {postcardSharing
-          ? (lang === 'ru' ? '⏳ Отправляем…' : '⏳ Sending…')
-          : `📤 ${lang === 'ru' ? 'Поделиться' : 'Share'}`}
+          ? (lang === 'ru' ? 'Отправляем…' : 'Sending…')
+          : (lang === 'ru' ? 'Поделиться' : 'Share')}
       </button>
 
       <button
@@ -2818,7 +2979,7 @@ calendarData.days.forEach(d => {
           opacity: shareCardUrl ? 1 : 0.6,
         }}
       >
-        📤 {shareCardSharing
+        {shareCardSharing
           ? (lang === 'ru' ? 'Отправка...' : 'Sending...')
           : (lang === 'ru' ? 'Отправить в чат' : 'Send to chat')}
       </button>

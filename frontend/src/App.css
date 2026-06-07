@@ -362,13 +362,14 @@ body {
   border-radius: inherit;
   pointer-events: none;
   z-index: 0;
-  background:
-    radial-gradient(90% 50% at 30% -5%,
-      rgba(255,255,255,0.28) 0%,
-      rgba(255,255,255,0) 55%);
-  mix-blend-mode: screen;
-  animation: lgSheen 8s ease-in-out infinite;
+  /* тонкий кант света по верху — статично, без mix-blend */
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.35) 0%,
+    rgba(255,255,255,0) 18%
+  );
 }
+
 /* содержимое попапа — над бликом */
 .sk-popup > * { position: relative; z-index: 1; }
 .sk-popup-wide { max-width: 400px; }
@@ -467,48 +468,39 @@ body {
   gap: 2px;
   padding: 6px;
   border-radius: 30px;
-  /* нейтральный холодный glass без жёлтого тинта */
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(30px) saturate(1.8);
-  -webkit-backdrop-filter: blur(30px) saturate(1.8);
-  /* specular highlight + мягкая тень */
-  border: 1px solid rgba(255, 255, 255, 0.65);
+  /* Жидкое стекло: плотный матовый фон + сильный блюр с насыщением */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0.30)
+  );
+  backdrop-filter: blur(34px) saturate(1.9);
+  -webkit-backdrop-filter: blur(34px) saturate(1.9);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow:
-    0 10px 36px rgba(0, 0, 0, 0.16),
-    0 2px 10px rgba(0, 0, 0, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.05);
+    0 12px 40px rgba(0, 0, 0, 0.18),
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.06);
   isolation: isolate;
-  overflow: visible;
+  overflow: hidden;
 }
-/* specular-блик дока — живой, как у плашки «Ещё» */
+/* Верхний стеклянный хайлайт — мягкий, статичный, без mix-blend (чисто) */
 .lg-dock::after {
   content: '';
   position: absolute;
-  inset: 0;
+  left: 0; right: 0; top: 0;
+  height: 1px;
   border-radius: inherit;
   pointer-events: none;
   z-index: 0;
-  background:
-    radial-gradient(120% 90% at 25% -20%,
-      rgba(255,255,255,0.5) 0%,
-      rgba(255,255,255,0) 50%);
-  mix-blend-mode: screen;
-  animation: lgSheen 9s ease-in-out infinite;
-}
-/* refraction только там, где фильтр поддержан (Safari/iOS лучше всего) */
-@supports (filter: url(#lg-distortion)) {
-  .lg-dock::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    -webkit-backdrop-filter: blur(2px);
-    backdrop-filter: blur(2px);
-    filter: url(#lg-distortion);
-    z-index: -1;
-    pointer-events: none;
-  }
+  /* тонкая матовая линия света по верхней кромке — плоско */
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.6) 50%,
+    rgba(255,255,255,0) 100%
+  );
 }
 
 /* Фолбэк: нет backdrop-filter (часть Android-WebView в Telegram) */
@@ -621,21 +613,7 @@ body {
 /* СЛОЙ 4 — specular-блик: диагональное светлое пятно, как отражение света.
    Не перехватывает тапы (pointer-events:none). */
 .lg-more::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 2;
-  background:
-    radial-gradient(120% 80% at 20% -10%,
-      rgba(255,255,255,0.55) 0%,
-      rgba(255,255,255,0.0) 45%),
-    linear-gradient(180deg,
-      rgba(255,255,255,0.25) 0%,
-      rgba(255,255,255,0.0) 30%);
-  mix-blend-mode: screen;        /* блик «светится», а не закрашивает */
-  animation: lgSheen 7s ease-in-out infinite;
+  content: none;
 }
 
 /* СЛОЙ 5 (прогрессивное улучшение) — настоящая рефракция краёв.
@@ -679,3 +657,124 @@ body {
 
 /* поднимаем нижний контент, чтобы плашка его не перекрывала */
 .sk { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
+
+/* ══════════════════════════════════════
+   НОЧНАЯ ТЕМА — попапы, карточки, задания
+   Активна, когда на корне есть класс .sk-night
+   ══════════════════════════════════════ */
+
+/* Карточки-стекло (задания, прогресс, аватары) */
+.sk-night .glass-card {
+  background: rgba(44, 44, 48, 0.82) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.sk-night .glass-bar {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.sk-night .glass-circle {
+  background: rgba(255, 255, 255, 0.10);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Имя питомца / тексты заголовков */
+.sk-night .sk-streak-num { color: #fff; }
+.sk-night .sk-streak-label { color: rgba(255, 255, 255, 0.55); }
+.sk-night .sk-pet-name-label { color: #fff; }
+.sk-night .sk-progress-text { color: #fff; }
+.sk-night .sk-streak-badge {
+  background: rgba(44, 44, 48, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Карточка заданий: заголовки и строки */
+.sk-night .sk-tasks-top h3 { color: #fff; }
+.sk-night .sk-task-title { color: #f2f2f5; }
+.sk-night .sk-task { border-bottom-color: rgba(255, 255, 255, 0.08); }
+
+/* Кнопка нарядов */
+.sk-night .sk-outfits-btn {
+  background: rgba(40, 42, 64, 0.82) !important;
+}
+.sk-night .sk-outfits-text { color: #f2f2f5; }
+
+/* ── Попапы ── */
+.sk-night .sk-popup {
+  background: rgba(38, 38, 42, 0.97) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.sk-night .sk-popup h3 { color: #fff; }
+/* убираем светлый specular-блик попапа в ночи, чтобы не мутнел */
+.sk-night .sk-popup::before { opacity: 0.25; }
+
+/* Уровни внутри попапа */
+.sk-night .sk-lvl-name { color: #f2f2f5; }
+.sk-night .sk-lvl-pts { color: rgba(255, 255, 255, 0.4); }
+.sk-night .sk-lvl-active { background: rgba(255, 255, 255, 0.06); }
+
+/* Рейтинг */
+.sk-night .sk-ranking-tabs { background: rgba(255, 255, 255, 0.06); }
+.sk-night .sk-ranking-tab { color: rgba(255, 255, 255, 0.5); }
+.sk-night .sk-ranking-tab-active {
+  background: rgba(255, 255, 255, 0.16); color: #fff;
+}
+.sk-night .sk-ranking-pos,
+.sk-night .sk-ranking-name,
+.sk-night .sk-ranking-name-full { color: #f2f2f5; }
+.sk-night .sk-ranking-stats { color: rgba(255, 255, 255, 0.5); }
+.sk-night .sk-ranking-row { border-bottom-color: rgba(255, 255, 255, 0.08); }
+
+/* Карточки пар */
+.sk-night .sk-pair-card-name { color: #f2f2f5; }
+.sk-night .sk-pair-card-info { color: rgba(255, 255, 255, 0.5); }
+.sk-night .sk-pair-card-plus { color: rgba(255, 255, 255, 0.35); }
+
+/* Кнопка закрытия попапа */
+.sk-night .sk-popup-close {
+  background: rgba(255, 255, 255, 0.10); color: #f2f2f5;
+}
+
+/* Текст-параграфы внутри попапов (умер/удалить и т.п.) */
+.sk-night .sk-popup p { color: rgba(255, 255, 255, 0.7) !important; }
+
+/* Отключить анимированный specular-блик у конкретных попапов */
+.sk-no-sheen::before { display: none !important; }
+
+/* Ночь: плашка «Ещё» */
+.sk-night .lg-more {
+  background: linear-gradient(135deg, rgba(40,40,44,0.98), rgba(32,32,36,0.96));
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.sk-night .lg-more button { color: #f2f2f5; }
+.sk-night .lg-more button:active { background: rgba(255,255,255,0.08); }
+.sk-night .lg-more-ico { color: rgba(255,255,255,0.6); }
+.sk-night .lg-more::before {
+  content: none;
+}
+
+/* Более прозрачные плашка заданий и счётчик серии (день) */
+.sk-tasks.glass-card {
+  background: rgba(255,255,255,0.55) !important;
+}
+.sk-streak-badge {
+  background: rgba(255,255,255,0.55);
+}
+/* Ночь — полупрозрачное тёмное */
+.sk-night .sk-tasks.glass-card {
+  background: rgba(24,24,26,0.45) !important;
+}
+.sk-night .sk-streak-badge {
+  background: rgba(24,24,26,0.45);
+}
+
+/* Наряды — полупрозрачные, но плотнее заданий */
+.sk-outfits-btn {
+  background: rgba(255,255,255,0.72) !important;
+}
+.sk-night .sk-outfits-btn {
+  background: rgba(24,24,26,0.62) !important;
+}

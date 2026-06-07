@@ -245,6 +245,7 @@ function formatPair(pair, members, tasksToday, userId) {
       avatar_url: m.avatar_url ? `/api/avatar/${m.user_id}?proxy=1` : null,
     })) || [],
     active_skin: pair.active_skin || null,
+    active_bg: pair.active_bg || null,
     partner_name: partner?.display_name || null,
     partner_username: partner?.username || null,
     my_name: me?.display_name || null,
@@ -1060,7 +1061,9 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403);
 
-      await supabase.from('pairs').update({ bg_id: body.bgId }).eq('code', code);
+      // bgId может быть null (= авто/сброс) или id из списка фонов
+      const bgId = body.bgId ?? null;
+      await supabase.from('pairs').update({ active_bg: bgId }).eq('code', code);
       return json({ success: true });
     }
 

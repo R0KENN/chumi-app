@@ -18,7 +18,7 @@ export const LEVELS = [
     bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4',
     pet: 'axolotl_blue',  petTap: 'axolotl_blue_tap',  emojiId: null },
   { level: 5, name: 'Legend', nameRu: 'Легенда',   maxPoints: 200,
-    bg: ['#1A1A2E','#16213E'], accent: '#E94560', check: '#E94560',
+    bg: ['#ECEAF5','#C7C2DE'], accent: '#6C5CE7', check: '#6C5CE7',
     pet: 'axolotl_black', petTap: 'axolotl_black_tap', emojiId: null },
 ];
 
