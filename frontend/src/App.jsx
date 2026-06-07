@@ -184,7 +184,17 @@ function App() {
     );
   }
 
-  if (!telegramUserId) return <div className="sk-loading"><div className="sk-spinner" /></div>;
+if (!telegramUserId) return (
+  <div className="sk-loading" style={{ padding: 20, fontSize: 12, textAlign: 'center' }}>
+    <div className="sk-spinner" />
+    <pre style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>
+      WebApp: {String(!!window.Telegram?.WebApp)}{'\n'}
+      user: {String(window.Telegram?.WebApp?.initDataUnsafe?.user?.id)}{'\n'}
+      initData len: {String((window.Telegram?.WebApp?.initData || '').length)}{'\n'}
+      sdkFailed: {String(!!window.__tgSdkFailed)}
+    </pre>
+  </div>
+);
 
     // ── Гостевой режим: приложение открыто вне Telegram ──
   // SDK не упал (иначе сработал бы __tgSdkFailed выше), но настоящего
