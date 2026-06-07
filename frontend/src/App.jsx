@@ -184,19 +184,21 @@ function App() {
     );
   }
 
-if (!telegramUserId) return (
-  <div className="sk-loading" style={{ padding: 20, fontSize: 11, textAlign: 'left', wordBreak: 'break-all' }}>
-    <div className="sk-spinner" />
-    <pre style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>
-      WebApp: {String(!!window.Telegram?.WebApp)}{'\n'}
-      user id: {String(window.Telegram?.WebApp?.initDataUnsafe?.user?.id)}{'\n'}
-      initData len: {String((window.Telegram?.WebApp?.initData || '').length)}{'\n'}
-      platform: {String(window.Telegram?.WebApp?.platform)}{'\n'}
-      hash: {String((window.location.hash || '').slice(0, 60))}{'\n'}
-      sdkFailed: {String(!!window.__tgSdkFailed)}
-    </pre>
-  </div>
-);
+if (!telegramUserId) {
+  const tgw = window.Telegram?.WebApp;
+  return (
+    <div style={{ padding: 24, fontSize: 13, fontFamily: 'monospace', wordBreak: 'break-all', color: '#333' }}>
+      <div>DIAG (нет telegramUserId)</div>
+      <div>WebApp exists: {String(!!tgw)}</div>
+      <div>user id: {String(tgw?.initDataUnsafe?.user?.id)}</div>
+      <div>initData len: {String((tgw?.initData || '').length)}</div>
+      <div>platform: {String(tgw?.platform)}</div>
+      <div>version: {String(tgw?.version)}</div>
+      <div>hash: {String((window.location.hash || '').slice(0, 80))}</div>
+      <div>sdkFailed: {String(!!window.__tgSdkFailed)}</div>
+    </div>
+  );
+}
 
     // ── Гостевой режим: приложение открыто вне Telegram ──
   // SDK не упал (иначе сработал бы __tgSdkFailed выше), но настоящего
