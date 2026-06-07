@@ -185,12 +185,14 @@ function App() {
   }
 
 if (!telegramUserId) return (
-  <div className="sk-loading" style={{ padding: 20, fontSize: 12, textAlign: 'center' }}>
+  <div className="sk-loading" style={{ padding: 20, fontSize: 11, textAlign: 'left', wordBreak: 'break-all' }}>
     <div className="sk-spinner" />
     <pre style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>
       WebApp: {String(!!window.Telegram?.WebApp)}{'\n'}
-      user: {String(window.Telegram?.WebApp?.initDataUnsafe?.user?.id)}{'\n'}
+      user id: {String(window.Telegram?.WebApp?.initDataUnsafe?.user?.id)}{'\n'}
       initData len: {String((window.Telegram?.WebApp?.initData || '').length)}{'\n'}
+      platform: {String(window.Telegram?.WebApp?.platform)}{'\n'}
+      hash: {String((window.location.hash || '').slice(0, 60))}{'\n'}
       sdkFailed: {String(!!window.__tgSdkFailed)}
     </pre>
   </div>
