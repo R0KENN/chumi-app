@@ -44,6 +44,8 @@ function getCurrentMonth(tz) {
 }
 
 const ALLOWED_ORIGINS = [
+  'https://chumi.space',
+  'https://www.chumi.space',
   'https://app.chumi.space',
   'https://chumi-app.pages.dev',
   'https://web.telegram.org',
@@ -84,7 +86,7 @@ async function sendTelegramMessage(env, chatId, text, extra = {}) {
     if (!body.reply_markup) {
       body.reply_markup = {
         inline_keyboard: [[
-          { text: '🐾 Открыть Chumi', web_app: { url: 'https://app.chumi.space' } },
+          { text: '🐾 Открыть Chumi', web_app: { url: 'https://chumi.space' } },
         ]],
       };
     }
@@ -620,7 +622,7 @@ if (request.method === 'POST' && path === '/api/diary') {
 
         await sendTelegramMessage(env, partner.user_id, notifyText, {
           reply_markup: {
-            inline_keyboard: [[{ text: btnText, web_app: { url: 'https://app.chumi.space' } }]],
+            inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi.space' } }]],
           },
         });
       }
@@ -1185,7 +1187,7 @@ try {
     const btnText = pLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
     await sendTelegramMessage(env, p.user_id, text, {
       reply_markup: {
-        inline_keyboard: [[{ text: btnText, web_app: { url: 'https://app.chumi.space' } }]],
+        inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi.space' } }]],
       },
     });
   }
@@ -1284,7 +1286,6 @@ try {
 
       const codes = (allPairs || []).map(p => p.code);
       if (codes.length === 0) return json({ ranking: [] });
-      const premiumSet = new Set(ADMIN_IDS.map(id => String(id)));
 
       const { data: allMembers } = await supabase
         .from('pair_users')
@@ -1697,8 +1698,6 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         send_media:   userLang === 'ru' ? 'Фото-привет Chumi 📸' : 'Photo from Chumi 📸',
       };
 
-      const WEBAPP_URL = 'https://app.chumi.space';
-
       const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1812,7 +1811,7 @@ if (!opened) {
   const btnText = mLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
   await sendTelegramMessage(env, member.user_id, reminderText, {
     reply_markup: {
-      inline_keyboard: [[{ text: btnText, web_app: { url: 'https://app.chumi.space' } }]],
+      inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi.space' } }]],
     },
   });
 
@@ -1875,7 +1874,7 @@ if (!opened) {
             const dBtnText = dLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
             await sendTelegramMessage(env, dm.user_id, text, {
               reply_markup: {
-                inline_keyboard: [[{ text: dBtnText, web_app: { url: 'https://app.chumi.space' } }]],
+                inline_keyboard: [[{ text: dBtnText, web_app: { url: 'https://chumi.space' } }]],
               },
             });
           }
@@ -1930,7 +1929,7 @@ if (!opened) {
             const rBtn = rLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
             await sendTelegramMessage(env, rm.user_id, text, {
               reply_markup: {
-                inline_keyboard: [[{ text: rBtn, web_app: { url: 'https://app.chumi.space' } }]],
+                inline_keyboard: [[{ text: rBtn, web_app: { url: 'https://chumi.space' } }]],
               },
             });
           }
@@ -2135,7 +2134,7 @@ if (!opened) {
       const { data: members } = await supabase
         .from('pair_users').select('user_id').eq('pair_code', code);
 
-      const WEBAPP_URL = 'https://app.chumi.space';
+      const WEBAPP_URL = 'https://chumi.space';
       const RU = [
         `🐾 Привет! Не забывай про ${safePet} — серия ${streak} дн.!`,
         `💌 Сообщение от партнёра по Chumi! Питомец растёт уже ${streak} дн. 🐾`,

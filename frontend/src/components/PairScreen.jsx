@@ -89,6 +89,7 @@ function getShareMessages(petName, streak, pairCode, lang) {
       `💌 Message from your Chumi partner! Our pet is growing for ${streak} days 🐾`,
       `👋 ${petName} is waiting! Streak: ${streak} days 🐾`,
       `🐾 ${petName} misses you! ${streak} day streak — don't break it!`,
+      `💬 Reminder from ${petName}! ${streak} day streak — come back soon 🐾`,
     ],
     send_sticker: [
       `🎨 Sticker from ${petName}! Growing our pet for ${streak} days 🐾`,
@@ -288,7 +289,7 @@ useEffect(() => {
     const headers = {};
     const initData = getInitData();
     if (initData) headers['X-Telegram-Init-Data'] = initData;
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       headers['X-Dev-User-Id'] = String(userId);
     }
     return headers;
@@ -2027,7 +2028,7 @@ const renderPet = () => (
               <div className="sk-pair-card sk-pair-card-add glass-card" onClick={handleAddPair}>
                 <div className="sk-pair-card-plus">+</div>
                 <div className="sk-pair-card-name" style={{ fontSize: 12 }}>
-                  {canAddPair ? (lang === 'ru' ? 'Новая пара' : 'New pair') : '50 ⭐ Stars'}
+                  {canAddPair ? (lang === 'ru' ? 'Новая пара' : 'New pair') : '33 ⭐ Stars'}
                 </div>
               </div>
             </div>
