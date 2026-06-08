@@ -2161,9 +2161,7 @@ const renderPet = () => (
                     <span className="sk-ranking-pos">{rankingTab === 'top' ? (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`) : `#${i+1}`}</span>
                     <div className="sk-ranking-avatars">
                       {(() => {
-                        const sorted = (r.members || []).slice().sort((a, b) => {
-                          return (a.joined_at || '').localeCompare(b.joined_at || '');
-                        });
+                        const sorted = (r.members || []);
                         if (sorted.length === 0) return <div className="sk-ranking-ava"><span style={{ fontSize: 14 }}>👤</span></div>;
                         return sorted.map((m, idx) => (
                           <div key={m.user_id} className="sk-ranking-ava" style={{ zIndex: sorted.length - idx }}>

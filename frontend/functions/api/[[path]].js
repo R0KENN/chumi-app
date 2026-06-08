@@ -1295,7 +1295,7 @@ try {
 
       const { data: allMembers } = await supabase
         .from('pair_users')
-        .select('pair_code, user_id, display_name, username, created_at')
+        .select('pair_code, user_id, display_name, username')
         .in('pair_code', codes);
 
       const membersByPair = new Map();
@@ -1305,7 +1305,6 @@ try {
           user_id: m.user_id,
           display_name: m.display_name || null,
           avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
-          joined_at: m.created_at || null,
         });
       }
 

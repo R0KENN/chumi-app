@@ -117,7 +117,7 @@ body {
 /* ── Streak badge ── */
 .sk-streak-badge {
   display: flex; align-items: center; gap: 8px;
-  background: rgba(255,255,255,0.82);
+  background: rgba(255,255,255,0.55);
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
   border: 1px solid rgba(255,255,255,0.6);
@@ -153,12 +153,6 @@ body {
 @keyframes lgMoreUp {
   from { transform: translateX(-50%) translateY(12px); opacity: 0; }
   to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
-}
-/* ── Живой specular-блик: медленно смещается и пульсирует ── */
-@keyframes lgSheen {
-  0%   { transform: translate(0, 0) scale(1);      opacity: 0.9; }
-  50%  { transform: translate(8%, 6%) scale(1.08); opacity: 1;   }
-  100% { transform: translate(0, 0) scale(1);      opacity: 0.9; }
 }
 /* ── Появление оверлеев и попапов ── */
 @keyframes skOverlayIn {
@@ -481,10 +475,6 @@ body {
   isolation: isolate;
   overflow: hidden;
 }
-/* Верхний стеклянный хайлайт — мягкий, статичный, без mix-blend (чисто) */
-.lg-dock::after {
-  content: none;
-}
 
 /* Фолбэк: нет backdrop-filter (часть Android-WebView в Telegram) */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -590,19 +580,9 @@ body {
   animation: lgMoreUp 0.34s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 
-/* СЛОЙ 4 — specular-блик: диагональное светлое пятно, как отражение света.
-   Не перехватывает тапы (pointer-events:none). */
+/* Блик-слои отключены — плашка матовая, без specular-эффекта */
 .lg-more::before {
   content: none;
-}
-
-/* СЛОЙ 5 (прогрессивное улучшение) — настоящая рефракция краёв.
-   Работает только в Chromium-WebView (Android). На iOS просто игнорируется,
-   и плашка остаётся красивой за счёт слоёв 1–4. */
-@supports (backdrop-filter: url(#lg-distortion)) {
-  .lg-more::after {
-    content: none;
-  }
 }
 
 /* Контент плашки должен быть НАД блик-слоем */
@@ -717,9 +697,9 @@ body {
 /* Отключить анимированный specular-блик у конкретных попапов */
 .sk-no-sheen::before { display: none !important; }
 
-/* Ночь: плашка «Ещё» */
+/* Ночь: плашка «Ещё» — ровная матовая заливка */
 .sk-night .lg-more {
-  background: linear-gradient(135deg, rgba(40,40,44,0.98), rgba(32,32,36,0.96));
+  background: rgba(36, 36, 40, 0.97);
   border: 1px solid rgba(255,255,255,0.12);
 }
 .sk-night .lg-more button { color: #f2f2f5; }
@@ -732,9 +712,6 @@ body {
 /* Более прозрачные плашка заданий и счётчик серии (день) */
 .sk-tasks.glass-card {
   background: rgba(255,255,255,0.55) !important;
-}
-.sk-streak-badge {
-  background: rgba(255,255,255,0.55);
 }
 /* Ночь — полупрозрачное тёмное */
 .sk-night .sk-tasks.glass-card {
