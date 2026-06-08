@@ -554,7 +554,7 @@ if (request.method === 'GET' && path.match(/^\/api\/diary\/[^/]+$/)) {
     .select('id, user_id, emoji, text, entry_date, created_at')
     .eq('pair_code', pairCode)
     .order('entry_date', { ascending: false })
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(200);
   return json({ entries: entries || [] });
 }
@@ -1106,7 +1106,10 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       const tLang = ps?.lang || 'ru';
       const defaultMsg = tLang === 'ru' ? '🔔 Напоминание от Chumi' : '🔔 Reminder from Chumi';
 
-      await sendTelegramMessage(env, targetUserId, defaultMsg);
+      const sendRes = await sendTelegramMessage(env, targetUserId, defaultMsg);
+      if (!sendRes.ok) {
+        return json({ error: 'Delivery failed', blocked: !!sendRes.blocked }, 502);
+      }
       await supabase.from('notification_log').insert({
         sender_user_id: userId,
         target_user_id: targetUserId,
@@ -1292,7 +1295,7 @@ try {
 
       const { data: allMembers } = await supabase
         .from('pair_users')
-        .select('pair_code, user_id, display_name, username')
+        .select('pair_code, user_id, display_name, username, created_at')
         .in('pair_code', codes);
 
       const membersByPair = new Map();
@@ -1302,6 +1305,7 @@ try {
           user_id: m.user_id,
           display_name: m.display_name || null,
           avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
+          joined_at: m.created_at || null,
         });
       }
 

@@ -255,7 +255,8 @@ body {
   display: flex; align-items: center; gap: 6px;
   border-radius: 20px; padding: 8px 18px; margin: 4px 0 16px;
   cursor: pointer; transition: all 0.3s;
-  background: rgba(255,255,255,0.85) !important;
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
   box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 .sk-outfits-btn:active { transform: scale(0.96); }
@@ -468,39 +469,21 @@ body {
   gap: 2px;
   padding: 6px;
   border-radius: 30px;
-  /* Жидкое стекло: плотный матовый фон + сильный блюр с насыщением */
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.55),
-    rgba(255, 255, 255, 0.30)
-  );
-  backdrop-filter: blur(34px) saturate(1.9);
-  -webkit-backdrop-filter: blur(34px) saturate(1.9);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  /* Матовое шершавое стекло: ровная плотная заливка без яркого градиента */
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(40px) saturate(1.4);
+  -webkit-backdrop-filter: blur(40px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.18),
+    0 12px 40px rgba(0, 0, 0, 0.16),
     0 2px 8px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.06);
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);  /* приглушённый верхний кант */
   isolation: isolate;
   overflow: hidden;
 }
 /* Верхний стеклянный хайлайт — мягкий, статичный, без mix-blend (чисто) */
 .lg-dock::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; top: 0;
-  height: 1px;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 0;
-  /* тонкая матовая линия света по верхней кромке — плоско */
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0) 0%,
-    rgba(255,255,255,0.6) 50%,
-    rgba(255,255,255,0) 100%
-  );
+  content: none;
 }
 
 /* Фолбэк: нет backdrop-filter (часть Android-WebView в Telegram) */
@@ -552,11 +535,10 @@ body {
   top: 6px;
   bottom: 6px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.55);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.04),
-    0 3px 10px rgba(0, 0, 0, 0.1);
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.08);
   z-index: 1;
   pointer-events: none;
   /* пружинистое скольжение */
@@ -590,8 +572,7 @@ body {
   isolation: isolate;            /* свой контекст наложения для слоёв-псевдоэлементов */
 
   /* СЛОЙ 1 — фон стекла: плотная заливка (как у попапов) + блюр с насыщением */
-  background:
-    linear-gradient(135deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94));
+  background: rgba(255,255,255,0.95);
   backdrop-filter: blur(30px) saturate(1.8);
   -webkit-backdrop-filter: blur(30px) saturate(1.8);
 
@@ -601,9 +582,8 @@ body {
   /* СЛОЙ 3 — объём: внутренний edge-highlight (светлый верх, тёмный низ)
      + внешняя мягкая тень для отрыва от фона */
   box-shadow:
-    inset 0 1px 1px rgba(255,255,255,0.95),       /* яркий кант сверху */
-    inset 0 -1px 2px rgba(0,0,0,0.06),            /* притенение снизу */
-    inset 0 0 22px rgba(255,255,255,0.25),        /* мягкое внутреннее свечение */
+    inset 0 1px 0 rgba(255,255,255,0.35),         /* приглушённый кант сверху */
+    inset 0 -1px 2px rgba(0,0,0,0.05),            /* лёгкое притенение снизу */
     0 16px 44px rgba(0,0,0,0.20),                 /* основная тень */
     0 2px 8px rgba(0,0,0,0.08);                   /* контактная тень */
 
@@ -621,14 +601,7 @@ body {
    и плашка остаётся красивой за счёт слоёв 1–4. */
 @supports (backdrop-filter: url(#lg-distortion)) {
   .lg-more::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    z-index: 1;
-    backdrop-filter: url(#lg-distortion);
-    -webkit-backdrop-filter: url(#lg-distortion);
+    content: none;
   }
 }
 
@@ -771,10 +744,10 @@ body {
   background: rgba(24,24,26,0.45);
 }
 
-/* Наряды — полупрозрачные, но плотнее заданий */
+/* Наряды — той же прозрачности, что и счётчик серии */
 .sk-outfits-btn {
-  background: rgba(255,255,255,0.72) !important;
+  background: rgba(255,255,255,0.55) !important;
 }
 .sk-night .sk-outfits-btn {
-  background: rgba(24,24,26,0.62) !important;
+  background: rgba(24,24,26,0.45) !important;
 }

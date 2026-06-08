@@ -467,9 +467,11 @@ useEffect(() => {
         const alreadyOpened = data.daily_tasks?.some(t => t.task_key === 'daily_open');
         if (!alreadyOpened) {
           const res2 = await completeTask('daily_open');
-          // После любого исхода (успех / reset / отказ) перечитываем пару,
-          // чтобы UI показал актуальное состояние: живой питомец после reset
-          // или корректное окно воскрешения, если он мёртв.
+          if (res2 === 'reset') {
+            // Питомец сброшен — обнуляем запомненный уровень, чтобы level-up'ы показались заново
+            localStorage.setItem(`chumi_last_level_${pairId}_${userId}`, '0');
+            lastLevelUpShownRef.current = null;
+          }
           const r2 = await fetch(`${API}/pair/${pairId}/${userId}`, { headers: authGetHeaders() });
           const d2 = await r2.json();
           if (!d2.error) setPair(d2);
@@ -1097,8 +1099,8 @@ const drawPolaroidContent = async (ctx, bgConfig) => {
   const stripCenterY = N.y + N.h / 2;
 
   ctx.font = 'bold 110px "Caveat", "Patrick Hand", cursive';
-  const petName = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
-  ctx.fillText(petName, stripCenterX, stripCenterY - 24);
+  const cardPetName = pair?.pet_name || (lang === 'ru' ? 'Наш Chumi' : 'Our Chumi');
+  ctx.fillText(cardPetName, stripCenterX, stripCenterY - 24);
 
   // ── Подпись под именем ──
   ctx.font = '46px "Caveat", "Patrick Hand", cursive';
@@ -2322,18 +2324,16 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
             </div>
           )
         )}
-      </div>
-
-        {outfitTab === 'bg' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {outfitTab === 'bg' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
             {/* Авто — фон по уровню/скину */}
             <div onClick={() => chooseBg(null)} style={{
               textAlign: 'center', padding: 6, borderRadius: 14,
               border: !bgChoice ? `2px solid ${accentColor}` : '2px solid transparent',
               cursor: 'pointer',
             }}>
-              <div style={{
-                width: '100%', height: 48, borderRadius: 10,
+                  <div style={{
+                    width: '100%', height: 48, borderRadius: 10,
                 background: 'linear-gradient(135deg,#ddd,#bbb)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
               }}>✦</div>
@@ -2372,6 +2372,7 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
             })}
           </div>
         )}
+      </div>
 
       {/* Кнопка */}
       <div style={{ padding: '8px 16px 20px', flexShrink: 0 }}>
@@ -2621,8 +2622,9 @@ calendarData.days.forEach(d => {
           <span style={{ fontSize: 11, color: '#aaa' }}>{diaryText.length}/100</span>
           <button onClick={handleSaveDiary} disabled={!diaryText.trim() || diarySaving} style={{
             padding: '8px 18px', borderRadius: 12, border: 'none',
-            background: diaryText.trim() ? accentColor : '#ddd',
-            color: '#fff', fontSize: 13, fontWeight: 600,
+            background: diaryText.trim() ? accentColor : (isDark ? 'rgba(255,255,255,0.12)' : '#ececef'),
+            color: diaryText.trim() ? '#fff' : (isDark ? 'rgba(255,255,255,0.4)' : '#b8b8be'),
+            fontSize: 13, fontWeight: 600,
             cursor: diaryText.trim() ? 'pointer' : 'default',
           }}>
             {diarySaving ? '...' : (lang === 'ru' ? 'Сохранить' : 'Save')}
@@ -2687,16 +2689,16 @@ calendarData.days.forEach(d => {
       className="sk-popup"
       onClick={e => e.stopPropagation()}
       style={{
-        maxWidth: 360,
-        padding: 16,
+        maxWidth: 300,
+        padding: 12,
         display: 'flex',
         flexDirection: 'column',
-        gap: 10,
-        maxHeight: '85vh',
+        gap: 8,
+        maxHeight: '70vh',
       }}
     >
       <h3 style={{ margin: 0, fontSize: 16, textAlign: 'center' }}>
-        🎨 {lang === 'ru' ? 'Выбери стикер' : 'Pick a sticker'}
+        {lang === 'ru' ? 'Выбери стикер' : 'Pick a sticker'}
       </h3>
       <p style={{ margin: 0, fontSize: 12, color: isDark ? 'rgba(255,255,255,0.55)' : '#888', textAlign: 'center' }}>
         {lang === 'ru'
@@ -2722,7 +2724,7 @@ calendarData.days.forEach(d => {
               borderRadius: 12,
               border: '2px solid rgba(0,0,0,0.06)',
               background: isDark ? 'rgba(255,255,255,0.07)' : '#f5f5f7',
-              fontSize: 32,
+              fontSize: 26,
               cursor: stickerSending ? 'default' : 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -2963,7 +2965,7 @@ calendarData.days.forEach(d => {
             opacity: shareCardUrl ? 1 : 0.6,
           }}
         >
-          📱 {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
+          {lang === 'ru' ? 'Опубликовать в Stories' : 'Publish to Stories'}
         </button>
       )}
 
