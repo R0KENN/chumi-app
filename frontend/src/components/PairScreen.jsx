@@ -1810,8 +1810,6 @@ const renderPet = () => (
 {!showOutfits && (
   <>
     <nav className="lg-dock lg-dark">
-      <div className="lg-backdrop" />
-      <div className="lg-backdrop-edge" />
       {(() => {
         const dockTabs = [
           { key: 'mypairs',  Ico: IconPairs,    label: lang === 'ru' ? 'Мои пары' : 'My pairs' },

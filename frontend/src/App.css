@@ -71,11 +71,6 @@ body {
 .sk {
   min-height: 100vh; display: flex; flex-direction: column; align-items: center;
   padding: 0 16px; transition: background 0.4s ease;
-}
-
-.sk {
-  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
-  padding: 0 16px; transition: background 0.4s ease;
   overscroll-behavior-y: none;        /* добавь эту строку */
   -webkit-overflow-scrolling: auto;   /* и эту — убирает инерционный bounce */
 }
@@ -487,40 +482,6 @@ html, body {
   overflow: hidden;
 }
 
-/* Основной слой блюра — растянут вверх, чтобы подмешивать контент над доком */
-.lg-backdrop {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -100%;
-  height: 200%;
-  border-radius: inherit;
-  backdrop-filter: blur(48px) saturate(1.8);
-  -webkit-backdrop-filter: blur(48px) saturate(1.8);
-  background: rgba(255, 255, 255, 0.10);
-  pointer-events: none;
-  z-index: 0;
-  /* показываем только нижнюю половину (саму плашку), верхнюю обрезаем */
-  mask-image: linear-gradient(to bottom, transparent 0%, transparent 50%, black 50%, black 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 50%, black 50%, black 100%);
-}
-
-/* Верхняя светлая кромка — иллюзия толщины стекла */
-.lg-backdrop-edge {
-  position: absolute;
-  left: 0; right: 0; top: 0;
-  height: 100%;
-  border-radius: inherit;
-  backdrop-filter: blur(12px) brightness(1.15) saturate(1.6);
-  -webkit-backdrop-filter: blur(12px) brightness(1.15) saturate(1.6);
-  background: rgba(255, 255, 255, 0.12);
-  pointer-events: none;
-  z-index: 0;
-  /* видимы только первые ~3px сверху — это и есть «грань» стекла */
-  mask-image: linear-gradient(to bottom, black 0, black 3px, transparent 3px);
-  -webkit-mask-image: linear-gradient(to bottom, black 0, black 3px, transparent 3px);
-}
-
 /* Фолбэк: нет backdrop-filter (часть Android-WebView в Telegram) */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .lg-dock { background: rgba(255, 255, 255, 0.95); }
@@ -589,8 +550,15 @@ html, body {
 /* тёмные уровни питомца — делаем плашку светлее текстом */
 .lg-dock.lg-dark .lg-tab { color: rgba(255, 255, 255, 0.6); }
 .lg-dock.lg-dark .lg-tab-active { color: #fff; }
-.lg-dock.lg-dark { background: rgba(40, 40, 50, 0.82); border-color: rgba(255,255,255,0.18); }
-.lg-dock.lg-dark .lg-pill-slider { background: rgba(255,255,255,0.18); }
+.lg-dock.lg-dark {
+  background: rgba(38, 38, 46, 0.78);
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border-color: rgba(255,255,255,0.16);
+}
+.lg-dock.lg-dark .lg-pill-slider {
+  background: linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.12) 100%);
+}
 
 /* мини-лист «Ещё» над плашкой */
 /* ══════════════════════════════════════
