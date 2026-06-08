@@ -463,15 +463,22 @@ body {
   gap: 2px;
   padding: 6px;
   border-radius: 30px;
-  /* Матовое шершавое стекло: ровная плотная заливка без яркого градиента */
-  background: rgba(255, 255, 255, 0.62);
-  backdrop-filter: blur(40px) saturate(1.4);
-  -webkit-backdrop-filter: blur(40px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+
+  /* стекло: плотнее + сильнее блюр и насыщение */
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(48px) saturate(1.8);
+  -webkit-backdrop-filter: blur(48px) saturate(1.8);
+
+  /* кромка стекла */
+  border: 1px solid rgba(255, 255, 255, 0.45);
+
+  /* объём: яркий верхний кант + притенение снизу + мягкая тень */
   box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.16),
-    0 2px 8px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.4);  /* приглушённый верхний кант */
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.06),
+    0 14px 44px rgba(0, 0, 0, 0.18),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+
   isolation: isolate;
   overflow: hidden;
 }
@@ -521,17 +528,21 @@ body {
 /* Единая скользящая пилюля дока — едет к активной вкладке */
 .lg-pill-slider {
   position: absolute;
-  left: 6px;            /* паддинг дока */
+  left: 6px;
   top: 6px;
   bottom: 6px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.55);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 2px 6px rgba(0, 0, 0, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.05),
+    0 3px 10px rgba(0, 0, 0, 0.12);
   z-index: 1;
   pointer-events: none;
-  /* пружинистое скольжение */
   transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.5, 1);
   will-change: transform;
 }
