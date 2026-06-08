@@ -434,6 +434,14 @@ useEffect(() => {
     };
   }, [tg]);
 
+  useEffect(() => {
+    if (!tg) return;
+    try { tg.disableVerticalSwipes?.(); } catch (e) {}
+    try { tg.expand?.(); } catch (e) {}
+    return () => {
+      try { tg.enableVerticalSwipes?.(); } catch (e) {}
+    };
+  }, [tg]);
 
   // ══════ Back Button ══════
   useEffect(() => {
@@ -1801,7 +1809,7 @@ const renderPet = () => (
 {/* ══════ Liquid Glass нижняя плашка ══════ */}
 {!showOutfits && (
   <>
-    <nav className={`lg-dock ${isDark ? 'lg-dark' : ''}`}>
+    <nav className="lg-dock lg-dark">
       <div className="lg-backdrop" />
       <div className="lg-backdrop-edge" />
       {(() => {
