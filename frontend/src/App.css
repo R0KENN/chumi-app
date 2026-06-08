@@ -558,29 +558,9 @@ html, body {
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.22),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.10);
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.12);
 }
-
-.lg-dock.lg-dark::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 12%;
-  right: 12%;
-  height: 40%;
-  border-radius: inherit;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
-.lg-dock.lg-dark .lg-tab { color: rgba(255, 255, 255, 0.6); }
-.lg-dock.lg-dark .lg-tab-active { color: #fff; }
 
 .lg-dock.lg-dark .lg-pill-slider {
   background: linear-gradient(
