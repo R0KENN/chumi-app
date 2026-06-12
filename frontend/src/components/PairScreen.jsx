@@ -77,6 +77,18 @@ function darkenHex(hex, factor = 0.42) {
   return `#${d(r)}${d(g)}${d(b)}`;
 }
 
+// Осветляет и слегка десатурирует hex-акцент для тёмной темы.
+// amount=0.3 → подмешиваем 30% белого, чтобы насыщенный цвет не «вибрировал»
+// на тёмном фоне (рекомендация Material/NN-g по dark theme).
+function lightenHex(hex, amount = 0.32) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const mix = (c) => Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0');
+  return `#${mix(r)}${mix(g)}${mix(b)}`;
+}
+
 function getShareMessages(petName, streak, pairCode, lang) {
   const msg = lang === 'ru' ? {
     send_msg: [
@@ -893,7 +905,7 @@ useEffect(() => {
       bg: ['#E8F0FF', '#B8D0F4'], accent: '#4A7BD4' },
   ];
 
-    // 20 фонов. Каждый — пара цветов для дневного градиента.
+    // 9 фонов. Каждый — пара цветов для дневного градиента.
   // Ночью затемняются автоматически через darkenHex.
   const BACKGROUNDS = [
     { id: 'lavender',  nameRu: 'Лаванда',   name: 'Lavender',  bg: ['#F3EDF7','#D7C8E8'] },
@@ -905,17 +917,6 @@ useEffect(() => {
     { id: 'coral',     nameRu: 'Коралл',    name: 'Coral',     bg: ['#FFF0EC','#FFC9B8'] },
     { id: 'ocean',     nameRu: 'Океан',     name: 'Ocean',     bg: ['#E8F8FA','#A8DDE0'] },
     { id: 'grape',     nameRu: 'Виноград',  name: 'Grape',     bg: ['#F4ECFB','#D4BCEC'] },
-    { id: 'lemon',     nameRu: 'Лимон',     name: 'Lemon',     bg: ['#FCFBE8','#EDE89A'] },
-    { id: 'blush',     nameRu: 'Румянец',   name: 'Blush',     bg: ['#FFEFF4','#FFC2D6'] },
-    { id: 'forest',    nameRu: 'Лес',       name: 'Forest',    bg: ['#EBF5EC','#B6DCBB'] },
-    { id: 'cocoa',     nameRu: 'Какао',     name: 'Cocoa',     bg: ['#F6EFE9','#DCC4AE'] },
-    { id: 'ice',       nameRu: 'Лёд',       name: 'Ice',       bg: ['#EEF6F9','#C2DEE8'] },
-    { id: 'bubblegum', nameRu: 'Жвачка',    name: 'Bubblegum', bg: ['#FFEFFA','#F7C2E8'] },
-    { id: 'sand',      nameRu: 'Песок',     name: 'Sand',      bg: ['#FBF6EC','#EAD9B8'] },
-    { id: 'aqua',      nameRu: 'Аква',      name: 'Aqua',      bg: ['#E8FAF6','#A8E6D8'] },
-    { id: 'plum',      nameRu: 'Слива',     name: 'Plum',      bg: ['#F2ECF5','#CBB8D9'] },
-    { id: 'flamingo',  nameRu: 'Фламинго',  name: 'Flamingo',  bg: ['#FFF0F0','#FFBFC8'] },
-    { id: 'steel',     nameRu: 'Сталь',     name: 'Steel',     bg: ['#EEF1F5','#C2CDDB'] },
   ];
 
   const partner = pair.members?.find(m => m.user_id !== userId);
@@ -947,10 +948,13 @@ useEffect(() => {
     }
   }
 
-  const bgColors = skinBg || lv.bg;
-  const accentColor = skinAccent || lv.accent;
-  const checkColor = skinCheck || lv.check;
   const isDark = theme === 'night';
+  const bgColors = skinBg || lv.bg;
+  const rawAccent = skinAccent || lv.accent;
+  const rawCheck = skinCheck || lv.check;
+  // В тёмной теме осветляем акценты, чтобы насыщенные цвета не «вибрировали»
+  const accentColor = isDark ? lightenHex(rawAccent) : rawAccent;
+  const checkColor = isDark ? lightenHex(rawCheck) : rawCheck;
   // Если пользователь выбрал фон — берём его, иначе фон уровня/скина
   const bgChoice = pair?.active_bg || null;
   const chosenBgObj = BACKGROUNDS.find(b => b.id === bgChoice);
@@ -1809,7 +1813,7 @@ const renderPet = () => (
 {/* ══════ Liquid Glass нижняя плашка ══════ */}
 {!showOutfits && (
   <>
-    <nav className="lg-dock lg-dark">
+    <nav className={`lg-dock ${isDark ? 'lg-dark' : ''}`}>
       {(() => {
         const dockTabs = [
           { key: 'mypairs',  Ico: IconPairs,    label: lang === 'ru' ? 'Мои пары' : 'My pairs' },
