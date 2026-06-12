@@ -959,8 +959,10 @@ useEffect(() => {
   const bgChoice = pair?.active_bg || null;
   const chosenBgObj = BACKGROUNDS.find(b => b.id === bgChoice);
   const baseBg = chosenBgObj ? chosenBgObj.bg : bgColors;
+  // В тёмной теме делаем глубокий контрастный градиент:
+  // верх почти чёрный (factor 0.16), низ — тёмный, но с читаемым оттенком (0.30).
   const themedBg = isDark
-    ? [darkenHex(baseBg[0]), darkenHex(baseBg[1])]
+    ? [darkenHex(baseBg[0], 0.16), darkenHex(baseBg[1], 0.30)]
     : baseBg;
 
     // ── Postcard helpers ──
