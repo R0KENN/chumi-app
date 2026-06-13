@@ -2438,6 +2438,76 @@ if (!opened) {
       return json({ success: true, timezone: tz });
     }
 
+        // ── GET /api/game-score/:pairCode ──
+    // Возвращает лучший результат игры для пары
+    if (request.method === 'GET' && path.match(/^\/api\/game-score\/[^/]+$/)) {
+      const pairCode = path.split('/')[3];
+
+      const authedId = getAuthedUserId(request, env);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (!(await isPairMember(supabase, pairCode, authedId))) {
+        return json({ error: 'Not a member' }, 403);
+      }
+
+      const { data: pair } = await supabase
+        .from('pairs').select('game_best_score').eq('code', pairCode).maybeSingle();
+      if (!pair) return json({ error: 'Pair not found' }, 404);
+
+      return json({ best: pair.game_best_score || 0 });
+    }
+
+    // ── POST /api/game-score ──
+    // Отправляет результат игры; рекорд обновляется только если он больше текущего
+    if (request.method === 'POST' && path === '/api/game-score') {
+      const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const pairCode = body.pairCode || body.code;
+      // Валидируем счёт: целое число в разумных пределах (анти-чит на минималках)
+      const score = Math.floor(Number(body.score));
+      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+      if (!Number.isFinite(score) || score < 0 || score > 1000000) {
+        return json({ error: 'Invalid score' }, 400);
+      }
+
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
+      const { data: pair } = await supabase
+        .from('pairs').select('game_best_score').eq('code', pairCode).maybeSingle();
+      if (!pair) return json({ error: 'Pair not found' }, 404);
+
+      const currentBest = pair.game_best_score || 0;
+      let best = currentBest;
+      let isRecord = false;
+
+      // Обновляем только если новый счёт больше — оптимистическая проверка
+      if (score > currentBest) {
+        const { data: updated } = await supabase
+          .from('pairs')
+          .update({ game_best_score: score })
+          .eq('code', pairCode)
+          .eq('game_best_score', currentBest) // защита от гонки: апдейт только если рекорд не изменился
+          .select('game_best_score')
+          .maybeSingle();
+        if (updated) {
+          best = updated.game_best_score;
+          isRecord = true;
+        } else {
+          // Кто-то параллельно записал больший рекорд — перечитываем
+          const { data: re } = await supabase
+            .from('pairs').select('game_best_score').eq('code', pairCode).maybeSingle();
+          best = re?.game_best_score || currentBest;
+          isRecord = score > currentBest && score >= best;
+        }
+      }
+
+      return json({ success: true, best, isRecord });
+    }
+
     // ── Fallback 404 ──
     return json({ error: 'Not found' }, 404);
 

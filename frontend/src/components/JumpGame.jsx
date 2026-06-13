@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { getInitData } from '../context/PairsContext';
 
 const ACCENT = '#9B72CF';
 const BG_TOP = '#F3EDF7';
@@ -19,14 +20,49 @@ export default function JumpGame() {
   const petName = searchParams.get('pet') || '';
   const petImgSrc = petName ? `/pets/${petName}_frame.png` : null;
 
+  const userId = String(
+    window.Telegram?.WebApp?.initDataUnsafe?.user?.id ||
+    localStorage.getItem('chumi_test_uid') || 'guest'
+  );
+
+  const authHeaders = () => {
+    const headers = { 'Content-Type': 'application/json' };
+    const initData = getInitData();
+    if (initData) headers['X-Telegram-Init-Data'] = initData;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      headers['X-Dev-User-Id'] = userId;
+    }
+    return headers;
+  };
+
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [bestScore, setBestScore] = useState(
     () => Number(localStorage.getItem(`jump_best_${pairId}`) || 0)
   );
+  const [isNewRecord, setIsNewRecord] = useState(false);
 
   const game = useRef(null);
   const petImg = useRef(null);
+
+// Подтягиваем рекорд пары с сервера (localStorage уже дал мгновенное значение)
+  useEffect(() => {
+    if (!pairId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/game-score/${pairId}`, { headers: authHeaders() });
+        const data = await res.json();
+        if (typeof data.best === 'number') {
+          setBestScore(prev => {
+            const best = Math.max(prev, data.best);
+            localStorage.setItem(`jump_best_${pairId}`, String(best));
+            return best;
+          });
+        }
+      } catch (e) {}
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairId]);
 
   const haptic = useCallback((type = 'light') => {
     try {
@@ -39,75 +75,112 @@ export default function JumpGame() {
   const endGame = useCallback((finalScore) => {
     setGameOver(true);
     setScore(finalScore);
+    setIsNewRecord(false); // сброс на старте, чтобы не висел флаг с прошлой игры
+
+    // Локальная проверка рекорда (мгновенно, до ответа сервера)
+    const prevBest = Number(localStorage.getItem(`jump_best_${pairId}`) || 0);
+    if (finalScore > prevBest && finalScore > 0) {
+      setIsNewRecord(true);
+    }
+
     setBestScore((prev) => {
       const best = Math.max(prev, finalScore);
       localStorage.setItem(`jump_best_${pairId}`, String(best));
       return best;
     });
     haptic('error');
-  }, [pairId, haptic]);
+
+    // Отправляем результат на сервер (рекорд обновится, только если он больше)
+    if (pairId && finalScore > 0) {
+      fetch('/api/game-score', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, pairCode: pairId, score: finalScore }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (typeof data.best === 'number') {
+            setBestScore(prev => {
+              const best = Math.max(prev, data.best);
+              localStorage.setItem(`jump_best_${pairId}`, String(best));
+              return best;
+            });
+          }
+          // Сервер — единственный источник правды по рекорду пары:
+          // может и опровергнуть локальный флаг, если партнёр уже выбил больше
+          setIsNewRecord(!!data.isRecord);
+          if (data.isRecord) haptic('success');
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairId, haptic, userId]);
 
   // Новая платформа выше предыдущей.
-  // Гарантия проходимости: опасная платформа никогда не идёт сразу после опасной,
-  // и каждая опасная ставится так, чтобы рядом по высоте была достижимая нормальная.
-  const makePlatform = useCallback((W, prevY, scrolled, recent) => {
+  // Платформы разбросаны по ширине, но всегда достижимы.
+  // После опасной — белая со смещением вбок (не строго над предыдущей).
+  const makePlatform = useCallback((W, scrolled, recent) => {
     const PLATFORM_W = 75;
-    const gap = 95 + Math.random() * 50; // 95–145 px по вертикали
+    const sorted = [...recent].sort((a, b) => a.y - b.y);
+    const base = sorted[0];
+    const baseX = base ? base.x : W / 2 - PLATFORM_W / 2;
+    const baseY = base ? base.y : 0;
+    const lastWasHazard = base && base.type !== NORMAL;
+
     const heightFloors = scrolled / 50;
-    const y = prevY - gap;
-
-    // Самая верхняя из существующих платформ — от неё прыгаем на новую
-    const sorted = [...recent].sort((a, b) => a.y - b.y); // сверху вниз
-    const last = sorted[0]; // ближайшая платформа НАД которой мы строим (самая высокая)
-
-    // Максимальная горизонтальная дистанция, которую реально перекрыть за прыжок.
-    // При JUMP=-12.8, GRAVITY=0.38 время полёта вверх+вниз велико, а vx≤9,
-    // поэтому за прыжок безопасно достаём ~55% ширины экрана. Берём с запасом.
-    const MAX_REACH = Math.min(W * 0.5, 230);
-
-    const lastWasHazard = last && last.type !== NORMAL;
 
     let type = NORMAL;
     if (!lastWasHazard) {
       const r = Math.random();
       if (heightFloors > 40) {
-        if (r < 0.14) type = SPIKE;
-        else if (r < 0.40) type = FRAGILE;
+        if (r < 0.10) type = SPIKE;
+        else if (r < 0.34) type = FRAGILE;
       } else if (heightFloors > 15) {
-        if (r < 0.08) type = SPIKE;
-        else if (r < 0.30) type = FRAGILE;
+        if (r < 0.06) type = SPIKE;
+        else if (r < 0.26) type = FRAGILE;
       } else {
-        if (r < 0.18) type = FRAGILE;
+        if (r < 0.15) type = FRAGILE;
       }
     }
 
-    // Позиция X
-    let x;
-    if (type === NORMAL) {
-      // Нормальную ставим В ПРЕДЕЛАХ досягаемости от предыдущей платформы,
-      // чтобы до неё всегда можно было допрыгнуть.
-      if (last) {
-        const minX = Math.max(0, last.x - MAX_REACH);
-        const maxX = Math.min(W - PLATFORM_W, last.x + MAX_REACH);
-        x = minX + Math.random() * (maxX - minX);
-      } else {
-        x = Math.random() * (W - PLATFORM_W);
+    let gap, x;
+
+    if (lastWasHazard) {
+      // ── После опасной (иглы/ломкая) ──
+      // Белая платформа стоит НИЗКО и со смещением вбок — чтобы не налететь
+      // на шипы при прыжке вверх и при этом легко допрыгнуть в сторону.
+      gap = 55 + Math.random() * 20; // 55–75 px — низко, легко допрыгнуть вбок
+
+      const PLATFORM_W2 = PLATFORM_W; // 75
+      const minShift = PLATFORM_W2 + 10;        // 85 px — мимо игл, но не слишком далеко
+      const maxShift = PLATFORM_W2 + 45;        // 120 px — комфортно допрыгнуть вбок
+      const dir = baseX < (W - PLATFORM_W2) / 2 ? 1 : -1; // уводим к центру экрана
+      let shift = (minShift + Math.random() * (maxShift - minShift)) * dir;
+      x = baseX + shift;
+      // Если выходим за край экрана — отражаем смещение в другую сторону
+      if (x < 0 || x > W - PLATFORM_W2) {
+        x = baseX - shift;
       }
+      x = Math.max(0, Math.min(W - PLATFORM_W2, x));
     } else {
-      // Опасную ставим ПОДАЛЬШЕ от линии прыжка предыдущей платформы —
-      // чтобы её можно было облететь, а не натыкаться обязательно.
-      x = Math.random() * (W - PLATFORM_W);
+      // ── Обычная генерация ──
+      // Больший разрыв по высоте для интереса, но всегда в пределах прыжка.
+      // h_max ≈ JUMP²/(2·GRAVITY) ≈ 215 px, поэтому держим потолок ~155.
+      gap = 110 + Math.random() * 45; // 110–155 px
+
+      // Считаем реальную горизонтальную досягаемость для этого gap:
+      // сколько игрок успеет пролететь вбок, пока поднимается на высоту gap.
+      const J = 12.8, G = 0.38, VX = 9;
+      const disc = Math.max(0, J * J - 2 * G * gap);
+      const t = (J - Math.sqrt(disc)) / G; // время подъёма до высоты gap
+      const reach = VX * t * 0.85;          // 0.85 — небольшой запас надёжности
+      const minX = Math.max(0, baseX - reach);
+      const maxX = Math.min(W - PLATFORM_W, baseX + reach);
+      x = minX + Math.random() * Math.max(1, maxX - minX);
     }
 
-    return {
-      x,
-      y,
-      w: PLATFORM_W,
-      h: 18,
-      type,
-      broken: false,
-      breakAnim: 0,
-    };
+    const y = baseY - gap;
+    return { x, y, w: PLATFORM_W, h: 18, type, broken: false, breakAnim: 0 };
   }, []);
 
   const loop = useCallback((now) => {
@@ -143,9 +216,7 @@ export default function JumpGame() {
 
       if (overlapX && landing) {
         if (p.type === SPIKE) {
-          // Иглы — мгновенная смерть
           g.running = false;
-          haptic('error');
           endGame(g.score);
           return;
         }
@@ -214,10 +285,7 @@ export default function JumpGame() {
       if (b.used || b.y > H + 80 || b.x < -120 || b.x > W + 120) boosters.splice(i, 1);
     }
     while (platforms.length < 8) {
-      const highest = platforms.reduce((min, p) => Math.min(min, p.y), H);
-      // recent = платформы, отсортированные по высоте (самые верхние — последние созданные)
-      const recent = [...platforms].sort((a, b) => b.y - a.y);
-      platforms.push(makePlatform(W, highest, g.scrolled, recent));
+      platforms.push(makePlatform(W, g.scrolled, platforms));
     }
 
     // Game over (упал вниз)
@@ -310,8 +378,13 @@ export default function JumpGame() {
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const W = canvas.width;
-    const H = canvas.height;
+    // Гасим возможный предыдущий цикл, чтобы не было двух loop одновременно
+    if (game.current) {
+      game.current.running = false;
+      if (game.current.raf) cancelAnimationFrame(game.current.raf);
+    }
+    const W = window.innerWidth;
+    const H = window.innerHeight;
 
     const player = {
       x: W / 2 - 36,
@@ -325,7 +398,7 @@ export default function JumpGame() {
     // Первая платформа всегда обычная (под игроком)
     const platforms = [{ x: player.x - 2, y: H - 95, w: 75, h: 18, type: NORMAL, broken: false, breakAnim: 0 }];
     while (platforms.length < 8) {
-      platforms.push(makePlatform(W, platforms[platforms.length - 1].y, 0, platforms));
+      platforms.push(makePlatform(W, 0, platforms));
     }
 
     game.current = {
@@ -341,6 +414,7 @@ export default function JumpGame() {
 
     setScore(0);
     setGameOver(false);
+    setIsNewRecord(false);
     game.current.raf = requestAnimationFrame(loop);
   }, [loop, makePlatform]);
 
@@ -348,8 +422,18 @@ export default function JumpGame() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const setupCanvas = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2); // 2 — потолок, чтобы не убить FPS
+      const cssW = window.innerWidth;
+      const cssH = window.innerHeight;
+      canvas.style.width = cssW + 'px';
+      canvas.style.height = cssH + 'px';
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // дальше рисуем в CSS-координатах
+    };
+    setupCanvas();
 
     if (petImgSrc) {
       const img = new Image();
@@ -396,6 +480,28 @@ export default function JumpGame() {
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
+    const onVisibility = () => {
+      const g = game.current;
+      if (!g) return;
+      if (document.hidden) {
+        g.running = false;
+        if (g.raf) cancelAnimationFrame(g.raf);
+      } else if (!gameOver) {
+        // Возобновляем, сбросив lastTime, чтобы dt не скакнул
+        g.lastTime = 0;
+        g.running = true;
+        g.raf = requestAnimationFrame(loop);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const onResize = () => {
+      setupCanvas(); // пересчёт размеров + DPR + setTransform
+      const g = game.current;
+      if (g) { g.W = window.innerWidth; g.H = window.innerHeight; }
+    };
+    window.addEventListener('resize', onResize);
+
     startGame();
 
     return () => {
@@ -404,6 +510,8 @@ export default function JumpGame() {
       canvas.removeEventListener('touchend', onTouchEnd);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (game.current) game.current.running = false;
       if (game.current?.raf) cancelAnimationFrame(game.current.raf);
     };
@@ -448,8 +556,25 @@ export default function JumpGame() {
             textAlign: 'center', minWidth: 250,
             boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
           }}>
-            <div style={{ fontSize: 52, marginBottom: 8 }}>🐾</div>
+            <div style={{ fontSize: 52, marginBottom: 8 }}>{isNewRecord ? '🏆' : '🐾'}</div>
             <h2 style={{ margin: '0 0 12px', color: '#3a2a55' }}>Игра окончена</h2>
+            {isNewRecord && (
+              <div style={{
+                display: 'inline-block',
+                margin: '0 auto 12px',
+                padding: '6px 16px',
+                borderRadius: 999,
+                background: `linear-gradient(135deg, ${ACCENT}, #ec4899)`,
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 700,
+                letterSpacing: 0.3,
+                boxShadow: '0 4px 14px rgba(155,114,207,0.4)',
+                animation: 'recordPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}>
+                ✨ Новый рекорд!
+              </div>
+            )}
             <p style={{ color: '#777', margin: '4px 0', fontSize: 15 }}>Очки: <b style={{ color: ACCENT }}>{score}</b></p>
             <p style={{ color: '#777', margin: '4px 0 18px', fontSize: 15 }}>Рекорд: <b style={{ color: ACCENT }}>{bestScore}</b></p>
             <button onClick={startGame} style={{

@@ -769,3 +769,9 @@ html, body {
 .sk-night .sk-outfits-btn {
   background: rgba(31, 31, 35, 0.55) !important;
 }
+/* ── Анимация плашки нового рекорда в игре ── */
+@keyframes recordPop {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
