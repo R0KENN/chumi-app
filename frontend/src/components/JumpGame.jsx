@@ -357,12 +357,6 @@ export default function JumpGame() {
       petImg.current = img;
     }
 
-    const onTilt = (e) => {
-      const g = game.current;
-      if (g && g.player) g.player.vx = (e.gamma || 0) * 0.55;
-    };
-    window.addEventListener('deviceorientation', onTilt);
-
     // Управление пальцем: водим персонажа к месту касания, держа палец на экране
     const followTouch = (clientX) => {
       const g = game.current;
@@ -405,7 +399,6 @@ export default function JumpGame() {
     startGame();
 
     return () => {
-      window.removeEventListener('deviceorientation', onTilt);
       canvas.removeEventListener('touchstart', onTouchStart);
       canvas.removeEventListener('touchmove', onTouchMove);
       canvas.removeEventListener('touchend', onTouchEnd);
