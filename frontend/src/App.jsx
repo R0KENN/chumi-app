@@ -5,6 +5,7 @@ import { LangProvider } from './context/LangContext';
 import PairSelector from './components/PairSelector';
 import PairScreen from './components/PairScreen';
 import './App.css';
+import JumpGame from './components/JumpGame';
 
 // ── Error Boundary для отлова crash'ей ──
 import React from 'react';
@@ -58,6 +59,7 @@ function AppContent() {
     <Routes>
       <Route path="/" element={<PairSelector />} />
       <Route path="/pair/:pairId" element={<PairScreen />} />
+      <Route path="/game/:pairId" element={<JumpGame />} />
     </Routes>
   );
 }

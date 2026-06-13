@@ -161,3 +161,15 @@ export function IconMoon(props) {
     </svg>
   );
 }
+
+// 🎮 Игра — джойстик
+export function IconGame(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="2.5" y="7.5" width="19" height="9" rx="4.5" />
+      <path d="M7 10.5v3M5.5 12h3" />
+      <circle cx="15.5" cy="11" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="17.8" cy="13" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}

@@ -6,7 +6,7 @@ import { LEVELS, getLevel } from '../_levels-meta.js';
 import {
   IconPet, IconCalendar, IconDiary, IconTrophy, IconMore,
   IconPostcard, IconShare, IconGlobe, IconTrash, IconShirt, IconPairs,
-  IconSun, IconMoon,
+  IconSun, IconMoon, IconGame,
 } from './Icons';
 
 
@@ -1818,17 +1818,16 @@ const renderPet = () => (
     <nav className={`lg-dock ${isDark ? 'lg-dark' : ''}`}>
       {(() => {
         const dockTabs = [
-          { key: 'mypairs',  Ico: IconPairs,    label: lang === 'ru' ? 'Мои пары' : 'My pairs' },
-          { key: 'diary',    Ico: IconDiary,    label: lang === 'ru' ? 'Дневник'  : 'Diary' },
-          { key: 'home',     Ico: IconPet,      label: lang === 'ru' ? 'Питомец'  : 'Pet' },
-          { key: 'calendar', Ico: IconCalendar, label: lang === 'ru' ? 'Календарь': 'Calendar' },
-          { key: 'more',     Ico: IconMore,     label: lang === 'ru' ? 'Ещё'      : 'More' },
+          { key: 'mypairs', Ico: IconPairs, label: lang === 'ru' ? 'Мои пары' : 'My pairs' },
+          { key: 'game',    Ico: IconGame,  label: lang === 'ru' ? 'Игра'     : 'Game' },
+          { key: 'home',    Ico: IconPet,   label: lang === 'ru' ? 'Питомец'  : 'Pet' },
+          { key: 'diary',   Ico: IconDiary, label: lang === 'ru' ? 'Дневник'  : 'Diary' },
+          { key: 'more',    Ico: IconMore,  label: lang === 'ru' ? 'Ещё'      : 'More' },
         ];
         const activeKey =
-          showMyPairs  ? 'mypairs' :
-          showCalendar ? 'calendar' :
-          showDiary    ? 'diary' :
-          showMenu     ? 'more' : 'home';
+          showMyPairs ? 'mypairs' :
+          showDiary   ? 'diary' :
+          showMenu    ? 'more' : 'home';
         const activeTabIndex = dockTabs.findIndex(t => t.key === activeKey);
 
         return (
@@ -1865,7 +1864,14 @@ const renderPet = () => (
                     setShowCalendar(false); setShowDiary(false);
                     setShowRanking(false); setShowMenu(false);
                     setShowMyPairs(false);
-                    if (tab.key === 'calendar') setShowCalendar(true);
+                    if (tab.key === 'game') {
+                      if (isAdmin) {
+                        navigate(`/game/${pairId}?pet=${petSrc.idle}`);
+                      } else {
+                        if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Скоро' : 'Coming soon');
+                        else alert(lang === 'ru' ? 'Скоро' : 'Coming soon');
+                      }
+                    }
                     else if (tab.key === 'diary') setShowDiary(true);
                     else if (tab.key === 'mypairs') setShowMyPairs(true);
                     else if (tab.key === 'more') setShowMenu(true);
@@ -1886,6 +1892,10 @@ const renderPet = () => (
       <>
         <div className="sk-menu-overlay" onClick={() => setShowMenu(false)} />
         <div className="lg-more" onClick={e => e.stopPropagation()}>
+          <button onClick={() => { setShowCalendar(true); setShowMenu(false); }}>
+            <span className="lg-more-ico"><IconCalendar /></span>
+            {lang === 'ru' ? 'Календарь' : 'Calendar'}
+          </button>
           <button onClick={() => { loadRanking(); setShowRanking(true); setShowMenu(false); }}>
             <span className="lg-more-ico"><IconTrophy /></span>
             {lang === 'ru' ? 'Рейтинг' : 'Rating'}
