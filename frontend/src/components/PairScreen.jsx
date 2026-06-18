@@ -619,7 +619,7 @@ useEffect(() => {
       ctx.textAlign = 'center';
       ctx.fillText('@ChumiPetBot', W / 2, H - 80);
 
-      resolve(canvas.toDataURL('image/png', 0.95));
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
     img.onerror = () => resolve(shareCardUrl); // fallback — оригинал
     img.src = shareCardUrl;
@@ -753,7 +753,7 @@ useEffect(() => {
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillText('@ChumiPetBot', W / 2, H - 70);
 
-        resolve(canvas.toDataURL('image/png', 0.95));
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
       };
 
       img.onload = () => {
@@ -1178,7 +1178,7 @@ const generatePostcard = () => new Promise(async (resolve) => {
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.textAlign = 'right';
   ctx.fillText('@ChumiPetBot', W - 28, H - 22);
-  resolve(canvas.toDataURL('image/png'));
+  resolve(canvas.toDataURL('image/jpeg', 0.85));
 });
 
 const wrapPostcardForStory = () => new Promise((resolve) => {
@@ -1208,9 +1208,9 @@ const wrapPostcardForStory = () => new Promise((resolve) => {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.textAlign = 'right';
     ctx.fillText('@ChumiPetBot', W - 28, H - 28);
-    resolve(canvas.toDataURL('image/png', 0.95));
+    resolve(canvas.toDataURL('image/jpeg', 0.85));
   };
-  img.onerror = () => resolve(canvas.toDataURL('image/png', 0.95));
+  img.onerror = () => resolve(canvas.toDataURL('image/jpeg', 0.85));
   img.src = bg.file;
 });
 
