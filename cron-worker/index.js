@@ -49,6 +49,13 @@ export default {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { 'Content-Type': 'application/json' },
       });
+          // ── Чистка открыток в Storage: раз в день, 4:00 UTC ──
+    if (cron === '0 4 * * *') {
+      try {
+        const r5 = await fetch(`${baseUrl}/api/cleanup-postcards`, { method: 'POST', headers });
+        console.log('Postcards cleanup:', await r5.json());
+      } catch (e) { console.error('Postcards cleanup error:', e); }
+    }
     }
     return new Response('Chumi Cron Worker', { status: 200 });
   },

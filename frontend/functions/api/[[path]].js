@@ -2014,6 +2014,50 @@ if (!opened) {
       return json({ success: true, cleaned, cleanedInactive });
     }
 
+        // ── POST /api/cleanup-postcards (cron) ──
+    // Удаляет PNG-открытки из Storage-бакета `postcards` старше N часов.
+    // Порог 48 часов: картинки нужны только в момент «поделиться» / на время
+    // показа в Stories (24 ч). После этого файл в бакете больше не нужен.
+    if (request.method === 'POST' && path === '/api/cleanup-postcards') {
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+
+      const MAX_AGE_HOURS = 48;
+      const cutoff = new Date(Date.now() - MAX_AGE_HOURS * 60 * 60 * 1000).toISOString();
+
+      let deleted = 0;
+      let errors = 0;
+
+      // Пагинация: Storage list отдаёт максимум 100 за раз, идём пачками,
+      // пока не закончатся старые файлы.
+      for (let i = 0; i < 200; i++) { // жёсткий потолок 200 итераций = до 20000 файлов за запуск
+        const { data: files, error: listErr } = await supabase
+          .storage.from('postcards')
+          .list('', { limit: 100, sortBy: { column: 'created_at', order: 'asc' } });
+
+        if (listErr) { errors++; break; }
+        if (!files || files.length === 0) break;
+
+        // Берём только реально старые файлы
+        const oldNames = files
+          .filter(f => f.created_at && f.created_at < cutoff)
+          .map(f => f.name);
+
+        if (oldNames.length === 0) break; // дальше идут только свежие — выходим
+
+        const { error: rmErr } = await supabase
+          .storage.from('postcards')
+          .remove(oldNames);
+
+        if (rmErr) { errors++; break; }
+        deleted += oldNames.length;
+
+        // Если в этой пачке старых было меньше 100 — значит дальше свежие, выходим
+        if (oldNames.length < 100) break;
+      }
+
+      return json({ success: true, deleted, errors });
+    }
+
         // ── POST /api/admin-daily-summary (cron) ──
     // Ежедневная сводка для админа
     if (request.method === 'POST' && path === '/api/admin-daily-summary') {
