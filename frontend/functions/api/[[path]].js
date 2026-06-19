@@ -1394,10 +1394,13 @@ try {
       const imageDataUrl = body.imageDataUrl || '';
 
       // ── Вариант с картинкой (photo) ──
-      if (imageDataUrl.startsWith('data:image/png;base64,')) {
+      const shareImgMatch = imageDataUrl.match(/^data:image\/(png|jpeg);base64,/);
+      if (shareImgMatch) {
+        const shareExt = shareImgMatch[1] === 'jpeg' ? 'jpg' : 'png';
+        const shareContentType = `image/${shareImgMatch[1]}`;
         const base64 = imageDataUrl.split(',')[1];
         const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-        const fileName = `promo_${userId}_${Date.now()}.png`;
+        const fileName = `promo_${userId}_${Date.now()}.${shareExt}`;
 
         const uploadRes = await fetch(
           `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
@@ -1405,7 +1408,7 @@ try {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${env.SUPABASE_KEY}`,
-              'Content-Type': 'image/png',
+              'Content-Type': shareContentType,
               'x-upsert': 'true',
             },
             body: binary,
@@ -1538,12 +1541,15 @@ try {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
 
       const imageDataUrl = body.imageDataUrl || '';
-      if (!imageDataUrl.startsWith('data:image/png;base64,')) {
+      const m = imageDataUrl.match(/^data:image\/(png|jpeg);base64,/);
+      if (!m) {
         return json({ error: 'Invalid image' }, 400);
       }
+      const ext = m[1] === 'jpeg' ? 'jpg' : 'png';
+      const contentType = `image/${m[1]}`;
       const base64 = imageDataUrl.split(',')[1];
       const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-      const fileName = `postcard_${userId}_${Date.now()}.png`;
+      const fileName = `postcard_${userId}_${Date.now()}.${ext}`;
 
       const uploadRes = await fetch(
         `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
@@ -1551,7 +1557,7 @@ try {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${env.SUPABASE_KEY}`,
-            'Content-Type': 'image/png',
+            'Content-Type': contentType,
             'x-upsert': 'true',
           },
           body: binary,
@@ -1574,12 +1580,15 @@ try {
 
       const imageDataUrl = body.imageDataUrl || '';
       const text = (body.text || '').toString().slice(0, 800);
-      if (!imageDataUrl.startsWith('data:image/png;base64,')) {
+      const m = imageDataUrl.match(/^data:image\/(png|jpeg);base64,/);
+      if (!m) {
         return json({ error: 'Invalid image' }, 400);
       }
+      const ext = m[1] === 'jpeg' ? 'jpg' : 'png';
+      const contentType = `image/${m[1]}`;
       const base64 = imageDataUrl.split(',')[1];
       const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-      const fileName = `postcard_${userId}_${Date.now()}.png`;
+      const fileName = `postcard_${userId}_${Date.now()}.${ext}`;
 
       const uploadRes = await fetch(
         `${env.SUPABASE_URL}/storage/v1/object/postcards/${fileName}`,
@@ -1587,7 +1596,7 @@ try {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${env.SUPABASE_KEY}`,
-            'Content-Type': 'image/png',
+            'Content-Type': contentType,
             'x-upsert': 'true',
           },
           body: binary,
