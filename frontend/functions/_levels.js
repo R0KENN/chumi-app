@@ -1,29 +1,9 @@
-// Единственный источник истины для уровней.
-// При изменении синхронизируй с frontend/src/components/PairScreen.jsx
+// Уровни на сервере: базовый набор порогов из общего ядра.
+// ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ порогов — frontend/src/_levels-core.js.
+import { LEVEL_CORE, computeLevel } from '../src/_levels-core.js';
 
-export const LEVELS = [
-  { level: 0, name: 'Egg',    nameRu: 'Яйцо',       emoji: '🥚', maxPoints: 33  },
-  { level: 1, name: 'Baby',   nameRu: 'Малыш',      emoji: '🐣', maxPoints: 45  },
-  { level: 2, name: 'Junior', nameRu: 'Подросток',  emoji: '🐾', maxPoints: 63  },
-  { level: 3, name: 'Teen',   nameRu: 'Юный',       emoji: '💜', maxPoints: 90  },
-  { level: 4, name: 'Adult',  nameRu: 'Взрослый',   emoji: '💎', maxPoints: 135 },
-  { level: 5, name: 'Legend', nameRu: 'Легенда',    emoji: '👑', maxPoints: 200 },
-];
+export const LEVELS = LEVEL_CORE;
 
 export function getLevel(totalPoints) {
-  let acc = 0;
-  for (let i = 0; i < LEVELS.length; i++) {
-    if (totalPoints < acc + LEVELS[i].maxPoints) {
-      return {
-        ...LEVELS[i],
-        idx: i,
-        current: totalPoints - acc,
-        needed: LEVELS[i].maxPoints,
-        remaining: acc + LEVELS[i].maxPoints - totalPoints,
-      };
-    }
-    acc += LEVELS[i].maxPoints;
-  }
-  const last = LEVELS[LEVELS.length - 1];
-  return { ...last, idx: LEVELS.length - 1, current: last.maxPoints, needed: last.maxPoints, remaining: 0 };
+  return computeLevel(LEVELS, totalPoints);
 }

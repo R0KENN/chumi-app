@@ -242,7 +242,7 @@ function formatPair(pair, members, tasksToday, userId) {
       user_id: m.user_id,
       display_name: m.display_name || null,
       username: m.username || null,
-      avatar_url: m.avatar_url ? `/api/avatar/${m.user_id}?proxy=1` : null,
+      // avatar_url фронт получает отдельным авторизованным запросом /api/avatar/:id
     })) || [],
     active_skin: pair.active_skin || null,
     active_bg: pair.active_bg || null,
@@ -253,6 +253,27 @@ function formatPair(pair, members, tasksToday, userId) {
     daily_tasks: tasksToday || [],
   };
 }
+
+// ────────── Подписанные ссылки на аватар ──────────
+// Токен = HMAC(botToken, "avatar:<userId>:<expTs>"). Защищает бинарный
+// прокси-эндпоинт от перебора чужих user_id: ссылку выдаёт только
+// авторизованный JSON-запрос, и живёт она ограниченное время.
+async function makeAvatarToken(botToken, userId, expTs) {
+  const key = createHmac('sha256', 'AvatarProxy').update(botToken).digest();
+  return createHmac('sha256', key)
+    .update(`avatar:${userId}:${expTs}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
+async function verifyAvatarToken(botToken, userId, expTs, token) {
+  if (!token || !expTs) return false;
+  const exp = parseInt(expTs, 10);
+  if (!Number.isFinite(exp) || Date.now() > exp) return false;
+  const expected = await makeAvatarToken(botToken, userId, exp);
+  return expected === token;
+}
+
 
 function seededRandom(seed) {
   let s = (seed >>> 0) || 1;
@@ -372,10 +393,16 @@ export async function onRequest(context) {
       const BOT_TOKEN = env.BOT_TOKEN;
       const wantProxy = url.searchParams.get('proxy');
 
-      // ── Авторизация: JSON-ответ со ссылкой на аватар отдаём только
-      // авторизованным. Бинарный proxy (?proxy=1) грузится тегом <img> без
-      // заголовков, поэтому его не блокируем — он и так требует точный путь.
-      if (wantProxy !== '1') {
+      if (wantProxy === '1') {
+        // Бинарный прокси грузится тегом <img> без заголовков, поэтому
+        // авторизуем его подписанным токеном из query (?exp=&sig=),
+        // который выдаётся только авторизованному JSON-запросу ниже.
+        const exp = url.searchParams.get('exp');
+        const sig = url.searchParams.get('sig');
+        const okToken = await verifyAvatarToken(BOT_TOKEN, tgUserId, exp, sig);
+        if (!okToken) return json({ error: 'Forbidden' }, 403);
+      } else {
+        // JSON-ответ со ссылкой отдаём только авторизованным
         const avatarAuthedId = getAuthedUserId(request, env);
         if (!avatarAuthedId) return json({ error: 'Unauthorized' }, 401);
       }
@@ -447,7 +474,11 @@ export async function onRequest(context) {
           });
         }
 
-        return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1` });
+        {
+          const exp = Date.now() + 24 * 60 * 60 * 1000; // ссылка живёт 24 часа
+          const sig = await makeAvatarToken(BOT_TOKEN, tgUserId, exp);
+          return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1&exp=${exp}&sig=${sig}` });
+        }
       } catch {
         return json({ avatar_url: null });
       }
@@ -1246,9 +1277,21 @@ try {
     // ── POST /api/send-invite ──
     if (request.method === 'POST' && path === '/api/send-invite') {
       const body = await request.json();
+      const userId = extractUserId(request, env, body.userId);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+      const pairCode = (body.pairCode || '').toUpperCase();
+      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+
+      // Ссылку на приглашение отдаём только участнику этой пары
+      const { data: membership } = await supabase
+        .from('pair_users').select('user_id')
+        .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
+      if (!membership) return json({ error: 'Not a member' }, 403);
+
       const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
-      const inviteLink = `https://t.me/${botUsername}?start=join_${body.pairCode}`;
-      return json({ inviteLink, pairCode: body.pairCode });
+      const inviteLink = `https://t.me/${botUsername}?start=join_${pairCode}`;
+      return json({ inviteLink, pairCode });
     }
 
     // ── POST /api/create-egg ──
@@ -1304,7 +1347,6 @@ try {
         membersByPair.get(m.pair_code).push({
           user_id: m.user_id,
           display_name: m.display_name || null,
-          avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
         });
       }
 
@@ -1354,7 +1396,6 @@ try {
         membersByPair.get(m.pair_code).push({
           user_id: m.user_id,
           display_name: m.display_name || null,
-          avatar_url: `/api/avatar/${m.user_id}?proxy=1`,
         });
       }
 
@@ -1784,63 +1825,105 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         .eq('is_dead', false)
         .gte('streak_days', 1);
 
-      let sent = 0;
-      for (const pair of (allPairs || [])) {
-        const today = getTodayDate(pair.timezone || 'UTC');
-        const { data: members } = await supabase
-          .from('pair_users').select('user_id').eq('pair_code', pair.code);
+      const pairs = allPairs || [];
+      if (pairs.length === 0) return json({ success: true, sent: 0 });
 
-        for (const member of (members || [])) {
-          const { data: opened } = await supabase
-            .from('daily_tasks').select('id')
-            .eq('pair_code', pair.code)
-            .eq('user_id', member.user_id)
-            .eq('task_key', 'daily_open')
-            .eq('task_date', today)
-            .maybeSingle();
+      const pairCodes = pairs.map(p => p.code);
 
-if (!opened) {
-  // Проверяем: отправляли ли уже сегодня напоминание этому пользователю
-  const todayStart = new Date();
-  todayStart.setUTCHours(0, 0, 0, 0);
-  const { data: alreadySent } = await supabase
-    .from('notification_log')
-    .select('id')
-    .eq('sender_user_id', 'system_reminder')
-    .eq('target_user_id', member.user_id)
-    .gte('sent_at', todayStart.toISOString())
-    .limit(1)
-    .maybeSingle();
+      // ── Батч 1: все участники всех пар ──
+      const { data: allMembers } = await supabase
+        .from('pair_users').select('pair_code, user_id')
+        .in('pair_code', pairCodes);
 
-  if (alreadySent) continue;
+      // "Сегодня" у каждой пары своё (таймзона). Считаем один раз на пару.
+      const todayByPair = new Map();
+      for (const p of pairs) todayByPair.set(p.code, getTodayDate(p.timezone || 'UTC'));
 
-  const petName = pair.pet_name || 'Chumi';
-  const safePet = escapeMd(petName);
-  const { data: ms } = await supabase
-    .from('user_settings').select('lang')
-    .eq('telegram_user_id', member.user_id).maybeSingle();
-  const mLang = ms?.lang || 'ru';
-  const reminderText = mLang === 'ru'
-    ? `🔔 *${safePet}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
-    : `🔔 *${safePet}* is waiting! Streak: ${pair.streak_days} days 🔥\nDon't forget to come today!`;
-  const btnText = mLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
-  await sendTelegramMessage(env, member.user_id, reminderText, {
-    reply_markup: {
-      inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi.space' } }]],
-    },
-  });
+      // ── Батч 2: все сегодняшние daily_open по всем парам ──
+      // Диапазон дат: собираем набор уникальных "сегодня" и тянем по нему.
+      const todaySet = [...new Set([...todayByPair.values()])];
+      const { data: opens } = await supabase
+        .from('daily_tasks').select('pair_code, user_id, task_date')
+        .eq('task_key', 'daily_open')
+        .in('pair_code', pairCodes)
+        .in('task_date', todaySet);
 
-  // Записываем факт отправки
-  await supabase.from('notification_log').insert({
-    sender_user_id: 'system_reminder',
-    target_user_id: member.user_id,
-    sent_at: new Date().toISOString(),
-  });
-
-  sent++;
-}
+      // Множество "кто уже открыл сегодня" ключом pair_code|user_id
+      const openedSet = new Set();
+      for (const o of (opens || [])) {
+        if (o.task_date === todayByPair.get(o.pair_code)) {
+          openedSet.add(`${o.pair_code}|${o.user_id}`);
         }
       }
+
+      // Кандидаты на напоминание (кто НЕ открыл сегодня)
+      const candidates = [];
+      for (const m of (allMembers || [])) {
+        if (!openedSet.has(`${m.pair_code}|${m.user_id}`)) {
+          candidates.push(m);
+        }
+      }
+      if (candidates.length === 0) return json({ success: true, sent: 0 });
+
+      const candidateIds = [...new Set(candidates.map(c => String(c.user_id)))];
+
+      // ── Батч 3: кому уже слали напоминание сегодня (по UTC-дню) ──
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const { data: sentToday } = await supabase
+        .from('notification_log').select('target_user_id')
+        .eq('sender_user_id', 'system_reminder')
+        .gte('sent_at', todayStart.toISOString())
+        .in('target_user_id', candidateIds);
+      const alreadySentSet = new Set((sentToday || []).map(r => String(r.target_user_id)));
+
+      // ── Батч 4: языки всех кандидатов ──
+      const { data: settings } = await supabase
+        .from('user_settings').select('telegram_user_id, lang')
+        .in('telegram_user_id', candidateIds);
+      const langByUser = new Map();
+      for (const s of (settings || [])) langByUser.set(String(s.telegram_user_id), s.lang || 'ru');
+
+      // Быстрый доступ к паре по коду
+      const pairByCode = new Map(pairs.map(p => [p.code, p]));
+
+      // Один пользователь может быть в нескольких парах; напоминание слём
+      // не чаще одного раза в день на пользователя (rate-limit ниже).
+      const notifiedThisRun = new Set();
+      let sent = 0;
+
+      for (const c of candidates) {
+        const uid = String(c.user_id);
+        if (alreadySentSet.has(uid) || notifiedThisRun.has(uid)) continue;
+
+        const pair = pairByCode.get(c.pair_code);
+        if (!pair) continue;
+
+        const safePet = escapeMd(pair.pet_name || 'Chumi');
+        const mLang = langByUser.get(uid) || 'ru';
+        const reminderText = mLang === 'ru'
+          ? `🔔 *${safePet}* ждёт тебя! Серия: ${pair.streak_days} дн. 🔥\nНе забудь зайти сегодня!`
+          : `🔔 *${safePet}* is waiting! Streak: ${pair.streak_days} days 🔥\nDon't forget to come today!`;
+        const btnText = mLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+
+        const res = await sendTelegramMessage(env, uid, reminderText, {
+          reply_markup: {
+            inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi.space' } }]],
+          },
+        });
+
+        // Пишем в лог только при успешной доставке
+        if (res.ok) {
+          await supabase.from('notification_log').insert({
+            sender_user_id: 'system_reminder',
+            target_user_id: uid,
+            sent_at: new Date().toISOString(),
+          });
+          notifiedThisRun.add(uid);
+          sent++;
+        }
+      }
+
       return json({ success: true, sent });
     }
 
@@ -1848,106 +1931,137 @@ if (!opened) {
     if (request.method === 'POST' && path === '/api/update-streaks') {
       if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
 
-      const { data: allPairs } = await supabase
+      // ── Батч: тянем живые и мёртвые пары одним запросом каждую ──
+      const { data: alivePairsRaw } = await supabase
         .from('pairs')
         .select('code, last_streak_date, streak_days, is_dead, pet_name, timezone')
         .eq('is_dead', false);
-
-      let killed = 0;
-      for (const pair of (allPairs || [])) {
-        const tz = pair.timezone || 'UTC';
-        const today = getTodayDate(tz);
-
-        // Питомец живёт и умирает ТОЛЬКО в полной паре (2 участника).
-        // Неполные пары растить нельзя, поэтому их не убиваем —
-        // их подберёт cleanup-empty-pairs при длительной неактивности.
-        const { data: pairMembers } = await supabase
-          .from('pair_users').select('user_id').eq('pair_code', pair.code);
-        if (!pairMembers || pairMembers.length < 2) continue;
-
-        // Питомец умирает только если ПОЛНЫЙ день пропущен.
-        // Т.е. last_streak_date должен быть как минимум "позавчера".
-        // Если last_streak_date == вчера — даём ещё день, чтобы успели зайти.
-        const yesterday = getYesterdayDate(tz);
-        if (pair.last_streak_date && pair.last_streak_date < yesterday) {
-          await supabase.from('pairs').update({ is_dead: true }).eq('code', pair.code);
-          killed++;
-
-          // Уведомить обоих партнёров о смерти питомца
-          const { data: deadMembers } = await supabase
-            .from('pair_users').select('user_id').eq('pair_code', pair.code);
-          for (const dm of (deadMembers || [])) {
-            const { data: ps } = await supabase
-              .from('user_settings').select('lang')
-              .eq('telegram_user_id', dm.user_id).maybeSingle();
-            const dLang = ps?.lang || 'ru';
-            const petName = pair.pet_name || (dLang === 'ru' ? 'Питомец' : 'Pet');
-            const safePet = escapeMd(petName);
-            const text = dLang === 'ru'
-              ? `💀 *${safePet}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.\nОсталось воскрешений в этом месяце: до 5.`
-              : `💀 *${safePet}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue.\nUp to 5 revivals per month available.`;
-            const dBtnText = dLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
-            await sendTelegramMessage(env, dm.user_id, text, {
-              reply_markup: {
-                inline_keyboard: [[{ text: dBtnText, web_app: { url: 'https://chumi.space' } }]],
-              },
-            });
-          }
-        }
-      }
-      // ── Сброс питомцев, которые мертвы 3+ дня без воскрешения ──
-      // Серия и XP обнуляются, питомец «начинается заново» с яйца.
-      // last_streak_date у мёртвой пары не меняется при смерти, поэтому
-      // считаем дни именно от него.
-      const { data: deadPairs } = await supabase
+      const { data: deadPairsRaw } = await supabase
         .from('pairs')
         .select('code, last_streak_date, streak_days, pet_name, timezone')
         .eq('is_dead', true);
 
-      let reset = 0;
-      for (const pair of (deadPairs || [])) {
+      const alivePairs = alivePairsRaw || [];
+      const deadPairs = deadPairsRaw || [];
+
+      // Все коды, по которым понадобятся участники (живые + мёртвые)
+      const allCodes = [
+        ...alivePairs.map(p => p.code),
+        ...deadPairs.map(p => p.code),
+      ];
+
+      // ── Батч: все участники всех этих пар ──
+      const membersByCode = new Map();
+      if (allCodes.length > 0) {
+        const { data: allMembers } = await supabase
+          .from('pair_users').select('pair_code, user_id')
+          .in('pair_code', allCodes);
+        for (const m of (allMembers || [])) {
+          if (!membersByCode.has(m.pair_code)) membersByCode.set(m.pair_code, []);
+          membersByCode.get(m.pair_code).push(m.user_id);
+        }
+      }
+
+      // Собираем список пар, которых надо УБИТЬ, и пар, которые надо СБРОСИТЬ.
+      // Уведомления шлём в конце, языки подтянем одним батчем.
+      const toKill = [];   // { pair }
+      const toReset = [];  // { pair }
+
+      // ── 1) Определяем, кого убить ──
+      for (const pair of alivePairs) {
+        const tz = pair.timezone || 'UTC';
+        // Питомец живёт/умирает только в полной паре (2 участника).
+        const memberIds = membersByCode.get(pair.code) || [];
+        if (memberIds.length < 2) continue;
+
+        const yesterday = getYesterdayDate(tz);
+        // Умирает, только если пропущен ПОЛНЫЙ день (last_streak_date < вчера).
+        if (pair.last_streak_date && pair.last_streak_date < yesterday) {
+          toKill.push(pair);
+        }
+      }
+
+      // ── 2) Определяем, кого сбросить (мёртв 3+ дня) ──
+      for (const pair of deadPairs) {
         if (!pair.last_streak_date) continue;
         const tz = pair.timezone || 'UTC';
         const today = getTodayDate(tz);
         const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
         const todayDate = new Date(today + 'T00:00:00Z');
         const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 3) toReset.push(pair);
+      }
 
-        // 3 полных дня без захода/воскрешения → полный сброс
-        if (diffDays >= 3) {
-          await supabase.from('pairs').update({
-            is_dead: false,
-            streak_days: 0,
-            growth_points: 0,
-            hatched: false,
-            active_skin: null,
-            last_streak_date: today,
-            last_pair_streak_date: today,
-          }).eq('code', pair.code);
-          await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
-          await supabase.from('feedings').delete().eq('pair_code', pair.code);
-          reset++;
+      // ── Батч: языки всех затронутых пользователей ──
+      const affectedUserIds = new Set();
+      for (const pair of [...toKill, ...toReset]) {
+        for (const uid of (membersByCode.get(pair.code) || [])) {
+          affectedUserIds.add(String(uid));
+        }
+      }
+      const langByUser = new Map();
+      if (affectedUserIds.size > 0) {
+        const { data: settings } = await supabase
+          .from('user_settings').select('telegram_user_id, lang')
+          .in('telegram_user_id', [...affectedUserIds]);
+        for (const s of (settings || [])) {
+          langByUser.set(String(s.telegram_user_id), s.lang || 'ru');
+        }
+      }
 
-          // Уведомляем обоих участников о сбросе
-          const { data: rstMembers } = await supabase
-            .from('pair_users').select('user_id').eq('pair_code', pair.code);
-          for (const rm of (rstMembers || [])) {
-            const { data: ps } = await supabase
-              .from('user_settings').select('lang')
-              .eq('telegram_user_id', rm.user_id).maybeSingle();
-            const rLang = ps?.lang || 'ru';
-            const petName = pair.pet_name || (rLang === 'ru' ? 'Питомец' : 'Pet');
-            const safePet = escapeMd(petName);
-            const text = rLang === 'ru'
-              ? `🥚 *${safePet}* не воскресили 3 дня — прогресс обнулён.\nНачните заново: зайдите в Chumi и вырастите нового питомца вместе!`
-              : `🥚 *${safePet}* wasn't revived for 3 days — progress was reset.\nStart over: open Chumi and grow a new pet together!`;
-            const rBtn = rLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
-            await sendTelegramMessage(env, rm.user_id, text, {
-              reply_markup: {
-                inline_keyboard: [[{ text: rBtn, web_app: { url: 'https://chumi.space' } }]],
-              },
-            });
-          }
+      // ── Выполняем убийства ──
+      let killed = 0;
+      for (const pair of toKill) {
+        await supabase.from('pairs').update({ is_dead: true }).eq('code', pair.code);
+        killed++;
+
+        for (const uid of (membersByCode.get(pair.code) || [])) {
+          const dLang = langByUser.get(String(uid)) || 'ru';
+          const petName = pair.pet_name || (dLang === 'ru' ? 'Питомец' : 'Pet');
+          const safePet = escapeMd(petName);
+          const text = dLang === 'ru'
+            ? `💀 *${safePet}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.\nОсталось воскрешений в этом месяце: до 5.`
+            : `💀 *${safePet}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue.\nUp to 5 revivals per month available.`;
+          const dBtnText = dLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+          await sendTelegramMessage(env, uid, text, {
+            reply_markup: {
+              inline_keyboard: [[{ text: dBtnText, web_app: { url: 'https://chumi.space' } }]],
+            },
+          });
+        }
+      }
+
+      // ── Выполняем сбросы (мёртв 3+ дня → полный сброс к яйцу) ──
+      let reset = 0;
+      for (const pair of toReset) {
+        const tz = pair.timezone || 'UTC';
+        const today = getTodayDate(tz);
+        await supabase.from('pairs').update({
+          is_dead: false,
+          streak_days: 0,
+          growth_points: 0,
+          hatched: false,
+          active_skin: null,
+          last_streak_date: today,
+          last_pair_streak_date: today,
+        }).eq('code', pair.code);
+        await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
+        await supabase.from('feedings').delete().eq('pair_code', pair.code);
+        reset++;
+
+        for (const uid of (membersByCode.get(pair.code) || [])) {
+          const rLang = langByUser.get(String(uid)) || 'ru';
+          const petName = pair.pet_name || (rLang === 'ru' ? 'Питомец' : 'Pet');
+          const safePet = escapeMd(petName);
+          const text = rLang === 'ru'
+            ? `🥚 *${safePet}* не воскресили 3 дня — прогресс обнулён.\nНачните заново: зайдите в Chumi и вырастите нового питомца вместе!`
+            : `🥚 *${safePet}* wasn't revived for 3 days — progress was reset.\nStart over: open Chumi and grow a new pet together!`;
+          const rBtn = rLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+          await sendTelegramMessage(env, uid, text, {
+            reply_markup: {
+              inline_keyboard: [[{ text: rBtn, web_app: { url: 'https://chumi.space' } }]],
+            },
+          });
         }
       }
 

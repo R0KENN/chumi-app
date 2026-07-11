@@ -662,7 +662,7 @@ if (startParam.startsWith('ref_')) {
         const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', joinCode);
         if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
         if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
-        await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username, timezone: 'UTC' });
+        await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username, timezone: null });
         // ── Засчитываем pending-реферал, если он есть ──
         const { data: pending } = await supabase
           .from('pending_referrals')
@@ -722,7 +722,9 @@ if (startParam.startsWith('ref_')) {
         pet_name: null,
         streak_recoveries_used: 0,
         is_dead: false,
-        timezone: 'UTC',
+        // timezone не задаём (null) — забэкфиллится при первом заходе
+        // пользователя в мини-апп через /api/update-timezone
+        timezone: null,
         last_streak_date: null,
         last_pair_streak_date: null,
       });
@@ -731,7 +733,7 @@ if (startParam.startsWith('ref_')) {
         user_id: userId,
         display_name: firstName,
         username,
-        timezone: 'UTC',
+        timezone: null,
       });
 
       // ── Засчитываем pending-реферал, если он есть ──
@@ -770,7 +772,7 @@ if (startParam.startsWith('ref_')) {
       const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', code);
       if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
       if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
-      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username, timezone: 'UTC' });
+      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username, timezone: null });
             // ── Засчитываем pending-реферал, если он есть ──
       const { data: pending } = await supabase
         .from('pending_referrals')

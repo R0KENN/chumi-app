@@ -187,17 +187,30 @@ function App() {
   }
 
 if (!telegramUserId) {
+  // Пока не определён пользователь — показываем спиннер.
+  // На проде technical-дамп не показываем; для отладки можно временно
+  // включить его через ?diag=1 в URL.
   const tgw = window.Telegram?.WebApp;
+  const showDiag = new URLSearchParams(window.location.search).get('diag') === '1';
+
+  if (showDiag) {
+    return (
+      <div style={{ padding: 24, fontSize: 13, fontFamily: 'monospace', wordBreak: 'break-all', color: '#333' }}>
+        <div>DIAG (нет telegramUserId)</div>
+        <div>WebApp exists: {String(!!tgw)}</div>
+        <div>user id: {String(tgw?.initDataUnsafe?.user?.id)}</div>
+        <div>initData len: {String((tgw?.initData || '').length)}</div>
+        <div>platform: {String(tgw?.platform)}</div>
+        <div>version: {String(tgw?.version)}</div>
+        <div>hash: {String((window.location.hash || '').slice(0, 80))}</div>
+        <div>sdkFailed: {String(!!window.__tgSdkFailed)}</div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: 24, fontSize: 13, fontFamily: 'monospace', wordBreak: 'break-all', color: '#333' }}>
-      <div>DIAG (нет telegramUserId)</div>
-      <div>WebApp exists: {String(!!tgw)}</div>
-      <div>user id: {String(tgw?.initDataUnsafe?.user?.id)}</div>
-      <div>initData len: {String((tgw?.initData || '').length)}</div>
-      <div>platform: {String(tgw?.platform)}</div>
-      <div>version: {String(tgw?.version)}</div>
-      <div>hash: {String((window.location.hash || '').slice(0, 80))}</div>
-      <div>sdkFailed: {String(!!window.__tgSdkFailed)}</div>
+    <div className="sk-loading">
+      <div className="sk-spinner" />
     </div>
   );
 }

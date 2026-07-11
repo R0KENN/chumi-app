@@ -1,66 +1,32 @@
-// Единственный источник истины LEVELS для клиента.
-// При изменении синхронизируй с frontend/functions/_levels.js (он используется на сервере).
+// Уровни для клиента: пороги берём из общего ядра (_levels-core.js),
+// а визуальные данные (цвета/спрайты) добавляем поверх здесь.
+// Пороги физически не могут разойтись с сервером, т.к. maxPoints/name
+// приходят из одного и того же LEVEL_CORE.
 
-export const LEVELS = [
-  { level: 0, name: 'Egg',    nameRu: 'Яйцо',      maxPoints: 33,
-    bg: ['#F5F0FF','#E8E0F0'], accent: '#B39DDB', check: '#B39DDB',
+import { LEVEL_CORE, computeLevel } from './_levels-core.js';
+
+// Визуальные метаданные по индексу уровня. Порядок соответствует LEVEL_CORE.
+const LEVEL_VISUALS = [
+  { bg: ['#F5F0FF','#E8E0F0'], accent: '#B39DDB', check: '#B39DDB',
     pet: null,            petTap: null,                emojiId: null },
-  { level: 1, name: 'Baby',   nameRu: 'Малыш',     maxPoints: 45,
-    bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF',
+  { bg: ['#F3EDF7','#D7C8E8'], accent: '#9B72CF', check: '#9B72CF',
     pet: 'axolotl_idle',  petTap: 'axolotl_tap',       emojiId: null },
-  { level: 2, name: 'Junior', nameRu: 'Подросток', maxPoints: 63,
-    bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A',
+  { bg: ['#FFF4EC','#FDDCBF'], accent: '#E8985A', check: '#E8985A',
     pet: 'axolotl_peach', petTap: 'axolotl_peach_tap', emojiId: null },
-  { level: 3, name: 'Teen',   nameRu: 'Юный',      maxPoints: 90,
-    bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A',
+  { bg: ['#FFF0F3','#F9C8D4'], accent: '#E8729A', check: '#E8729A',
     pet: 'axolotl_pink',  petTap: 'axolotl_pink_tap',  emojiId: null },
-  { level: 4, name: 'Adult',  nameRu: 'Взрослый',  maxPoints: 135,
-    bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4',
+  { bg: ['#EDF5FC','#B8D8F4'], accent: '#4A9AD4', check: '#4A9AD4',
     pet: 'axolotl_blue',  petTap: 'axolotl_blue_tap',  emojiId: null },
-  { level: 5, name: 'Legend', nameRu: 'Легенда',   maxPoints: 200,
-    bg: ['#ECEAF5','#C7C2DE'], accent: '#6C5CE7', check: '#6C5CE7',
+  { bg: ['#ECEAF5','#C7C2DE'], accent: '#6C5CE7', check: '#6C5CE7',
     pet: 'axolotl_black', petTap: 'axolotl_black_tap', emojiId: null },
 ];
 
-export function getLevel(totalPoints) {
-  let acc = 0;
-  for (let i = 0; i < LEVELS.length; i++) {
-    if (totalPoints < acc + LEVELS[i].maxPoints) {
-      return {
-        ...LEVELS[i],
-        idx: i,
-        current: totalPoints - acc,
-        needed: LEVELS[i].maxPoints,
-        remaining: acc + LEVELS[i].maxPoints - totalPoints,
-      };
-    }
-    acc += LEVELS[i].maxPoints;
-  }
-  const last = LEVELS[LEVELS.length - 1];
-  return {
-    ...last,
-    idx: LEVELS.length - 1,
-    current: last.maxPoints,
-    needed: last.maxPoints,
-    remaining: 0,
-  };
-}
+// Собираем полный LEVELS: ядро + визуал по индексу.
+export const LEVELS = LEVEL_CORE.map((core, i) => ({
+  ...core,
+  ...(LEVEL_VISUALS[i] || {}),
+}));
 
-// ─── Защита от рассинхрона с сервером ───
-// Пороги уровней ДОЛЖНЫ совпадать с frontend/functions/_levels.js.
-// Если меняешь maxPoints здесь — обнови и серверный файл, и наоборот.
-// Эта константа — «снимок» серверных порогов; при расхождении в dev
-// выводится предупреждение в консоль.
-const SERVER_MAX_POINTS = [33, 45, 63, 90, 135, 200];
-if (import.meta?.env?.DEV) {
-  const clientPoints = LEVELS.map(l => l.maxPoints);
-  const mismatch = clientPoints.length !== SERVER_MAX_POINTS.length
-    || clientPoints.some((p, i) => p !== SERVER_MAX_POINTS[i]);
-  if (mismatch) {
-    console.warn(
-      '[Chumi] Рассинхрон уровней! Клиент:', clientPoints,
-      'Ожидалось (сервер):', SERVER_MAX_POINTS,
-      '→ обнови frontend/functions/_levels.js или этот файл.'
-    );
-  }
+export function getLevel(totalPoints) {
+  return computeLevel(LEVELS, totalPoints);
 }

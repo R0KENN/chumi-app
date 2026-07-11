@@ -9,54 +9,60 @@ export default {
     // выполняем только частые задачи (streaks + cleanup).
     const cron = event?.cron || '';
 
-    // ── Частые задачи: streaks + cleanup (каждые 30 минут) ──
-    if (cron === '*/30 * * * *' || !cron) {
+    // Хелпер: дёрнуть эндпоинт и залогировать результат, не роняя остальные.
+    const hit = async (label, path) => {
       try {
-        const r1 = await fetch(`${baseUrl}/api/update-streaks`, { method: 'POST', headers });
-        console.log('Streaks:', await r1.json());
-      } catch (e) { console.error('Streak error:', e); }
+        const r = await fetch(`${baseUrl}${path}`, { method: 'POST', headers });
+        const body = await r.json().catch(() => ({}));
+        console.log(`${label}:`, r.status, JSON.stringify(body));
+      } catch (e) {
+        console.error(`${label} error:`, e);
+      }
+    };
 
-      try {
-        const r3 = await fetch(`${baseUrl}/api/cleanup-empty-pairs`, { method: 'POST', headers });
-        console.log('Cleanup:', await r3.json());
-      } catch (e) { console.error('Cleanup error:', e); }
+    // ── Частые задачи: streaks + cleanup (каждые 30 минут) ──
+    // Также выполняются при ручном запуске (cron пустой).
+    if (cron === '*/30 * * * *' || !cron) {
+      await hit('Streaks', '/api/update-streaks');
+      await hit('Cleanup', '/api/cleanup-empty-pairs');
     }
 
     // ── Напоминания: раз в день, 18:00 UTC ──
     if (cron === '0 18 * * *') {
-      try {
-        const r2 = await fetch(`${baseUrl}/api/send-reminders`, { method: 'POST', headers });
-        console.log('Reminders:', await r2.json());
-      } catch (e) { console.error('Reminder error:', e); }
+      await hit('Reminders', '/api/send-reminders');
     }
 
     // ── Админ-сводка: раз в день, 9:00 UTC ──
     if (cron === '0 9 * * *') {
-      try {
-        const r4 = await fetch(`${baseUrl}/api/admin-daily-summary`, { method: 'POST', headers });
-        console.log('Daily summary:', await r4.json());
-      } catch (e) { console.error('Summary error:', e); }
+      await hit('Daily summary', '/api/admin-daily-summary');
+    }
+
+    // ── Чистка открыток в Storage: раз в день, 4:00 UTC ──
+    if (cron === '0 4 * * *') {
+      await hit('Postcards cleanup', '/api/cleanup-postcards');
     }
   },
 
   async fetch(request, env) {
+    // Ручной триггер: POST с правильным Bearer-секретом запускает
+    // ВСЕ ежедневные задачи разом (удобно для проверки).
     if (request.method === 'POST') {
       const auth = request.headers.get('Authorization') || '';
       if (!env.CRON_SECRET || auth !== `Bearer ${env.CRON_SECRET}`) {
         return new Response('Forbidden', { status: 403 });
       }
-      await this.scheduled({}, env);
-      return new Response(JSON.stringify({ ok: true }), {
+
+      // Позволяем выбрать конкретную задачу через ?cron=... ,
+      // иначе (без параметра) запускаем частые задачи как раньше.
+      const url = new URL(request.url);
+      const cronParam = url.searchParams.get('cron') || '';
+      await this.scheduled({ cron: cronParam }, env);
+
+      return new Response(JSON.stringify({ ok: true, ran: cronParam || 'frequent' }), {
         headers: { 'Content-Type': 'application/json' },
       });
-          // ── Чистка открыток в Storage: раз в день, 4:00 UTC ──
-    if (cron === '0 4 * * *') {
-      try {
-        const r5 = await fetch(`${baseUrl}/api/cleanup-postcards`, { method: 'POST', headers });
-        console.log('Postcards cleanup:', await r5.json());
-      } catch (e) { console.error('Postcards cleanup error:', e); }
     }
-    }
+
     return new Response('Chumi Cron Worker', { status: 200 });
   },
 };
