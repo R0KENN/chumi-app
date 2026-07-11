@@ -2558,8 +2558,11 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
               ))}
               {(() => {
                 if (!calendarData) return null;
-                const firstDay = new Date(calendarMonth + '-01');
-                const offset = (firstDay.getDay() + 6) % 7;
+                // День недели первого числа считаем по UTC, чтобы сетка не
+                // съезжала у пользователей в не-UTC поясах (дата приходит
+                // с сервера как YYYY-MM-DD в таймзоне пары).
+                const firstDay = new Date(calendarMonth + '-01T00:00:00Z');
+                const offset = (firstDay.getUTCDay() + 6) % 7;
                 const cells = [];
                 for (let i = 0; i < offset; i++) cells.push(<div key={'empty-' + i} />);
 calendarData.days.forEach(d => {

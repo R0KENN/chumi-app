@@ -2074,66 +2074,104 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
     if (request.method === 'POST' && path === '/api/cleanup-empty-pairs') {
       if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
 
-      const { data: allPairs } = await supabase
+      const { data: allPairsRaw } = await supabase
         .from('pairs').select('code, created_at, last_streak_date, timezone');
+      const allPairs = allPairsRaw || [];
+      if (allPairs.length === 0) {
+        return json({ success: true, cleaned: 0, cleanedInactive: 0 });
+      }
+
+      const allCodes = allPairs.map(p => p.code);
+
+      // ── Батч: участники всех пар одним запросом ──
+      const membersByCode = new Map();
+      const { data: allMembers } = await supabase
+        .from('pair_users').select('pair_code, user_id')
+        .in('pair_code', allCodes);
+      for (const m of (allMembers || [])) {
+        if (!membersByCode.has(m.pair_code)) membersByCode.set(m.pair_code, []);
+        membersByCode.get(m.pair_code).push(m.user_id);
+      }
 
       const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString();
-      let cleaned = 0;
-      let cleanedInactive = 0;
 
-      for (const pair of (allPairs || [])) {
-        const { data: members } = await supabase
-          .from('pair_users').select('user_id').eq('pair_code', pair.code);
+      // Классифицируем пары: какие удалить как пустые, какие — как неактивные.
+      const toDeleteEmpty = [];     // { pair }
+      const toDeleteInactive = [];  // { pair, memberIds }
 
+      for (const pair of allPairs) {
+        const memberIds = membersByCode.get(pair.code) || [];
         const isOldEnough = pair.created_at && pair.created_at < fiveDaysAgo;
-        const isEmpty = !members || members.length < 2;
+        const isEmpty = memberIds.length < 2;
 
-        // 1) Пустая пара старше 5 дней — удалить
+        // 1) Пустая пара старше 5 дней
         if (isEmpty && isOldEnough) {
-          await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
-          await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
-          await supabase.from('feedings').delete().eq('pair_code', pair.code);
-          await supabase.from('pair_users').delete().eq('pair_code', pair.code);
-          await supabase.from('pairs').delete().eq('code', pair.code);
-          cleaned++;
+          toDeleteEmpty.push(pair);
           continue;
         }
 
-        // 2) Активная пара, неактивная 5+ дней — удалить
+        // 2) Полная пара, неактивная 5+ дней
         if (!isEmpty) {
           const tz = pair.timezone || 'UTC';
           const today = getTodayDate(tz);
-          // Вычисляем "5 дней назад" в YYYY-MM-DD
           const todayD = new Date(today + 'T00:00:00Z');
           todayD.setUTCDate(todayD.getUTCDate() - 5);
           const fiveDaysAgoDate = todayD.toISOString().split('T')[0];
 
-          // Если last_streak_date пуст — берём дату создания
           const lastActivity = pair.last_streak_date
             || (pair.created_at ? pair.created_at.split('T')[0] : null);
 
           if (lastActivity && lastActivity < fiveDaysAgoDate) {
-            // Уведомить участников перед удалением
-            for (const m of members) {
-              const { data: ps } = await supabase
-                .from('user_settings').select('lang')
-                .eq('telegram_user_id', m.user_id).maybeSingle();
-              const pLang = ps?.lang || 'ru';
-              const msg = pLang === 'ru'
-                ? `⏳ Пара \`${pair.code}\` удалена из-за неактивности (5+ дней без заходов).`
-                : `⏳ Pair \`${pair.code}\` was deleted due to inactivity (5+ days without logins).`;
-              await sendTelegramMessage(env, m.user_id, msg);
-            }
-
-            await supabase.from('one_time_tasks').delete().eq('pair_code', pair.code);
-            await supabase.from('daily_tasks').delete().eq('pair_code', pair.code);
-            await supabase.from('feedings').delete().eq('pair_code', pair.code);
-            await supabase.from('pair_users').delete().eq('pair_code', pair.code);
-            await supabase.from('pairs').delete().eq('code', pair.code);
-            cleanedInactive++;
+            toDeleteInactive.push({ pair, memberIds });
           }
         }
       }
+
+      // ── Батч: языки участников неактивных пар (их надо уведомить) ──
+      const notifyUserIds = new Set();
+      for (const { memberIds } of toDeleteInactive) {
+        for (const uid of memberIds) notifyUserIds.add(String(uid));
+      }
+      const langByUser = new Map();
+      if (notifyUserIds.size > 0) {
+        const { data: settings } = await supabase
+          .from('user_settings').select('telegram_user_id, lang')
+          .in('telegram_user_id', [...notifyUserIds]);
+        for (const s of (settings || [])) {
+          langByUser.set(String(s.telegram_user_id), s.lang || 'ru');
+        }
+      }
+
+      // Хелпер удаления всех связанных данных пары
+      const purgePair = async (code) => {
+        await supabase.from('one_time_tasks').delete().eq('pair_code', code);
+        await supabase.from('daily_tasks').delete().eq('pair_code', code);
+        await supabase.from('feedings').delete().eq('pair_code', code);
+        await supabase.from('pair_users').delete().eq('pair_code', code);
+        await supabase.from('pairs').delete().eq('code', code);
+      };
+
+      // ── Удаляем пустые пары ──
+      let cleaned = 0;
+      for (const pair of toDeleteEmpty) {
+        await purgePair(pair.code);
+        cleaned++;
+      }
+
+      // ── Удаляем неактивные пары (с уведомлением участников) ──
+      let cleanedInactive = 0;
+      for (const { pair, memberIds } of toDeleteInactive) {
+        for (const uid of memberIds) {
+          const pLang = langByUser.get(String(uid)) || 'ru';
+          const msg = pLang === 'ru'
+            ? `⏳ Пара \`${pair.code}\` удалена из-за неактивности (5+ дней без заходов).`
+            : `⏳ Pair \`${pair.code}\` was deleted due to inactivity (5+ days without logins).`;
+          await sendTelegramMessage(env, uid, msg);
+        }
+        await purgePair(pair.code);
+        cleanedInactive++;
+      }
+
       return json({ success: true, cleaned, cleanedInactive });
     }
 
