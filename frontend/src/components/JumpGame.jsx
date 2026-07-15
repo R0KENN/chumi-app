@@ -791,6 +791,24 @@ export default function JumpGame() {
   const [score, setScore] = useState(0);
   const [isNewRecord, setIsNewRecord] = useState(false);
 
+  const [showLeaderboard, setShowLeaderboard] =
+    useState(false);
+
+  const [leaderboardLoading, setLeaderboardLoading] =
+    useState(false);
+
+  const [leaderboardError, setLeaderboardError] =
+    useState('');
+
+  const [leaders, setLeaders] =
+    useState([]);
+
+  const [personalBest, setPersonalBest] =
+    useState(0);
+
+  const [personalRank, setPersonalRank] =
+    useState(null);
+
   const [bestScore, setBestScore] = useState(() => {
     try {
       return Number(
@@ -834,6 +852,15 @@ export default function JumpGame() {
         record: 'Новый рекорд!',
         again: 'Ещё раз',
         back: 'К питомцу',
+        leaderboard: 'Рейтинг игроков',
+        leaderboardTitle: 'Лучшие игроки',
+        personalBest: 'Личный рекорд',
+        yourPlace: 'Твоё место',
+        loading: 'Загрузка...',
+        leaderboardError: 'Не удалось загрузить рейтинг',
+        emptyLeaderboard: 'Пока никто не установил рекорд',
+        close: 'Закрыть',
+        player: 'Игрок',
       }
     : {
         title: 'Chumi Jump',
@@ -851,6 +878,15 @@ export default function JumpGame() {
         record: 'New record!',
         again: 'Play again',
         back: 'Back to pet',
+        leaderboard: 'Player ranking',
+        leaderboardTitle: 'Top players',
+        personalBest: 'Personal best',
+        yourPlace: 'Your place',
+        loading: 'Loading...',
+        leaderboardError: 'Failed to load leaderboard',
+        emptyLeaderboard: 'No records yet',
+        close: 'Close',
+        player: 'Player',
       };
 
   useEffect(() => {
@@ -877,6 +913,66 @@ export default function JumpGame() {
 
     return headers;
   }, [userId]);
+
+  const loadLeaderboard = useCallback(async () => {
+    setLeaderboardLoading(true);
+    setLeaderboardError('');
+
+    try {
+      const response = await fetch(
+        '/api/game-leaderboard',
+        {
+          headers: authHeaders(),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          'Leaderboard request failed',
+        );
+      }
+
+      setLeaders(
+        Array.isArray(data.leaders)
+          ? data.leaders
+          : [],
+      );
+
+      if (data.me) {
+        setPersonalBest(
+          Number(data.me.score) || 0,
+        );
+
+        setPersonalRank(
+          Number(data.me.rank) || null,
+        );
+      } else {
+        setPersonalBest(0);
+        setPersonalRank(null);
+      }
+    } catch {
+      setLeaderboardError(
+        t.leaderboardError,
+      );
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }, [
+    authHeaders,
+    t.leaderboardError,
+  ]);
+
+  const openLeaderboard = useCallback(() => {
+    setShowLeaderboard(true);
+    loadLeaderboard();
+  }, [loadLeaderboard]);
+
+  const closeLeaderboard = useCallback(() => {
+    setShowLeaderboard(false);
+  }, []);
 
   const haptic = useCallback((type = 'light') => {
     try {
@@ -968,7 +1064,18 @@ export default function JumpGame() {
         score: finalScore,
       }),
     })
-      .then(response => response.json())
+      .then(async response => {
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+            'Failed to save game score',
+          );
+        }
+
+        return data;
+      })
       .then(data => {
         if (typeof data.best === 'number') {
           saveBest(Math.max(bestRef.current, data.best));
@@ -980,6 +1087,22 @@ export default function JumpGame() {
           if (data.isRecord) {
             haptic('success');
           }
+        }
+
+        if (
+          typeof data.personalBest === 'number'
+        ) {
+          setPersonalBest(
+            data.personalBest,
+          );
+        }
+
+        if (
+          typeof data.rank === 'number'
+        ) {
+          setPersonalRank(
+            data.rank,
+          );
         }
       })
       .catch(() => {});
@@ -1024,6 +1147,24 @@ export default function JumpGame() {
         ) {
           saveBest(
             Math.max(bestRef.current, data.best),
+          );
+        }
+
+        if (
+          !cancelled &&
+          typeof data.personalBest === 'number'
+        ) {
+          setPersonalBest(
+            data.personalBest,
+          );
+        }
+
+        if (
+          !cancelled &&
+          typeof data.rank === 'number'
+        ) {
+          setPersonalRank(
+            data.rank,
           );
         }
       })
@@ -2177,6 +2318,13 @@ export default function JumpGame() {
 
             <button
               className="jump-game-secondary-button"
+              onClick={openLeaderboard}
+            >
+              🏆 {t.leaderboard}
+            </button>
+
+            <button
+              className="jump-game-secondary-button"
               onClick={() => navigate(`/pair/${pairId}`)}
             >
               {t.back}
@@ -2242,6 +2390,13 @@ export default function JumpGame() {
               <strong>🏆 {bestScore}</strong>
             </div>
 
+            {personalBest > 0 && (
+              <div className="jump-game-result-best">
+                <span>{t.personalBest}</span>
+                <strong>{personalBest}</strong>
+              </div>
+            )}
+
             <button
               className="jump-game-primary-button"
               onClick={startGame}
@@ -2251,9 +2406,168 @@ export default function JumpGame() {
 
             <button
               className="jump-game-secondary-button"
+              onClick={openLeaderboard}
+            >
+              🏆 {t.leaderboard}
+            </button>
+
+            <button
+              className="jump-game-secondary-button"
               onClick={() => navigate(`/pair/${pairId}`)}
             >
               {t.back}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showLeaderboard && (
+        <div className="jump-game-overlay jump-game-leaderboard-overlay">
+          <div className="jump-game-panel jump-game-leaderboard-panel">
+            <div className="jump-game-leaderboard-header">
+              <div>
+                <div className="jump-game-leaderboard-icon">
+                  🏆
+                </div>
+
+                <h2>
+                  {t.leaderboardTitle}
+                </h2>
+              </div>
+
+              <button
+                className="jump-game-leaderboard-close"
+                onClick={closeLeaderboard}
+                aria-label={t.close}
+              >
+                ×
+              </button>
+            </div>
+
+            {personalBest > 0 && (
+              <div className="jump-game-personal-result">
+                <div>
+                  <span>
+                    {t.personalBest}
+                  </span>
+
+                  <strong>
+                    {personalBest}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    {t.yourPlace}
+                  </span>
+
+                  <strong>
+                    {personalRank
+                      ? `#${personalRank}`
+                      : '—'}
+                  </strong>
+                </div>
+              </div>
+            )}
+
+            {leaderboardLoading && (
+              <div className="jump-game-leaderboard-message">
+                <div className="jump-game-leaderboard-spinner" />
+
+                <span>
+                  {t.loading}
+                </span>
+              </div>
+            )}
+
+            {!leaderboardLoading &&
+              leaderboardError && (
+                <div className="jump-game-leaderboard-message jump-game-leaderboard-error">
+                  <span>
+                    {leaderboardError}
+                  </span>
+
+                  <button
+                    className="jump-game-secondary-button"
+                    onClick={loadLeaderboard}
+                  >
+                    ↻
+                  </button>
+                </div>
+              )}
+
+            {!leaderboardLoading &&
+              !leaderboardError &&
+              leaders.length === 0 && (
+                <div className="jump-game-leaderboard-message">
+                  {t.emptyLeaderboard}
+                </div>
+              )}
+
+            {!leaderboardLoading &&
+              !leaderboardError &&
+              leaders.length > 0 && (
+                <div className="jump-game-leaderboard-list">
+                  {leaders.map(leader => {
+                    const medal =
+                      leader.rank === 1
+                        ? '🥇'
+                        : leader.rank === 2
+                          ? '🥈'
+                          : leader.rank === 3
+                            ? '🥉'
+                            : null;
+
+                    const name =
+                      leader.displayName ||
+                      (
+                        leader.username
+                          ? `@${leader.username}`
+                          : t.player
+                      );
+
+                    return (
+                      <div
+                        key={leader.userId}
+                        className={
+                          `jump-game-leaderboard-row ${
+                            leader.isMe
+                              ? 'jump-game-leaderboard-row-me'
+                              : ''
+                          }`
+                        }
+                      >
+                        <div className="jump-game-leaderboard-rank">
+                          {medal || `#${leader.rank}`}
+                        </div>
+
+                        <div className="jump-game-leaderboard-user">
+                          <strong>
+                            {name}
+                          </strong>
+
+                          {leader.username &&
+                            leader.displayName && (
+                              <span>
+                                @{leader.username}
+                              </span>
+                            )}
+                        </div>
+
+                        <div className="jump-game-leaderboard-score">
+                          {leader.score}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+            <button
+              className="jump-game-secondary-button"
+              onClick={closeLeaderboard}
+            >
+              {t.close}
             </button>
           </div>
         </div>

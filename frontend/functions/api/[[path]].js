@@ -2643,74 +2643,664 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       return json({ success: true, timezone: tz });
     }
 
-        // ── GET /api/game-score/:pairCode ──
-    // Возвращает лучший результат игры для пары
-    if (request.method === 'GET' && path.match(/^\/api\/game-score\/[^/]+$/)) {
+    // ── GET /api/game-score/:pairCode ──
+    // Возвращает рекорд пары и личный рекорд текущего пользователя.
+    if (
+      request.method === 'GET' &&
+      path.match(/^\/api\/game-score\/[^/]+$/)
+    ) {
       const pairCode = path.split('/')[3];
 
       const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-      if (!(await isPairMember(supabase, pairCode, authedId))) {
+
+      if (!authedId) {
+        return json({ error: 'Unauthorized' }, 401);
+      }
+
+      if (
+        !(await isPairMember(
+          supabase,
+          pairCode,
+          authedId,
+        ))
+      ) {
         return json({ error: 'Not a member' }, 403);
       }
 
-      const { data: pair } = await supabase
-        .from('pairs').select('game_best_score').eq('code', pairCode).maybeSingle();
-      if (!pair) return json({ error: 'Pair not found' }, 404);
+      const { data: pair, error: pairError } =
+        await supabase
+          .from('pairs')
+          .select('game_best_score')
+          .eq('code', pairCode)
+          .maybeSingle();
 
-      return json({ best: pair.game_best_score || 0 });
-    }
-
-    // ── POST /api/game-score ──
-    // Отправляет результат игры; рекорд обновляется только если он больше текущего
-    if (request.method === 'POST' && path === '/api/game-score') {
-      const body = await request.json();
-      const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-
-      const pairCode = body.pairCode || body.code;
-      // Валидируем счёт: целое число в разумных пределах (анти-чит на минималках)
-      const score = Math.floor(Number(body.score));
-      if (!pairCode) return json({ error: 'pairCode required' }, 400);
-      if (!Number.isFinite(score) || score < 0 || score > 1000000) {
-        return json({ error: 'Invalid score' }, 400);
+      if (pairError) {
+        return json(
+          {
+            error:
+              'Pair score query failed: ' +
+              pairError.message,
+          },
+          500,
+        );
       }
 
-      const { data: membership } = await supabase
-        .from('pair_users').select('user_id')
-        .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!pair) {
+        return json({ error: 'Pair not found' }, 404);
+      }
 
-      const { data: pair } = await supabase
-        .from('pairs').select('game_best_score').eq('code', pairCode).maybeSingle();
-      if (!pair) return json({ error: 'Pair not found' }, 404);
-
-      const currentBest = pair.game_best_score || 0;
-      let best = currentBest;
-      let isRecord = false;
-
-      // Обновляем только если новый счёт больше — оптимистическая проверка
-      if (score > currentBest) {
-        const { data: updated } = await supabase
-          .from('pairs')
-          .update({ game_best_score: score })
-          .eq('code', pairCode)
-          .eq('game_best_score', currentBest) // защита от гонки: апдейт только если рекорд не изменился
-          .select('game_best_score')
+      const { data: personalScore } =
+        await supabase
+          .from('jump_game_scores')
+          .select('best_score')
+          .eq('user_id', authedId)
           .maybeSingle();
-        if (updated) {
-          best = updated.game_best_score;
-          isRecord = true;
-        } else {
-          // Кто-то параллельно записал больший рекорд — перечитываем
-          const { data: re } = await supabase
-            .from('pairs').select('game_best_score').eq('code', pairCode).maybeSingle();
-          best = re?.game_best_score || currentBest;
-          isRecord = score > currentBest && score >= best;
+
+      const personalBest =
+        personalScore?.best_score || 0;
+
+      let rank = null;
+
+      if (personalBest > 0) {
+        const {
+          count: higherScoresCount,
+          error: rankError,
+        } = await supabase
+          .from('jump_game_scores')
+          .select(
+            'user_id',
+            {
+              count: 'exact',
+              head: true,
+            },
+          )
+          .gt('best_score', personalBest);
+
+        if (!rankError) {
+          rank =
+            (higherScoresCount || 0) + 1;
         }
       }
 
-      return json({ success: true, best, isRecord });
+      return json({
+        best: pair.game_best_score || 0,
+        personalBest,
+        rank,
+      });
+    }
+
+    // ── GET /api/game-leaderboard ──
+    // Возвращает топ-50 и место текущего пользователя.
+    if (
+      request.method === 'GET' &&
+      path === '/api/game-leaderboard'
+    ) {
+      const authedId = getAuthedUserId(
+        request,
+        env,
+      );
+
+      if (!authedId) {
+        return json({ error: 'Unauthorized' }, 401);
+      }
+
+      const {
+        data: scores,
+        error: scoresError,
+      } = await supabase
+        .from('jump_game_scores')
+        .select(
+          [
+            'user_id',
+            'display_name',
+            'username',
+            'best_score',
+            'updated_at',
+          ].join(','),
+        )
+        .gt('best_score', 0)
+        .order(
+          'best_score',
+          {
+            ascending: false,
+          },
+        )
+        .order(
+          'updated_at',
+          {
+            ascending: true,
+          },
+        )
+        .limit(50);
+
+      if (scoresError) {
+        return json(
+          {
+            error:
+              'Leaderboard query failed: ' +
+              scoresError.message,
+          },
+          500,
+        );
+      }
+
+      let previousScore = null;
+      let previousRank = 0;
+
+      const leaders = (scores || []).map(
+        (row, index) => {
+          const rowScore =
+            Number(row.best_score) || 0;
+
+          const rank =
+            previousScore === rowScore
+              ? previousRank
+              : index + 1;
+
+          previousScore = rowScore;
+          previousRank = rank;
+
+          return {
+            rank,
+            userId: String(row.user_id),
+            displayName:
+              row.display_name || null,
+            username:
+              row.username || null,
+            score: rowScore,
+            isMe:
+              String(row.user_id) ===
+              String(authedId),
+          };
+        },
+      );
+
+      const { data: myScoreRow } =
+        await supabase
+          .from('jump_game_scores')
+          .select(
+            'best_score, display_name, username',
+          )
+          .eq('user_id', authedId)
+          .maybeSingle();
+
+      let me = null;
+
+      if (
+        myScoreRow &&
+        Number(myScoreRow.best_score) > 0
+      ) {
+        const personalBest =
+          Number(myScoreRow.best_score) || 0;
+
+        const {
+          count: higherScoresCount,
+          error: rankError,
+        } = await supabase
+          .from('jump_game_scores')
+          .select(
+            'user_id',
+            {
+              count: 'exact',
+              head: true,
+            },
+          )
+          .gt('best_score', personalBest);
+
+        if (rankError) {
+          return json(
+            {
+              error:
+                'Rank query failed: ' +
+                rankError.message,
+            },
+            500,
+          );
+        }
+
+        me = {
+          rank:
+            (higherScoresCount || 0) + 1,
+          userId: String(authedId),
+          displayName:
+            myScoreRow.display_name || null,
+          username:
+            myScoreRow.username || null,
+          score: personalBest,
+        };
+      }
+
+      return json({
+        leaders,
+        me,
+      });
+    }
+
+    // ── POST /api/game-score ──
+    // Сохраняет рекорд пары и личный рекорд пользователя.
+    if (
+      request.method === 'POST' &&
+      path === '/api/game-score'
+    ) {
+      const body = await request.json();
+
+      const userId = extractUserId(
+        request,
+        env,
+        body.userId,
+      );
+
+      if (!userId) {
+        return json({ error: 'Unauthorized' }, 401);
+      }
+
+      const pairCode =
+        body.pairCode || body.code;
+
+      const score = Math.floor(
+        Number(body.score),
+      );
+
+      if (!pairCode) {
+        return json(
+          {
+            error: 'pairCode required',
+          },
+          400,
+        );
+      }
+
+      if (
+        !Number.isFinite(score) ||
+        score < 0 ||
+        score > 100000
+      ) {
+        return json(
+          {
+            error: 'Invalid score',
+          },
+          400,
+        );
+      }
+
+      const {
+        data: membership,
+        error: membershipError,
+      } = await supabase
+        .from('pair_users')
+        .select(
+          'user_id, display_name, username',
+        )
+        .eq('pair_code', pairCode)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (membershipError) {
+        return json(
+          {
+            error:
+              'Membership query failed: ' +
+              membershipError.message,
+          },
+          500,
+        );
+      }
+
+      if (!membership) {
+        return json(
+          {
+            error: 'Not a member',
+          },
+          403,
+        );
+      }
+
+      /*
+       * Имя берём из Telegram initData.
+       * Если initData недоступен в локальной разработке,
+       * используем имя из pair_users.
+       */
+      let displayName =
+        membership.display_name || null;
+
+      let username =
+        membership.username || null;
+
+      const initDataRaw =
+        request.headers.get(
+          'X-Telegram-Init-Data',
+        );
+
+      if (initDataRaw) {
+        const validated =
+          validateInitData(
+            initDataRaw,
+            env.BOT_TOKEN,
+          );
+
+        if (
+          validated &&
+          String(validated.userId) ===
+            String(userId)
+        ) {
+          const telegramUser =
+            validated.user || {};
+
+          const fullName = [
+            telegramUser.first_name,
+            telegramUser.last_name,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+
+          if (fullName) {
+            displayName =
+              fullName.slice(0, 64);
+          }
+
+          if (telegramUser.username) {
+            username = String(
+              telegramUser.username,
+            ).slice(0, 32);
+          }
+        }
+      }
+
+      displayName = displayName
+        ? String(displayName).slice(0, 64)
+        : null;
+
+      username = username
+        ? String(username).slice(0, 32)
+        : null;
+
+      /*
+       * Сохраняем личный рекорд.
+       * Оптимистическая проверка не позволяет
+       * более слабому результату затереть сильный.
+       */
+      let personalBest = 0;
+      let isPersonalRecord = false;
+
+      for (
+        let attempt = 0;
+        attempt < 3;
+        attempt += 1
+      ) {
+        const {
+          data: existingScore,
+          error: existingScoreError,
+        } = await supabase
+          .from('jump_game_scores')
+          .select('best_score')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (existingScoreError) {
+          return json(
+            {
+              error:
+                'Personal score query failed: ' +
+                existingScoreError.message,
+            },
+            500,
+          );
+        }
+
+        if (!existingScore) {
+          const {
+            data: insertedScore,
+            error: insertError,
+          } = await supabase
+            .from('jump_game_scores')
+            .insert({
+              user_id: userId,
+              display_name: displayName,
+              username,
+              best_score: score,
+              last_pair_code: pairCode,
+              updated_at:
+                new Date().toISOString(),
+            })
+            .select('best_score')
+            .maybeSingle();
+
+          if (insertedScore) {
+            personalBest =
+              insertedScore.best_score || 0;
+
+            isPersonalRecord =
+              score > 0;
+
+            break;
+          }
+
+          /*
+           * Если два запроса одновременно попытались
+           * создать строку, повторяем чтение и обновление.
+           */
+          if (
+            insertError?.code === '23505'
+          ) {
+            continue;
+          }
+
+          return json(
+            {
+              error:
+                'Personal score insert failed: ' +
+                (
+                  insertError?.message ||
+                  'Unknown error'
+                ),
+            },
+            500,
+          );
+        }
+
+        const currentPersonalBest =
+          existingScore.best_score || 0;
+
+        personalBest =
+          currentPersonalBest;
+
+        if (
+          score <= currentPersonalBest
+        ) {
+          /*
+           * Даже без нового рекорда обновляем имя,
+           * если оно изменилось в Telegram.
+           */
+          await supabase
+            .from('jump_game_scores')
+            .update({
+              display_name: displayName,
+              username,
+              last_pair_code: pairCode,
+            })
+            .eq('user_id', userId);
+
+          break;
+        }
+
+        const {
+          data: updatedScore,
+          error: updateError,
+        } = await supabase
+          .from('jump_game_scores')
+          .update({
+            display_name: displayName,
+            username,
+            best_score: score,
+            last_pair_code: pairCode,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq('user_id', userId)
+          .eq(
+            'best_score',
+            currentPersonalBest,
+          )
+          .select('best_score')
+          .maybeSingle();
+
+        if (updateError) {
+          return json(
+            {
+              error:
+                'Personal score update failed: ' +
+                updateError.message,
+            },
+            500,
+          );
+        }
+
+        if (updatedScore) {
+          personalBest =
+            updatedScore.best_score || 0;
+
+          isPersonalRecord = true;
+          break;
+        }
+      }
+
+      /*
+       * После возможной гонки перечитываем
+       * окончательный личный рекорд.
+       */
+      const { data: finalPersonalScore } =
+        await supabase
+          .from('jump_game_scores')
+          .select('best_score')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      personalBest =
+        finalPersonalScore?.best_score ||
+        personalBest ||
+        0;
+
+      /*
+       * Сохраняем прежний общий рекорд пары.
+       */
+      const {
+        data: pair,
+        error: pairError,
+      } = await supabase
+        .from('pairs')
+        .select('game_best_score')
+        .eq('code', pairCode)
+        .maybeSingle();
+
+      if (pairError) {
+        return json(
+          {
+            error:
+              'Pair score query failed: ' +
+              pairError.message,
+          },
+          500,
+        );
+      }
+
+      if (!pair) {
+        return json(
+          {
+            error: 'Pair not found',
+          },
+          404,
+        );
+      }
+
+      const rawPairBest =
+        pair.game_best_score;
+
+      const currentPairBest =
+        rawPairBest || 0;
+
+      let best = currentPairBest;
+      let isRecord = false;
+
+      if (score > currentPairBest) {
+        let updateQuery = supabase
+          .from('pairs')
+          .update({
+            game_best_score: score,
+          })
+          .eq('code', pairCode);
+
+        /*
+         * Старые пары могут иметь NULL.
+         * eq('game_best_score', 0) не найдёт NULL,
+         * поэтому NULL проверяем отдельно.
+         */
+        updateQuery =
+          rawPairBest === null
+            ? updateQuery.is(
+                'game_best_score',
+                null,
+              )
+            : updateQuery.eq(
+                'game_best_score',
+                rawPairBest,
+              );
+
+        const { data: updatedPair } =
+          await updateQuery
+            .select('game_best_score')
+            .maybeSingle();
+
+        if (updatedPair) {
+          best =
+            updatedPair.game_best_score || 0;
+
+          isRecord = true;
+        } else {
+          const { data: rereadPair } =
+            await supabase
+              .from('pairs')
+              .select('game_best_score')
+              .eq('code', pairCode)
+              .maybeSingle();
+
+          best =
+            rereadPair?.game_best_score ||
+            currentPairBest;
+        }
+      }
+
+      let rank = null;
+
+      if (personalBest > 0) {
+        const {
+          count: higherScoresCount,
+        } = await supabase
+          .from('jump_game_scores')
+          .select(
+            'user_id',
+            {
+              count: 'exact',
+              head: true,
+            },
+          )
+          .gt(
+            'best_score',
+            personalBest,
+          );
+
+        rank =
+          (higherScoresCount || 0) + 1;
+      }
+
+      return json({
+        success: true,
+        best,
+        isRecord,
+        personalBest,
+        isPersonalRecord,
+        rank,
+      });
     }
 
     // ── Fallback 404 ──
