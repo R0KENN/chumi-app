@@ -1864,17 +1864,21 @@ const renderPet = () => (
                     setShowCalendar(false); setShowDiary(false);
                     setShowRanking(false); setShowMenu(false);
                     setShowMyPairs(false);
-                    if (tab.key === 'game') {
-                      if (isAdmin) {
-                        navigate(`/game/${pairId}?pet=${petSrc.idle}`);
-                      } else {
-                        if (tg?.showAlert) tg.showAlert(lang === 'ru' ? 'Скоро' : 'Coming soon');
-                        else alert(lang === 'ru' ? 'Скоро' : 'Coming soon');
-                      }
-                    }
-                    else if (tab.key === 'diary') setShowDiary(true);
-                    else if (tab.key === 'mypairs') setShowMyPairs(true);
-                    else if (tab.key === 'more') setShowMenu(true);
+if (tab.key === 'game') {
+  const gamePet =
+    petSrc?.idle ||
+    (isEgg ? `egg_${eggDay}` : 'axolotl_idle');
+
+  navigate(
+    `/game/${pairId}?pet=${encodeURIComponent(gamePet)}`
+  );
+} else if (tab.key === 'diary') {
+  setShowDiary(true);
+} else if (tab.key === 'mypairs') {
+  setShowMyPairs(true);
+} else if (tab.key === 'more') {
+  setShowMenu(true);
+}
                   }}
                 >
                   <span className="lg-tab-ico"><tab.Ico /></span>

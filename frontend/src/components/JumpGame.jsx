@@ -1,676 +1,2263 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getInitData } from '../context/PairsContext';
+import { useLang } from '../context/LangContext';
+import './JumpGame.css';
 
 const ACCENT = '#9B72CF';
-const BG_TOP = '#F3EDF7';
-const BG_BOT = '#D7C8E8';
 
-// Типы платформ
-const NORMAL = 'normal';
-const FRAGILE = 'fragile'; // ломается после одного прыжка
-const SPIKE = 'spike';     // иглы — мгновенная смерть
+const STATE = {
+  INTRO: 'intro',
+  COUNTDOWN: 'countdown',
+  RUNNING: 'running',
+  PAUSED: 'paused',
+  OVER: 'over',
+};
 
-export default function JumpGame() {
-  const canvasRef = useRef(null);
-  const navigate = useNavigate();
-  const { pairId } = useParams();
-  const [searchParams] = useSearchParams();
+const TYPE = {
+  NORMAL: 'normal',
+  FRAGILE: 'fragile',
+  MOVING: 'moving',
+  SPRING: 'spring',
+  SPIKE: 'spike',
+};
 
-  const petName = searchParams.get('pet') || '';
-  const petImgSrc = petName ? `/pets/${petName}_frame.png` : null;
+const PHYSICS = {
+  gravity: 2200,
+  jump: -820,
+  spring: -1040,
 
-  const userId = String(
-    window.Telegram?.WebApp?.initDataUnsafe?.user?.id ||
-    localStorage.getItem('chumi_test_uid') || 'guest'
+  // Ракета теперь даёт продолжительный управляемый полёт,
+  // а не один очень сильный прыжок.
+  rocketSpeed: -720,
+  rocketDuration: 1.25,
+
+  acceleration: 2400,
+  maxSpeed: 400,
+  friction: 0.84,
+  step: 1 / 60,
+};
+
+const clamp = (value, min, max) =>
+  Math.max(min, Math.min(max, value));
+
+const random = (min, max) =>
+  min + Math.random() * (max - min);
+
+function wrappedDistance(from, to, width) {
+  let distance = to - from;
+
+  if (distance > width / 2) distance -= width;
+  if (distance < -width / 2) distance += width;
+
+  return distance;
+}
+
+function roundRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function createPlatform(game, options) {
+  return {
+    id: game.nextPlatformId++,
+    x: options.x,
+    y: options.y,
+    baseX: options.x,
+    width: options.width || 90,
+    height: 15,
+    type: options.type || TYPE.NORMAL,
+    mainRoute: options.mainRoute !== false,
+    broken: false,
+    breakVelocity: 0,
+    moveRange: options.moveRange || 0,
+    moveSpeed: options.moveSpeed || 0,
+    phase: random(0, Math.PI * 2),
+  };
+}
+
+function choosePlatformType(score) {
+  const roll = Math.random();
+
+  if (score >= 35 && roll < 0.12) return TYPE.MOVING;
+  if (score >= 15 && roll < 0.29) return TYPE.FRAGILE;
+  if (score >= 10 && roll > 0.93) return TYPE.SPRING;
+
+  return TYPE.NORMAL;
+}
+
+function addPlatform(game) {
+  const score = Math.floor(game.distance / 10);
+  const difficulty = clamp(score / 120, 0, 1);
+  const previous = game.lastRoutePlatform;
+
+  const width = random(
+    94 - difficulty * 14,
+    118 - difficulty * 17,
   );
 
-  const authHeaders = () => {
-    const headers = { 'Content-Type': 'application/json' };
-    const initData = getInitData();
-    if (initData) headers['X-Telegram-Init-Data'] = initData;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      headers['X-Dev-User-Id'] = userId;
+  /*
+   * Вертикальный разрыв всегда меньше реальной высоты прыжка.
+   * Поэтому основной маршрут остаётся проходимым.
+   */
+  const verticalGap = random(
+    72 + difficulty * 8,
+    106 + difficulty * 15,
+  );
+
+  const horizontalLimit = Math.min(
+    game.width * 0.42,
+    125 + difficulty * 60,
+  );
+
+  const x = clamp(
+    previous.x + random(-horizontalLimit, horizontalLimit),
+    12,
+    game.width - width - 12,
+  );
+
+  const type = choosePlatformType(score);
+
+  const platform = createPlatform(game, {
+    x,
+    y: previous.y - verticalGap,
+    width,
+    type,
+    moveRange: type === TYPE.MOVING ? random(16, 32) : 0,
+    moveSpeed: type === TYPE.MOVING ? random(1.1, 1.7) : 0,
+  });
+
+  game.platforms.push(platform);
+  game.lastRoutePlatform = platform;
+
+  /*
+   * Шипы — только дополнительное препятствие.
+   * Они не становятся частью обязательного маршрута.
+   */
+  if (score >= 30 && Math.random() < 0.13) {
+    const hazardWidth = random(65, 85);
+    const placeRight = x < game.width / 2;
+
+    let hazardX = placeRight
+      ? x + width + random(45, 75)
+      : x - hazardWidth - random(45, 75);
+
+    hazardX = clamp(
+      hazardX,
+      12,
+      game.width - hazardWidth - 12,
+    );
+
+    const overlaps =
+      hazardX < x + width + 22 &&
+      hazardX + hazardWidth > x - 22;
+
+    if (!overlaps) {
+      game.platforms.push(createPlatform(game, {
+        x: hazardX,
+        y: platform.y + random(-8, 10),
+        width: hazardWidth,
+        type: TYPE.SPIKE,
+        mainRoute: false,
+      }));
     }
-    return headers;
+  }
+
+  /*
+   * Ракета появляется только около безопасной платформы.
+   */
+  const distanceFromLastRocket =
+    game.distance - game.lastRocketDistance;
+
+  const distanceFromCollectedRocket =
+    game.distance - game.lastCollectedRocketDistance;
+
+  const hasActiveRocket = game.rockets.some(
+    rocket => !rocket.collected,
+  );
+
+  const canSpawnRocket =
+    distanceFromLastRocket >= 750 &&
+    distanceFromCollectedRocket >= 450 &&
+    game.player.boost <= 0 &&
+    !hasActiveRocket;
+
+  if (
+    score >= 12 &&
+    type !== TYPE.FRAGILE &&
+    canSpawnRocket &&
+    Math.random() < 0.07
+  ) {
+    game.rockets.push({
+      id: game.nextRocketId++,
+      x: x + width / 2,
+      y: platform.y - 36,
+      phase: random(0, Math.PI * 2),
+      collected: false,
+    });
+
+    game.lastRocketDistance = game.distance;
+  }
+}
+
+function ensurePlatforms(game) {
+  while (game.lastRoutePlatform.y > -220) {
+    addPlatform(game);
+  }
+}
+
+function makeGame(width, height) {
+  const startPlatform = {
+    id: 1,
+    x: width / 2 - 58,
+    y: height - 95,
+    baseX: width / 2 - 58,
+    width: 116,
+    height: 15,
+    type: TYPE.NORMAL,
+    mainRoute: true,
+    broken: false,
+    breakVelocity: 0,
+    moveRange: 0,
+    moveSpeed: 0,
+    phase: 0,
   };
 
-  const [score, setScore] = useState(0);
-  const [gameOver, setGameOver] = useState(false);
-  const [bestScore, setBestScore] = useState(
-    () => Number(localStorage.getItem(`jump_best_${pairId}`) || 0)
+  const game = {
+    width,
+    height,
+    state: STATE.INTRO,
+    time: 0,
+    accumulator: 0,
+    previousTime: 0,
+
+    distance: 0,
+    score: 0,
+
+    nextPlatformId: 2,
+    nextRocketId: 1,
+
+    // Расстояние, на котором была создана последняя ракета.
+    lastRocketDistance: -Infinity,
+
+    // Расстояние, на котором игрок собрал последнюю ракету.
+    // Используется для паузы между ракетными полётами.
+    lastCollectedRocketDistance: -Infinity,
+
+    platforms: [startPlatform],
+    rockets: [],
+    particles: [],
+    lastRoutePlatform: startPlatform,
+
+    pointer: {
+      active: false,
+      x: width / 2,
+    },
+
+    keys: {
+      left: false,
+      right: false,
+    },
+
+    player: {
+      x: width / 2,
+      y: startPlatform.y - 30,
+      previousY: startPlatform.y - 30,
+      vx: 0,
+      vy: PHYSICS.jump,
+      radius: 26,
+      squash: 0,
+      rotation: 0,
+      boost: 0,
+      lastPlatformId: startPlatform.id,
+    },
+
+    shake: 0,
+    flash: 0,
+  };
+
+  ensurePlatforms(game);
+  return game;
+}
+
+function addParticles(
+  game,
+  x,
+  y,
+  color,
+  count = 8,
+  options = {},
+) {
+  for (let i = 0; i < count; i += 1) {
+    const life = random(0.35, 0.7);
+
+    game.particles.push({
+      x,
+      y,
+      vx: random(options.minVx ?? -120, options.maxVx ?? 120),
+      vy: random(options.minVy ?? -210, options.maxVy ?? -60),
+      gravity: options.gravity ?? 650,
+      life,
+      maxLife: life,
+      size: random(2.5, 6),
+      color,
+    });
+  }
+}
+
+function updateParticles(game, dt) {
+  for (const particle of game.particles) {
+    particle.life -= dt;
+    particle.vy += particle.gravity * dt;
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+  }
+
+  game.particles = game.particles.filter(
+    particle => particle.life > 0,
   );
-  const [isNewRecord, setIsNewRecord] = useState(false);
+}
 
-  const game = useRef(null);
-  const petImg = useRef(null);
+function drawBackground(ctx, game, dark) {
+  const gradient = ctx.createLinearGradient(
+    0,
+    0,
+    0,
+    game.height,
+  );
 
-// Подтягиваем рекорд пары с сервера (localStorage уже дал мгновенное значение)
-  useEffect(() => {
-    if (!pairId) return;
-    (async () => {
-      try {
-        const res = await fetch(`/api/game-score/${pairId}`, { headers: authHeaders() });
-        const data = await res.json();
-        if (typeof data.best === 'number') {
-          setBestScore(prev => {
-            const best = Math.max(prev, data.best);
-            localStorage.setItem(`jump_best_${pairId}`, String(best));
-            return best;
-          });
-        }
-      } catch (e) {}
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pairId]);
+  if (dark) {
+    gradient.addColorStop(0, '#151326');
+    gradient.addColorStop(0.62, '#292044');
+    gradient.addColorStop(1, '#44366A');
+  } else {
+    gradient.addColorStop(0, '#F3EDF7');
+    gradient.addColorStop(0.62, '#D7C8E8');
+    gradient.addColorStop(1, '#BDA7D8');
+  }
 
-  const haptic = useCallback((type = 'light') => {
-    try {
-      const tg = window.Telegram?.WebApp?.HapticFeedback;
-      if (type === 'success' || type === 'error') tg?.notificationOccurred(type);
-      else tg?.impactOccurred(type);
-    } catch {}
-  }, []);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, game.width, game.height);
 
-  const endGame = useCallback((finalScore) => {
-    setGameOver(true);
-    setScore(finalScore);
-    setIsNewRecord(false); // сброс на старте, чтобы не висел флаг с прошлой игры
+  if (dark) {
+    for (let i = 0; i < 30; i += 1) {
+      const x = (i * 97 + 31) % game.width;
+      const y =
+        (i * 173 + game.distance * 0.05) %
+        game.height;
 
-    // Локальная проверка рекорда (мгновенно, до ответа сервера)
-    const prevBest = Number(localStorage.getItem(`jump_best_${pairId}`) || 0);
-    if (finalScore > prevBest && finalScore > 0) {
-      setIsNewRecord(true);
-    }
+      const alpha =
+        0.28 + Math.sin(game.time * 2 + i) * 0.12;
 
-    setBestScore((prev) => {
-      const best = Math.max(prev, finalScore);
-      localStorage.setItem(`jump_best_${pairId}`, String(best));
-      return best;
-    });
-    haptic('error');
-
-    // Отправляем результат на сервер (рекорд обновится, только если он больше)
-    if (pairId && finalScore > 0) {
-      fetch('/api/game-score', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ userId, pairCode: pairId, score: finalScore }),
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (typeof data.best === 'number') {
-            setBestScore(prev => {
-              const best = Math.max(prev, data.best);
-              localStorage.setItem(`jump_best_${pairId}`, String(best));
-              return best;
-            });
-          }
-          // Сервер — единственный источник правды по рекорду пары:
-          // может и опровергнуть локальный флаг, если партнёр уже выбил больше
-          setIsNewRecord(!!data.isRecord);
-          if (data.isRecord) haptic('success');
-        })
-        .catch(() => {});
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pairId, haptic, userId]);
-
-  // Новая платформа выше предыдущей.
-  // Платформы разбросаны по ширине, но всегда достижимы.
-  // После опасной — белая со смещением вбок (не строго над предыдущей).
-  const makePlatform = useCallback((W, scrolled, recent) => {
-    const PLATFORM_W = 75;
-    const sorted = [...recent].sort((a, b) => a.y - b.y);
-    const base = sorted[0];
-    const baseX = base ? base.x : W / 2 - PLATFORM_W / 2;
-    const baseY = base ? base.y : 0;
-    const lastWasHazard = base && base.type !== NORMAL;
-
-    const heightFloors = scrolled / 50;
-
-    let type = NORMAL;
-    if (!lastWasHazard) {
-      const r = Math.random();
-      if (heightFloors > 40) {
-        if (r < 0.10) type = SPIKE;
-        else if (r < 0.34) type = FRAGILE;
-      } else if (heightFloors > 15) {
-        if (r < 0.06) type = SPIKE;
-        else if (r < 0.26) type = FRAGILE;
-      } else {
-        if (r < 0.15) type = FRAGILE;
-      }
-    }
-
-    let gap, x;
-
-    if (lastWasHazard) {
-      // ── После опасной (иглы/ломкая) ──
-      // Белая платформа стоит НИЗКО и со смещением вбок — чтобы не налететь
-      // на шипы при прыжке вверх и при этом легко допрыгнуть в сторону.
-      gap = 55 + Math.random() * 20; // 55–75 px — низко, легко допрыгнуть вбок
-
-      const PLATFORM_W2 = PLATFORM_W; // 75
-      const minShift = PLATFORM_W2 + 10;        // 85 px — мимо игл, но не слишком далеко
-      const maxShift = PLATFORM_W2 + 45;        // 120 px — комфортно допрыгнуть вбок
-      const dir = baseX < (W - PLATFORM_W2) / 2 ? 1 : -1; // уводим к центру экрана
-      let shift = (minShift + Math.random() * (maxShift - minShift)) * dir;
-      x = baseX + shift;
-      // Если выходим за край экрана — отражаем смещение в другую сторону
-      if (x < 0 || x > W - PLATFORM_W2) {
-        x = baseX - shift;
-      }
-      x = Math.max(0, Math.min(W - PLATFORM_W2, x));
-    } else {
-      // ── Обычная генерация ──
-      // Больший разрыв по высоте для интереса, но всегда в пределах прыжка.
-      // h_max ≈ JUMP²/(2·GRAVITY) ≈ 215 px, поэтому держим потолок ~155.
-      gap = 110 + Math.random() * 45; // 110–155 px
-
-      // Считаем реальную горизонтальную досягаемость для этого gap:
-      // сколько игрок успеет пролететь вбок, пока поднимается на высоту gap.
-      const J = 12.8, G = 0.38, VX = 9;
-      const disc = Math.max(0, J * J - 2 * G * gap);
-      const t = (J - Math.sqrt(disc)) / G; // время подъёма до высоты gap
-      const reach = VX * t * 0.85;          // 0.85 — небольшой запас надёжности
-      const minX = Math.max(0, baseX - reach);
-      const maxX = Math.min(W - PLATFORM_W, baseX + reach);
-      x = minX + Math.random() * Math.max(1, maxX - minX);
-    }
-
-    const y = baseY - gap;
-    return { x, y, w: PLATFORM_W, h: 18, type, broken: false, breakAnim: 0 };
-  }, []);
-
-  const loop = useCallback((now) => {
-    const g = game.current;
-    if (!g || !g.running) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const { player, platforms, boosters, W, H } = g;
-
-    // ── Delta-time ──
-    if (!g.lastTime) g.lastTime = now;
-    let dt = (now - g.lastTime) / 16.666;
-    g.lastTime = now;
-    if (dt > 2.5) dt = 2.5;
-
-    // ── Физика игрока ──
-    player.vy += g.GRAVITY * dt;
-    player.y += player.vy * dt;
-    player.x += player.vx * dt;
-
-    if (player.x > W) player.x = -player.w;
-    if (player.x + player.w < 0) player.x = W;
-
-    // ── Коллизия с платформами (только при падении) ──
-    platforms.forEach((p) => {
-      if (p.broken) return; // рассыпавшаяся ломкая — сквозь неё
-      const overlapX = player.x + player.w > p.x && player.x < p.x + p.w;
-      const landing =
-        player.vy > 0 &&
-        player.y + player.h > p.y &&
-        player.y + player.h < p.y + p.h + player.vy * dt + 6;
-
-      if (overlapX && landing) {
-        if (p.type === SPIKE) {
-          g.running = false;
-          endGame(g.score);
-          return;
-        }
-        player.vy = g.JUMP;
-        haptic('light');
-        if (p.type === FRAGILE) {
-          p.broken = true; // отпрыгнули — и она ломается
-        }
-      }
-    });
-    if (!g.running) return;
-
-    // Анимация развала ломких платформ
-    platforms.forEach((p) => {
-      if (p.broken && p.breakAnim < 1) p.breakAnim = Math.min(1, p.breakAnim + 0.08 * dt);
-    });
-
-    // ── Бустеры: летят горизонтально насквозь, при касании — подброс ──
-    boosters.forEach((b) => {
-      b.x += b.vx * dt;
-      if (
-        !b.used &&
-        player.x + player.w > b.x &&
-        player.x < b.x + b.w &&
-        player.y + player.h > b.y &&
-        player.y < b.y + b.h
-      ) {
-        b.used = true;
-        player.vy = g.BOOST;
-        haptic('success');
-      }
-    });
-
-    // ── Скролл мира вверх ──
-    if (player.y < H / 2) {
-      const diff = H / 2 - player.y;
-      player.y = H / 2;
-      platforms.forEach((p) => { p.y += diff; });
-      boosters.forEach((b) => { b.y += diff; });
-      g.scrolled += diff;
-      const newScore = Math.floor(g.scrolled / 50);
-      if (newScore > g.score) { g.score = newScore; setScore(newScore); }
-    }
-
-    // ── Спавн бустера на каждые 30 очков ──
-    if (g.score >= g.nextBoosterScore) {
-      g.nextBoosterScore += 30;
-      const fromLeft = Math.random() < 0.5;
-      boosters.push({
-        x: fromLeft ? -60 : W + 60,
-        y: H * 0.12 + Math.random() * H * 0.28,
-        w: 50, h: 50,
-        vx: (fromLeft ? 1 : -1) * (2.6 + Math.random() * 1.2),
-        used: false,
-      });
-    }
-
-    // ── Чистка ──
-    for (let i = platforms.length - 1; i >= 0; i--) {
-      const p = platforms[i];
-      if (p.y > H || (p.broken && p.breakAnim >= 1)) platforms.splice(i, 1);
-    }
-    // Бустер ушёл за экран по горизонтали или вниз — удаляем (выплывет новый при +30)
-    for (let i = boosters.length - 1; i >= 0; i--) {
-      const b = boosters[i];
-      if (b.used || b.y > H + 80 || b.x < -120 || b.x > W + 120) boosters.splice(i, 1);
-    }
-    while (platforms.length < 8) {
-      platforms.push(makePlatform(W, g.scrolled, platforms));
-    }
-
-    // Game over (упал вниз)
-    if (player.y > H) {
-      g.running = false;
-      endGame(g.score);
-      return;
-    }
-
-    // ════════ РЕНДЕР ════════
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, BG_TOP);
-    grad.addColorStop(1, BG_BOT);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    // Платформы
-    platforms.forEach((p) => {
-      ctx.save();
-
-      if (p.broken) {
-        // Разваливается: две половинки разъезжаются и падают
-        const off = p.breakAnim * 40;
-        ctx.globalAlpha = 1 - p.breakAnim;
-        drawPlatformBody(ctx, p.x - off, p.y + off * 0.6, p.w / 2 - 3, p.h, '#E8C9A0');
-        drawPlatformBody(ctx, p.x + p.w / 2 + off, p.y + off * 0.6, p.w / 2 - 3, p.h, '#E8C9A0');
-        ctx.restore();
-        return;
-      }
-
-      if (p.type === SPIKE) {
-        // База платформы
-        drawPlatformBody(ctx, p.x, p.y, p.w, p.h, '#9aa0a8');
-        // Иглы сверху
-        ctx.fillStyle = '#6b7280';
-        const spikes = 6;
-        const sw = p.w / spikes;
-        for (let i = 0; i < spikes; i++) {
-          ctx.beginPath();
-          ctx.moveTo(p.x + i * sw, p.y);
-          ctx.lineTo(p.x + i * sw + sw / 2, p.y - 11);
-          ctx.lineTo(p.x + (i + 1) * sw, p.y);
-          ctx.closePath();
-          ctx.fill();
-        }
-      } else if (p.type === FRAGILE) {
-        // Ломкая — песочного цвета с трещиной
-        drawPlatformBody(ctx, p.x, p.y, p.w, p.h, '#F0D8B0');
-        ctx.strokeStyle = '#C9A878';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(p.x + p.w * 0.35, p.y + 2);
-        ctx.lineTo(p.x + p.w * 0.5, p.y + p.h - 3);
-        ctx.lineTo(p.x + p.w * 0.62, p.y + 3);
-        ctx.stroke();
-      } else {
-        // Обычная — белая с лавандовой обводкой
-        ctx.globalAlpha = 0.92;
-        drawPlatformBody(ctx, p.x, p.y, p.w, p.h, '#ffffff');
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = ACCENT + '55';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(p.x, p.y, p.w, p.h, 10);
-        ctx.stroke();
-      }
-      ctx.restore();
-    });
-
-    // Бустеры — красивая ракета
-    boosters.forEach((b) => {
-      if (b.used) return;
-      drawRocket(ctx, b.x, b.y, b.w, b.h, b.vx < 0);
-    });
-
-    // Игрок
-    const img = petImg.current;
-    if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, player.x, player.y, player.w, player.h);
-    } else {
-      ctx.fillStyle = ACCENT;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
       ctx.beginPath();
-      ctx.arc(player.x + player.w / 2, player.y + player.h / 2, player.w / 2, 0, Math.PI * 2);
+      ctx.arc(
+        x,
+        y,
+        i % 5 === 0 ? 1.8 : 1,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  } else {
+    for (let i = 0; i < 7; i += 1) {
+      const x =
+        ((i * 157 + game.time * (4 + i * 0.2)) %
+          (game.width + 150)) -
+        75;
+
+      const y =
+        90 +
+        ((i * 143 + game.distance * 0.08) %
+          Math.max(180, game.height - 180));
+
+      ctx.fillStyle = 'rgba(255,255,255,0.23)';
+      ctx.beginPath();
+      ctx.arc(x, y, 27, 0, Math.PI * 2);
+      ctx.arc(x + 27, y + 5, 21, 0, Math.PI * 2);
+      ctx.arc(x - 24, y + 7, 17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawPlatform(ctx, platform, dark) {
+  const {
+    x,
+    y,
+    width,
+    height,
+    type,
+  } = platform;
+
+  ctx.save();
+
+  if (platform.broken) {
+    ctx.globalAlpha = clamp(
+      1 - platform.breakVelocity / 1000,
+      0.15,
+      1,
+    );
+  }
+
+  if (type === TYPE.SPIKE) {
+    ctx.fillStyle = dark ? '#593244' : '#FFE1E7';
+    roundRect(ctx, x, y, width, height, 7);
+    ctx.fill();
+
+    const count = Math.max(3, Math.floor(width / 17));
+    const spikeWidth = width / count;
+
+    ctx.fillStyle = '#E5485F';
+
+    for (let i = 0; i < count; i += 1) {
+      const spikeX = x + i * spikeWidth;
+
+      ctx.beginPath();
+      ctx.moveTo(spikeX + 2, y);
+      ctx.lineTo(spikeX + spikeWidth / 2, y - 15);
+      ctx.lineTo(spikeX + spikeWidth - 2, y);
+      ctx.closePath();
       ctx.fill();
     }
 
-    g.raf = requestAnimationFrame(loop);
-  }, [endGame, haptic, makePlatform]);
+    ctx.restore();
+    return;
+  }
 
-  const startGame = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    // Гасим возможный предыдущий цикл, чтобы не было двух loop одновременно
-    if (game.current) {
-      game.current.running = false;
-      if (game.current.raf) cancelAnimationFrame(game.current.raf);
+  const gradient = ctx.createLinearGradient(
+    x,
+    y,
+    x,
+    y + height,
+  );
+
+  if (type === TYPE.FRAGILE) {
+    gradient.addColorStop(0, '#FFD27A');
+    gradient.addColorStop(1, '#E99A3F');
+  } else if (type === TYPE.MOVING) {
+    gradient.addColorStop(0, '#87D0FF');
+    gradient.addColorStop(1, '#438FCE');
+  } else if (type === TYPE.SPRING) {
+    gradient.addColorStop(0, '#72E6A5');
+    gradient.addColorStop(1, '#32A86B');
+  } else {
+    gradient.addColorStop(0, dark ? '#CBB8E6' : '#FFFFFF');
+    gradient.addColorStop(1, dark ? '#8871AF' : '#D9CBE9');
+  }
+
+  ctx.shadowColor = 'rgba(28,16,48,0.18)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 6;
+  ctx.fillStyle = gradient;
+
+  roundRect(ctx, x, y, width, height, 8);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+
+  roundRect(ctx, x + 5, y + 2, width - 10, 3, 2);
+  ctx.fill();
+
+  if (type === TYPE.FRAGILE) {
+    ctx.strokeStyle = 'rgba(100,55,15,0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + width * 0.35, y + 1);
+    ctx.lineTo(x + width * 0.47, y + height * 0.6);
+    ctx.lineTo(x + width * 0.58, y + 2);
+    ctx.stroke();
+  }
+
+  if (type === TYPE.MOVING) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('↔', x + width / 2, y + height / 2);
+  }
+
+  if (type === TYPE.SPRING) {
+    ctx.strokeStyle = '#EFFFF4';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x + width / 2 - 12, y);
+    ctx.lineTo(x + width / 2 - 7, y - 7);
+    ctx.lineTo(x + width / 2, y);
+    ctx.lineTo(x + width / 2 + 7, y - 7);
+    ctx.lineTo(x + width / 2 + 12, y);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawRocket(ctx, rocket, time) {
+  const pulse =
+    1 + Math.sin(time * 5 + rocket.phase) * 0.05;
+
+  const flame =
+    0.8 + Math.sin(time * 15 + rocket.phase) * 0.15;
+
+  ctx.save();
+  ctx.translate(rocket.x, rocket.y);
+  ctx.scale(pulse, pulse);
+
+  const flameGradient = ctx.createLinearGradient(
+    0,
+    10,
+    0,
+    38,
+  );
+
+  flameGradient.addColorStop(0, '#FFF36A');
+  flameGradient.addColorStop(0.45, '#FF963D');
+  flameGradient.addColorStop(1, 'rgba(255,70,40,0)');
+
+  ctx.fillStyle = flameGradient;
+  ctx.beginPath();
+  ctx.moveTo(-7, 12);
+  ctx.quadraticCurveTo(0, 20 + 17 * flame, 7, 12);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.moveTo(0, -20);
+  ctx.quadraticCurveTo(15, -7, 11, 14);
+  ctx.lineTo(-11, 14);
+  ctx.quadraticCurveTo(-15, -7, 0, -20);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = ACCENT;
+  ctx.beginPath();
+  ctx.moveTo(0, -20);
+  ctx.quadraticCurveTo(8, -13, 10, -5);
+  ctx.lineTo(-10, -5);
+  ctx.quadraticCurveTo(-8, -13, 0, -20);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#8FD3FF';
+  ctx.beginPath();
+  ctx.arc(0, 1, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#7C5CCB';
+
+  ctx.beginPath();
+  ctx.moveTo(-10, 5);
+  ctx.lineTo(-19, 15);
+  ctx.lineTo(-9, 13);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(10, 5);
+  ctx.lineTo(19, 15);
+  ctx.lineTo(9, 13);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticles(ctx, particles) {
+  for (const particle of particles) {
+    const alpha = clamp(
+      particle.life / particle.maxLife,
+      0,
+      1,
+    );
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(
+      particle.x,
+      particle.y,
+      particle.size * alpha,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+function drawFallbackPet(ctx, player) {
+  ctx.fillStyle = '#9B72CF';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 28, 23, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#CDB6EA';
+
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(side * 27, -10, 11, 5, side * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(side * 29, 2, 12, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(side * 26, 13, 10, 5, -side * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(-9, -4, 4, 0, Math.PI * 2);
+  ctx.arc(9, -4, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#30243D';
+  ctx.beginPath();
+  ctx.arc(-9, -4, 2, 0, Math.PI * 2);
+  ctx.arc(9, -4, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#30243D';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 3, 6, 0.15, Math.PI - 0.15);
+  ctx.stroke();
+
+  if (player.boost > 0) {
+    ctx.fillStyle = '#FF9A3D';
+    ctx.beginPath();
+    ctx.moveTo(-10, 20);
+    ctx.lineTo(0, 46 + Math.sin(player.boost * 40) * 5);
+    ctx.lineTo(10, 20);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawPlayer(ctx, game, image) {
+  const player = game.player;
+
+  const squash = clamp(player.squash, 0, 1);
+  const scaleX = 1 + squash * 0.18;
+  const scaleY = 1 - squash * 0.14;
+
+  const targetRotation =
+    (player.vx / PHYSICS.maxSpeed) * 0.16;
+
+  player.rotation +=
+    (targetRotation - player.rotation) * 0.14;
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.rotation);
+  ctx.scale(scaleX, scaleY);
+
+  if (player.boost > 0) {
+    const glow = ctx.createRadialGradient(
+      0,
+      15,
+      5,
+      0,
+      15,
+      50,
+    );
+
+    glow.addColorStop(0, 'rgba(255,180,65,0.45)');
+    glow.addColorStop(1, 'rgba(255,180,65,0)');
+
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 15, 50, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (
+    image?.complete &&
+    image.naturalWidth > 0
+  ) {
+    ctx.drawImage(image, -39, -48, 78, 96);
+  } else {
+    drawFallbackPet(ctx, player);
+  }
+
+  ctx.restore();
+}
+
+function drawGame(ctx, game, image, dark) {
+  /*
+   * Плавное короткое колебание вместо случайного shake.
+   * Math.random здесь не используется, поэтому экран
+   * не будет хаотично дёргаться между кадрами.
+   */
+  const shakeX =
+    game.shake > 0
+      ? Math.sin(game.time * 65) *
+        game.shake
+      : 0;
+
+  const shakeY =
+    game.shake > 0
+      ? Math.cos(game.time * 58) *
+        game.shake *
+        0.4
+      : 0;
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawBackground(ctx, game, dark);
+
+  for (const platform of game.platforms) {
+    drawPlatform(ctx, platform, dark);
+  }
+
+  for (const rocket of game.rockets) {
+    if (!rocket.collected) {
+      drawRocket(
+        ctx,
+        rocket,
+        game.time,
+      );
     }
-    const W = window.innerWidth;
-    const H = window.innerHeight;
+  }
 
-    const player = {
-      x: W / 2 - 36,
-      y: H - 170,
-      w: 72,
-      h: 72,
-      vy: 0,
-      vx: 0,
+  drawParticles(
+    ctx,
+    game.particles,
+  );
+
+  drawPlayer(
+    ctx,
+    game,
+    image,
+  );
+
+  ctx.restore();
+
+  /*
+   * Мягкая сиреневая подсветка.
+   * Максимальная прозрачность очень маленькая.
+   */
+  if (game.flash > 0) {
+    const alpha = clamp(
+      game.flash * 0.12,
+      0,
+      0.025,
+    );
+
+    ctx.fillStyle =
+      `rgba(220,205,255,${alpha})`;
+
+    ctx.fillRect(
+      0,
+      0,
+      game.width,
+      game.height,
+    );
+  }
+}
+
+export default function JumpGame() {
+  const canvasRef = useRef(null);
+  const gameRef = useRef(null);
+  const petImageRef = useRef(null);
+  const bestRef = useRef(0);
+  const renderedScoreRef = useRef(-1);
+
+  const navigate = useNavigate();
+  const { pairId } = useParams();
+  const [searchParams] = useSearchParams();
+  const { lang } = useLang();
+
+  const [screen, setScreen] = useState(STATE.INTRO);
+  const [countdown, setCountdown] = useState(3);
+  const [score, setScore] = useState(0);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+
+  const [bestScore, setBestScore] = useState(() => {
+    try {
+      return Number(
+        localStorage.getItem(`jump_best_${pairId}`) || 0,
+      );
+    } catch {
+      return 0;
+    }
+  });
+
+  const petName = searchParams.get('pet') || '';
+
+  const userId = String(
+    window.Telegram?.WebApp?.initDataUnsafe?.user?.id ||
+    localStorage.getItem('chumi_test_uid') ||
+    'guest',
+  );
+
+  const dark = (() => {
+    try {
+      return localStorage.getItem('chumi_theme') === 'night';
+    } catch {
+      return false;
+    }
+  })();
+
+  const t = lang === 'ru'
+    ? {
+        title: 'Прыжок Chumi',
+        subtitle: 'Поднимайся как можно выше',
+        play: 'Играть',
+        control: 'Веди пальцем влево и вправо',
+        fragile: 'Оранжевые платформы ломаются',
+        spike: 'Не приземляйся на шипы',
+        rocket: 'Ракета подбросит тебя выше',
+        paused: 'Пауза',
+        resume: 'Продолжить',
+        gameOver: 'Игра окончена',
+        score: 'Очки',
+        best: 'Рекорд пары',
+        record: 'Новый рекорд!',
+        again: 'Ещё раз',
+        back: 'К питомцу',
+      }
+    : {
+        title: 'Chumi Jump',
+        subtitle: 'Climb as high as you can',
+        play: 'Play',
+        control: 'Drag left and right',
+        fragile: 'Orange platforms break',
+        spike: 'Do not land on spikes',
+        rocket: 'Rockets boost you higher',
+        paused: 'Paused',
+        resume: 'Continue',
+        gameOver: 'Game over',
+        score: 'Score',
+        best: 'Pair best',
+        record: 'New record!',
+        again: 'Play again',
+        back: 'Back to pet',
+      };
+
+  useEffect(() => {
+    bestRef.current = bestScore;
+  }, [bestScore]);
+
+  const authHeaders = useCallback(() => {
+    const headers = {
+      'Content-Type': 'application/json',
     };
 
-    // Первая платформа всегда обычная (под игроком)
-    const platforms = [{ x: player.x - 2, y: H - 95, w: 75, h: 18, type: NORMAL, broken: false, breakAnim: 0 }];
-    while (platforms.length < 8) {
-      platforms.push(makePlatform(W, 0, platforms));
+    const initData = getInitData();
+
+    if (initData) {
+      headers['X-Telegram-Init-Data'] = initData;
     }
 
-    game.current = {
-      player, platforms,
-      boosters: [],
-      nextBoosterScore: 30, // первый бустер на 30 очках
-      GRAVITY: 0.38,
-      JUMP: -12.8,
-      BOOST: -27,
-      W, H,
-      score: 0, scrolled: 0, running: true, raf: null, lastTime: 0,
-    };
+    if (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    ) {
+      headers['X-Dev-User-Id'] = userId;
+    }
 
-    setScore(0);
-    setGameOver(false);
-    setIsNewRecord(false);
-    game.current.raf = requestAnimationFrame(loop);
-  }, [loop, makePlatform]);
+    return headers;
+  }, [userId]);
+
+  const haptic = useCallback((type = 'light') => {
+    try {
+      const feedback =
+        window.Telegram?.WebApp?.HapticFeedback;
+
+      if (
+        type === 'success' ||
+        type === 'error' ||
+        type === 'warning'
+      ) {
+        feedback?.notificationOccurred(type);
+      } else {
+        feedback?.impactOccurred(type);
+      }
+    } catch {
+      // Haptic недоступен.
+    }
+  }, []);
+
+  const saveBest = useCallback((value) => {
+    bestRef.current = value;
+    setBestScore(value);
+
+    try {
+      localStorage.setItem(
+        `jump_best_${pairId}`,
+        String(value),
+      );
+    } catch {
+      // localStorage недоступен.
+    }
+  }, [pairId]);
+
+  const finishGame = useCallback((finalScore) => {
+    const game = gameRef.current;
+
+    if (
+      !game ||
+      game.state === STATE.OVER
+    ) {
+      return;
+    }
+
+    game.state = STATE.OVER;
+
+    /*
+     * Почти незаметное короткое колебание.
+     * Если тряска вообще не нужна — поставь 0.
+     */
+    game.shake = 1.4;
+
+    /*
+     * После смерти не делаем полноэкранную вспышку.
+     */
+    game.flash = 0;
+
+    /*
+     * Отключаем управление, чтобы сохранённый pointer
+     * не влиял на следующий запуск.
+     */
+    game.pointer.active = false;
+    game.keys.left = false;
+    game.keys.right = false;
+
+    setScreen(STATE.OVER);
+    setScore(finalScore);
+
+    const localRecord =
+      finalScore > bestRef.current &&
+      finalScore > 0;
+
+    setIsNewRecord(localRecord);
+
+    if (localRecord) {
+      saveBest(finalScore);
+    }
+
+    haptic('error');
+
+    if (!pairId || finalScore <= 0) return;
+
+    fetch('/api/game-score', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        userId,
+        pairCode: pairId,
+        score: finalScore,
+      }),
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (typeof data.best === 'number') {
+          saveBest(Math.max(bestRef.current, data.best));
+        }
+
+        if (typeof data.isRecord === 'boolean') {
+          setIsNewRecord(data.isRecord);
+
+          if (data.isRecord) {
+            haptic('success');
+          }
+        }
+      })
+      .catch(() => {});
+  }, [
+    authHeaders,
+    haptic,
+    pairId,
+    saveBest,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (!petName) {
+      petImageRef.current = null;
+      return undefined;
+    }
+
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = `/pets/${petName}_frame.png`;
+
+    petImageRef.current = image;
+
+    return () => {
+      petImageRef.current = null;
+    };
+  }, [petName]);
+
+  useEffect(() => {
+    if (!pairId) return undefined;
+
+    let cancelled = false;
+
+    fetch(`/api/game-score/${pairId}`, {
+      headers: authHeaders(),
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (
+          !cancelled &&
+          typeof data.best === 'number'
+        ) {
+          saveBest(
+            Math.max(bestRef.current, data.best),
+          );
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, pairId, saveBest]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return undefined;
 
-    const setupCanvas = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2); // 2 — потолок, чтобы не убить FPS
-      const cssW = window.innerWidth;
-      const cssH = window.innerHeight;
-      canvas.style.width = cssW + 'px';
-      canvas.style.height = cssH + 'px';
-      canvas.width = Math.round(cssW * dpr);
-      canvas.height = Math.round(cssH * dpr);
-      const ctx = canvas.getContext('2d');
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // дальше рисуем в CSS-координатах
-    };
-    setupCanvas();
+    const ctx = canvas.getContext('2d', {
+      alpha: false,
+    });
 
-    if (petImgSrc) {
-      const img = new Image();
-      img.src = petImgSrc;
-      petImg.current = img;
-    }
+    if (!ctx) return undefined;
 
-    // Управление пальцем: водим персонажа к месту касания, держа палец на экране
-    const followTouch = (clientX) => {
-      const g = game.current;
-      if (!g || !g.player) return;
-      const targetX = clientX - g.player.w / 2;     // центр персонажа под пальцем
-      const dx = targetX - g.player.x;
-      // Скорость пропорциональна расстоянию до пальца, с ограничением
-      g.player.vx = Math.max(-9, Math.min(9, dx * 0.35));
-    };
-    const onTouchStart = (e) => {
-      followTouch(e.touches[0].clientX);
-    };
-    const onTouchMove = (e) => {
-      e.preventDefault(); // не даём странице скроллиться/тянуться
-      followTouch(e.touches[0].clientX);
-    };
-    const onTouchEnd = () => {
-      const g = game.current;
-      if (g && g.player) g.player.vx = 0;
+    let frameId = 0;
+    let destroyed = false;
+    let dpr = 1;
+
+    let canvasPixelWidth = 0;
+    let canvasPixelHeight = 0;
+    let resizeFrame = 0;
+
+    const drawCurrentFrame = () => {
+      const game = gameRef.current;
+
+      if (!game) return;
+
+      ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0,
+      );
+
+      drawGame(
+        ctx,
+        game,
+        petImageRef.current,
+        dark,
+      );
     };
 
-    // Клавиатура (для теста в браузере)
-    const onKeyDown = (e) => {
-      const g = game.current;
-      if (!g || !g.player) return;
-      if (e.key === 'ArrowLeft') g.player.vx = -7;
-      if (e.key === 'ArrowRight') g.player.vx = 7;
-    };
-    const onKeyUp = () => {
-      const g = game.current;
-      if (g && g.player) g.player.vx = 0;
+    const resize = () => {
+      const width = Math.max(
+        280,
+        Math.round(window.innerWidth),
+      );
+
+      const height = Math.max(
+        480,
+        Math.round(window.innerHeight),
+      );
+
+      const nextDpr = clamp(
+        window.devicePixelRatio || 1,
+        1,
+        2,
+      );
+
+      const nextPixelWidth =
+        Math.round(width * nextDpr);
+
+      const nextPixelHeight =
+        Math.round(height * nextDpr);
+
+      /*
+       * Telegram WebView может отправлять повторные resize-события
+       * без фактического изменения размеров.
+       *
+       * Повторно назначать canvas.width/canvas.height нельзя:
+       * это полностью очищает canvas и создаёт видимое мерцание.
+       */
+      if (
+        nextPixelWidth === canvasPixelWidth &&
+        nextPixelHeight === canvasPixelHeight
+      ) {
+        return;
+      }
+
+      dpr = nextDpr;
+      canvasPixelWidth = nextPixelWidth;
+      canvasPixelHeight = nextPixelHeight;
+
+      canvas.width = canvasPixelWidth;
+      canvas.height = canvasPixelHeight;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+
+      const game = gameRef.current;
+
+      if (!game) {
+        gameRef.current = makeGame(width, height);
+        drawCurrentFrame();
+        return;
+      }
+
+      const oldWidth = game.width;
+      const oldHeight = game.height;
+
+      const scaleX =
+        oldWidth > 0 ? width / oldWidth : 1;
+
+      const offsetY =
+        height - oldHeight;
+
+      game.width = width;
+      game.height = height;
+
+      game.player.x *= scaleX;
+      game.player.y += offsetY;
+      game.player.previousY += offsetY;
+
+      game.pointer.x *= scaleX;
+
+      for (const platform of game.platforms) {
+        platform.x *= scaleX;
+        platform.baseX *= scaleX;
+        platform.y += offsetY;
+
+        platform.width = clamp(
+          platform.width * scaleX,
+          64,
+          126,
+        );
+      }
+
+      for (const rocket of game.rockets) {
+        rocket.x *= scaleX;
+        rocket.y += offsetY;
+      }
+
+      for (const particle of game.particles) {
+        particle.x *= scaleX;
+        particle.y += offsetY;
+      }
+
+      game.player.x = clamp(
+        game.player.x,
+        -game.player.radius,
+        width + game.player.radius,
+      );
+
+      ensurePlatforms(game);
+
+      /*
+       * Canvas очищается при изменении размеров.
+       * Поэтому сразу рисуем новый кадр, не ожидая следующего RAF.
+       */
+      drawCurrentFrame();
     };
 
-    canvas.addEventListener('touchstart', onTouchStart, { passive: true });
-    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-    canvas.addEventListener('touchend', onTouchEnd);
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
+    const requestResize = () => {
+      cancelAnimationFrame(resizeFrame);
 
-    const onVisibility = () => {
-      const g = game.current;
-      if (!g) return;
-      if (document.hidden) {
-        g.running = false;
-        if (g.raf) cancelAnimationFrame(g.raf);
-      } else if (!gameOver) {
-        // Возобновляем, сбросив lastTime, чтобы dt не скакнул
-        g.lastTime = 0;
-        g.running = true;
-        g.raf = requestAnimationFrame(loop);
+      resizeFrame = requestAnimationFrame(() => {
+        resize();
+      });
+    };
+
+    const keyDown = event => {
+      const game = gameRef.current;
+      if (!game) return;
+
+      if (
+        event.key === 'ArrowLeft' ||
+        event.key.toLowerCase() === 'a'
+      ) {
+        game.keys.left = true;
+        event.preventDefault();
+      }
+
+      if (
+        event.key === 'ArrowRight' ||
+        event.key.toLowerCase() === 'd'
+      ) {
+        game.keys.right = true;
+        event.preventDefault();
       }
     };
-    document.addEventListener('visibilitychange', onVisibility);
 
-    const onResize = () => {
-      setupCanvas(); // пересчёт размеров + DPR + setTransform
-      const g = game.current;
-      if (g) { g.W = window.innerWidth; g.H = window.innerHeight; }
+    const keyUp = event => {
+      const game = gameRef.current;
+      if (!game) return;
+
+      if (
+        event.key === 'ArrowLeft' ||
+        event.key.toLowerCase() === 'a'
+      ) {
+        game.keys.left = false;
+      }
+
+      if (
+        event.key === 'ArrowRight' ||
+        event.key.toLowerCase() === 'd'
+      ) {
+        game.keys.right = false;
+      }
     };
-    window.addEventListener('resize', onResize);
 
-    startGame();
+    const visibilityChange = () => {
+      const game = gameRef.current;
+
+      if (
+        document.visibilityState === 'hidden' &&
+        game?.state === STATE.RUNNING
+      ) {
+        game.state = STATE.PAUSED;
+        game.accumulator = 0;
+        setScreen(STATE.PAUSED);
+      }
+    };
+
+    const update = (game, dt) => {
+      const player = game.player;
+
+      game.time += dt;
+
+      game.shake = Math.max(
+        0,
+        game.shake - dt * 20,
+      );
+
+      game.flash = Math.max(
+        0,
+        game.flash - dt * 3.5,
+      );
+
+      player.previousY = player.y;
+
+      player.squash = Math.max(
+        0,
+        player.squash - dt * 4.8,
+      );
+
+      /*
+       * Продолжительный полёт на ракете.
+       */
+      if (player.boost > 0) {
+        player.boost = Math.max(
+          0,
+          player.boost - dt,
+        );
+
+        const rocketAcceleration = 9;
+
+        const smoothing = Math.min(
+          1,
+          rocketAcceleration * dt,
+        );
+
+        player.vy +=
+          (PHYSICS.rocketSpeed - player.vy) *
+          smoothing;
+
+        /*
+         * Огненный след ракеты.
+         */
+        if (Math.random() < 0.5) {
+          addParticles(
+            game,
+            player.x + random(-7, 7),
+            player.y + player.radius * 0.65,
+            Math.random() < 0.5
+              ? '#FFB13B'
+              : '#FFF073',
+            1,
+            {
+              minVx: -35,
+              maxVx: 35,
+              minVy: 80,
+              maxVy: 180,
+              gravity: 180,
+            },
+          );
+        }
+      }
+
+      /*
+       * Горизонтальное управление.
+       */
+      let desiredVelocity = 0;
+
+      if (
+        game.keys.left &&
+        !game.keys.right
+      ) {
+        desiredVelocity =
+          -PHYSICS.maxSpeed;
+      } else if (
+        game.keys.right &&
+        !game.keys.left
+      ) {
+        desiredVelocity =
+          PHYSICS.maxSpeed;
+      } else if (game.pointer.active) {
+        const distance = wrappedDistance(
+          player.x,
+          game.pointer.x,
+          game.width,
+        );
+
+        desiredVelocity = clamp(
+          distance * 5.5,
+          -PHYSICS.maxSpeed,
+          PHYSICS.maxSpeed,
+        );
+      }
+
+      if (
+        game.pointer.active ||
+        game.keys.left ||
+        game.keys.right
+      ) {
+        const difference =
+          desiredVelocity - player.vx;
+
+        const maximumChange =
+          PHYSICS.acceleration * dt;
+
+        player.vx += clamp(
+          difference,
+          -maximumChange,
+          maximumChange,
+        );
+      } else {
+        player.vx *= Math.pow(
+          PHYSICS.friction,
+          dt * 60,
+        );
+
+        if (Math.abs(player.vx) < 2) {
+          player.vx = 0;
+        }
+      }
+
+      /*
+       * Во время ракеты обычная гравитация отключена.
+       */
+      if (player.boost <= 0) {
+        player.vy +=
+          PHYSICS.gravity * dt;
+      }
+
+      player.x += player.vx * dt;
+      player.y += player.vy * dt;
+
+      /*
+       * Горизонтальное зацикливание экрана.
+       */
+      if (player.x < -player.radius) {
+        player.x =
+          game.width + player.radius;
+      }
+
+      if (
+        player.x >
+        game.width + player.radius
+      ) {
+        player.x = -player.radius;
+      }
+
+      /*
+       * Обновление платформ.
+       */
+      for (const platform of game.platforms) {
+        if (
+          platform.type === TYPE.MOVING &&
+          !platform.broken
+        ) {
+          platform.x =
+            platform.baseX +
+            Math.sin(
+              game.time * platform.moveSpeed +
+              platform.phase,
+            ) *
+              platform.moveRange;
+
+          platform.x = clamp(
+            platform.x,
+            8,
+            game.width - platform.width - 8,
+          );
+        }
+
+        if (platform.broken) {
+          platform.breakVelocity +=
+            1300 * dt;
+
+          platform.y +=
+            platform.breakVelocity * dt;
+        }
+      }
+
+      /*
+       * Столкновения с платформами.
+       *
+       * Проверяем пересечение между предыдущей
+       * и текущей позицией игрока.
+       */
+      if (player.vy >= 0) {
+        const previousBottom =
+          player.previousY +
+          player.radius * 0.72;
+
+        const currentBottom =
+          player.y +
+          player.radius * 0.72;
+
+        let landedPlatform = null;
+        let landedTop = Infinity;
+
+        for (const platform of game.platforms) {
+          if (platform.broken) {
+            continue;
+          }
+
+          /*
+           * У шипов опасная поверхность находится
+           * на 15 пикселей выше основания платформы.
+           */
+          const platformTop =
+            platform.type === TYPE.SPIKE
+              ? platform.y - 15
+              : platform.y;
+
+          const crossedPlatform =
+            previousBottom <= platformTop + 2 &&
+            currentBottom >= platformTop;
+
+          if (!crossedPlatform) {
+            continue;
+          }
+
+          const platformCenter =
+            platform.x +
+            platform.width / 2;
+
+          const horizontalDistance =
+            Math.abs(
+              wrappedDistance(
+                player.x,
+                platformCenter,
+                game.width,
+              ),
+            );
+
+          const allowedDistance =
+            platform.width / 2 +
+            player.radius * 0.62;
+
+          if (
+            horizontalDistance <= allowedDistance &&
+            platformTop < landedTop
+          ) {
+            landedPlatform = platform;
+            landedTop = platformTop;
+          }
+        }
+
+        if (landedPlatform) {
+          /*
+           * Попадание на шипы.
+           */
+          if (
+            landedPlatform.type === TYPE.SPIKE
+          ) {
+            addParticles(
+              game,
+              player.x,
+              player.y,
+              '#E5485F',
+              18,
+              {
+                minVx: -170,
+                maxVx: 170,
+                minVy: -220,
+                maxVy: -50,
+                gravity: 550,
+              },
+            );
+
+            finishGame(game.score);
+            return;
+          }
+
+          /*
+           * Обычное приземление.
+           */
+          player.y =
+            landedPlatform.y -
+            player.radius * 0.72 -
+            0.5;
+
+          player.vy =
+            landedPlatform.type === TYPE.SPRING
+              ? PHYSICS.spring
+              : PHYSICS.jump;
+
+          player.squash =
+            landedPlatform.type === TYPE.SPRING
+              ? 1
+              : 0.72;
+
+          if (
+            player.lastPlatformId !==
+            landedPlatform.id
+          ) {
+            player.lastPlatformId =
+              landedPlatform.id;
+
+            addParticles(
+              game,
+              player.x,
+              landedPlatform.y,
+              landedPlatform.type === TYPE.SPRING
+                ? '#72E6A5'
+                : '#FFFFFF',
+              landedPlatform.type === TYPE.SPRING
+                ? 14
+                : 7,
+            );
+
+            haptic(
+              landedPlatform.type === TYPE.SPRING
+                ? 'medium'
+                : 'light',
+            );
+          }
+
+          /*
+           * Ломкая платформа падает после приземления.
+           */
+          if (
+            landedPlatform.type === TYPE.FRAGILE
+          ) {
+            landedPlatform.broken = true;
+            landedPlatform.breakVelocity = 90;
+
+            addParticles(
+              game,
+              landedPlatform.x +
+                landedPlatform.width / 2,
+              landedPlatform.y,
+              '#F1A64B',
+              13,
+              {
+                minVx: -150,
+                maxVx: 150,
+                minVy: -140,
+                maxVy: -30,
+                gravity: 600,
+              },
+            );
+          }
+        }
+      }
+
+      /*
+       * Столкновения с ракетами.
+       */
+      for (const rocket of game.rockets) {
+        if (rocket.collected) {
+          continue;
+        }
+
+        const dx = wrappedDistance(
+          player.x,
+          rocket.x,
+          game.width,
+        );
+
+        const dy =
+          player.y - rocket.y;
+
+        const collisionRadius = 43;
+
+        if (
+          dx * dx + dy * dy <
+          collisionRadius * collisionRadius
+        ) {
+          rocket.collected = true;
+
+          game.lastCollectedRocketDistance =
+            game.distance;
+
+          player.vy =
+            PHYSICS.rocketSpeed;
+
+          player.boost =
+            PHYSICS.rocketDuration;
+
+          player.squash = 0.15;
+
+          /*
+           * Очень лёгкая подсветка при взятии ракеты.
+           */
+          game.flash = Math.max(
+            game.flash,
+            0.06,
+          );
+
+          addParticles(
+            game,
+            rocket.x,
+            rocket.y,
+            '#FFAA3D',
+            18,
+            {
+              minVx: -180,
+              maxVx: 180,
+              minVy: -180,
+              maxVy: 100,
+              gravity: 300,
+            },
+          );
+
+          haptic('success');
+        }
+      }
+
+      /*
+       * Камера начинает двигаться, когда питомец
+       * поднимается выше 38% экрана.
+       */
+      const cameraLine =
+        game.height * 0.38;
+
+      if (player.y < cameraLine) {
+        const shift =
+          cameraLine - player.y;
+
+        player.y = cameraLine;
+        player.previousY += shift;
+
+        game.distance += shift;
+
+        for (const platform of game.platforms) {
+          platform.y += shift;
+        }
+
+        for (const rocket of game.rockets) {
+          rocket.y += shift;
+        }
+
+        for (const particle of game.particles) {
+          particle.y += shift;
+        }
+
+        const nextScore =
+          Math.floor(game.distance / 10);
+
+        if (nextScore !== game.score) {
+          game.score = nextScore;
+
+          if (
+            renderedScoreRef.current !==
+            nextScore
+          ) {
+            renderedScoreRef.current =
+              nextScore;
+
+            setScore(nextScore);
+          }
+
+          /*
+           * Лёгкая вибрация каждые 25 очков.
+           * Полноэкранной вспышки здесь нет.
+           */
+          if (
+            nextScore > 0 &&
+            nextScore % 25 === 0
+          ) {
+            haptic('light');
+          }
+        }
+      }
+
+      /*
+       * Удаляем объекты, которые ушли далеко вниз.
+       */
+      game.platforms =
+        game.platforms.filter(
+          platform =>
+            platform.y <
+            game.height + 170,
+        );
+
+      game.rockets =
+        game.rockets.filter(
+          rocket =>
+            !rocket.collected &&
+            rocket.y <
+              game.height + 120,
+        );
+
+      updateParticles(
+        game,
+        dt,
+      );
+
+      /*
+       * Генерируем новые платформы сверху.
+       */
+      ensurePlatforms(game);
+
+      /*
+       * Игрок упал ниже экрана.
+       */
+      if (
+        player.y - player.radius >
+        game.height + 90
+      ) {
+        finishGame(game.score);
+      }
+    };
+
+    const loop = timestamp => {
+      if (destroyed) {
+        return;
+      }
+
+      const game = gameRef.current;
+
+      if (!game) {
+        frameId =
+          requestAnimationFrame(loop);
+        return;
+      }
+
+      if (!game.previousTime) {
+        game.previousTime = timestamp;
+      }
+
+      const frameTime = Math.min(
+        (timestamp - game.previousTime) / 1000,
+        0.1,
+      );
+
+      game.previousTime = timestamp;
+
+      /*
+       * Игровая физика работает фиксированными шагами.
+       */
+      if (game.state === STATE.RUNNING) {
+        game.accumulator += frameTime;
+
+        let safety = 0;
+
+        while (
+          game.accumulator >= PHYSICS.step &&
+          safety < 8
+        ) {
+          update(
+            game,
+            PHYSICS.step,
+          );
+
+          game.accumulator -=
+            PHYSICS.step;
+
+          safety += 1;
+
+          /*
+           * Если update завершил игру,
+           * прекращаем физику в этом кадре.
+           */
+          if (
+            game.state !== STATE.RUNNING
+          ) {
+            game.accumulator = 0;
+            break;
+          }
+        }
+      } else {
+        game.accumulator = 0;
+        game.time += frameTime;
+
+        /*
+         * Эффекты затухают даже после смерти.
+         */
+        game.shake = Math.max(
+          0,
+          game.shake - frameTime * 20,
+        );
+
+        game.flash = Math.max(
+          0,
+          game.flash - frameTime * 4,
+        );
+
+        updateParticles(
+          game,
+          frameTime,
+        );
+      }
+
+      ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0,
+      );
+
+      drawGame(
+        ctx,
+        game,
+        petImageRef.current,
+        dark,
+      );
+
+      frameId =
+        requestAnimationFrame(loop);
+    };
+
+    resize();
+
+    window.addEventListener(
+      'resize',
+      requestResize,
+    );
+
+    window.addEventListener(
+      'orientationchange',
+      requestResize,
+    );
+
+    window.addEventListener(
+      'keydown',
+      keyDown,
+      {
+        passive: false,
+      },
+    );
+
+    window.addEventListener(
+      'keyup',
+      keyUp,
+    );
+
+    document.addEventListener(
+      'visibilitychange',
+      visibilityChange,
+    );
+
+    frameId =
+      requestAnimationFrame(loop);
 
     return () => {
-      canvas.removeEventListener('touchstart', onTouchStart);
-      canvas.removeEventListener('touchmove', onTouchMove);
-      canvas.removeEventListener('touchend', onTouchEnd);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('resize', onResize);
-      document.removeEventListener('visibilitychange', onVisibility);
-      if (game.current) game.current.running = false;
-      if (game.current?.raf) cancelAnimationFrame(game.current.raf);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      destroyed = true;
 
-  const goBack = () => {
-    if (game.current) game.current.running = false;
-    navigate(pairId ? `/pair/${pairId}` : '/');
+      cancelAnimationFrame(frameId);
+      cancelAnimationFrame(resizeFrame);
+
+      window.removeEventListener(
+        'resize',
+        requestResize,
+      );
+
+      window.removeEventListener(
+        'orientationchange',
+        requestResize,
+      );
+
+      window.removeEventListener(
+        'keydown',
+        keyDown,
+      );
+
+      window.removeEventListener(
+        'keyup',
+        keyUp,
+      );
+
+      document.removeEventListener(
+        'visibilitychange',
+        visibilityChange,
+      );
+    };
+  }, [dark, finishGame, haptic]);
+
+  useEffect(() => {
+    if (screen !== STATE.COUNTDOWN) {
+      return undefined;
+    }
+
+    if (countdown > 1) {
+      const timer = setTimeout(() => {
+        setCountdown(value => value - 1);
+        haptic('light');
+      }, 650);
+
+      return () => clearTimeout(timer);
+    }
+
+    const timer = setTimeout(() => {
+      const game = gameRef.current;
+
+      if (game) {
+        game.state = STATE.RUNNING;
+        game.accumulator = 0;
+        game.previousTime = performance.now();
+      }
+
+      setScreen(STATE.RUNNING);
+      haptic('medium');
+    }, 650);
+
+    return () => clearTimeout(timer);
+  }, [countdown, haptic, screen]);
+
+  useEffect(() => {
+    const backButton =
+      window.Telegram?.WebApp?.BackButton;
+
+    if (!backButton) return undefined;
+
+    const goBack = () => {
+      navigate(`/pair/${pairId}`);
+    };
+
+    try {
+      backButton.show();
+      backButton.onClick(goBack);
+    } catch {
+      // Старые версии Telegram.
+    }
+
+    return () => {
+      try {
+        backButton.offClick(goBack);
+        backButton.hide();
+      } catch {
+        // Старые версии Telegram.
+      }
+    };
+  }, [navigate, pairId]);
+
+  const startGame = useCallback(() => {
+    const width = Math.max(
+      280,
+      window.innerWidth,
+    );
+
+    const height = Math.max(
+      480,
+      window.innerHeight,
+    );
+
+    const game = makeGame(width, height);
+    game.state = STATE.COUNTDOWN;
+
+    gameRef.current = game;
+    renderedScoreRef.current = 0;
+
+    setScore(0);
+    setIsNewRecord(false);
+    setCountdown(3);
+    setScreen(STATE.COUNTDOWN);
+
+    haptic('light');
+  }, [haptic]);
+
+  const pauseGame = () => {
+    const game = gameRef.current;
+
+    if (!game || game.state !== STATE.RUNNING) {
+      return;
+    }
+
+    game.state = STATE.PAUSED;
+    game.accumulator = 0;
+
+    setScreen(STATE.PAUSED);
+    haptic('light');
+  };
+
+  const resumeGame = () => {
+    const game = gameRef.current;
+
+    if (!game || game.state !== STATE.PAUSED) {
+      return;
+    }
+
+    game.state = STATE.RUNNING;
+    game.accumulator = 0;
+    game.previousTime = performance.now();
+
+    setScreen(STATE.RUNNING);
+    haptic('light');
+  };
+
+  const updatePointer = event => {
+    const game = gameRef.current;
+    const canvas = canvasRef.current;
+
+    if (
+      !game ||
+      !canvas ||
+      game.state !== STATE.RUNNING
+    ) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+
+    game.pointer.x = clamp(
+      ((event.clientX - rect.left) / rect.width) *
+        game.width,
+      0,
+      game.width,
+    );
+  };
+
+  const pointerDown = event => {
+    const game = gameRef.current;
+
+    if (!game || game.state !== STATE.RUNNING) {
+      return;
+    }
+
+    event.preventDefault();
+
+    game.pointer.active = true;
+    updatePointer(event);
+
+    try {
+      canvasRef.current?.setPointerCapture(
+        event.pointerId,
+      );
+    } catch {
+      // Старый WebView.
+    }
+  };
+
+  const pointerMove = event => {
+    const game = gameRef.current;
+
+    if (!game?.pointer.active) return;
+
+    event.preventDefault();
+    updatePointer(event);
+  };
+
+  const pointerUp = event => {
+    const game = gameRef.current;
+
+    if (!game) return;
+
+    game.pointer.active = false;
+
+    try {
+      canvasRef.current?.releasePointerCapture(
+        event.pointerId,
+      );
+    } catch {
+      // Pointer уже освобождён.
+    }
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden' }}>
-      <canvas ref={canvasRef} style={{ display: 'block', touchAction: 'none' }} />
+    <div className={`jump-game ${dark ? 'jump-game-dark' : ''}`}>
+      <canvas
+        ref={canvasRef}
+        className="jump-game-canvas"
+        onPointerDown={pointerDown}
+        onPointerMove={pointerMove}
+        onPointerUp={pointerUp}
+        onPointerCancel={pointerUp}
+      />
 
-      <div style={{
-        position: 'absolute', top: 'calc(var(--chumi-top-pad, 16px) + 6px)',
-        left: 0, right: 0, textAlign: 'center',
-        fontSize: 42, fontWeight: 800, color: '#3a2a55',
-        fontFamily: '-apple-system, system-ui, sans-serif', pointerEvents: 'none',
-        textShadow: '0 2px 8px rgba(255,255,255,0.6)',
-      }}>
-        {score}
-      </div>
+      <header className="jump-game-hud">
+        <button
+          className="jump-game-circle-button"
+          onClick={() => navigate(`/pair/${pairId}`)}
+          aria-label={t.back}
+        >
+          ←
+        </button>
 
-      <button onClick={goBack} style={{
-        position: 'absolute', top: 'calc(var(--chumi-top-pad, 16px))', left: 12,
-        width: 42, height: 42, borderRadius: 14, border: 'none',
-        background: 'rgba(255,255,255,0.75)', color: '#3a2a55',
-        fontSize: 22, cursor: 'pointer', backdropFilter: 'blur(8px)',
-      }}>‹</button>
+        <div className="jump-game-score-card">
+          <span>{t.score}</span>
+          <strong>{score}</strong>
+        </div>
 
-      {gameOver && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(40,25,60,0.45)', backdropFilter: 'blur(4px)',
-          fontFamily: '-apple-system, system-ui, sans-serif',
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 24, padding: '28px 32px',
-            textAlign: 'center', minWidth: 250,
-            boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
-          }}>
-            <div style={{ fontSize: 52, marginBottom: 8 }}>{isNewRecord ? '🏆' : '🐾'}</div>
-            <h2 style={{ margin: '0 0 12px', color: '#3a2a55' }}>Игра окончена</h2>
+        <div className="jump-game-best-card">
+          <span>🏆</span>
+          <strong>{bestScore}</strong>
+        </div>
+
+        {screen === STATE.RUNNING ? (
+          <button
+            className="jump-game-circle-button"
+            onClick={pauseGame}
+            aria-label={t.paused}
+          >
+            Ⅱ
+          </button>
+        ) : (
+          <div className="jump-game-button-placeholder" />
+        )}
+      </header>
+
+      {screen === STATE.INTRO && (
+        <div className="jump-game-overlay">
+          <div className="jump-game-panel">
+            <div className="jump-game-logo">🐾</div>
+
+            <h1>{t.title}</h1>
+            <p className="jump-game-subtitle">
+              {t.subtitle}
+            </p>
+
+            <div className="jump-game-instructions">
+              <div>
+                <span>👆</span>
+                <p>{t.control}</p>
+              </div>
+
+              <div>
+                <span>🟠</span>
+                <p>{t.fragile}</p>
+              </div>
+
+              <div>
+                <span>⚠️</span>
+                <p>{t.spike}</p>
+              </div>
+
+              <div>
+                <span>🚀</span>
+                <p>{t.rocket}</p>
+              </div>
+            </div>
+
+            <button
+              className="jump-game-primary-button"
+              onClick={startGame}
+            >
+              {t.play}
+            </button>
+
+            <button
+              className="jump-game-secondary-button"
+              onClick={() => navigate(`/pair/${pairId}`)}
+            >
+              {t.back}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {screen === STATE.COUNTDOWN && (
+        <div
+          className="jump-game-countdown"
+          key={countdown}
+        >
+          {countdown}
+        </div>
+      )}
+
+      {screen === STATE.PAUSED && (
+        <div className="jump-game-overlay">
+          <div className="jump-game-panel jump-game-small-panel">
+            <div className="jump-game-pause-icon">Ⅱ</div>
+            <h2>{t.paused}</h2>
+
+            <button
+              className="jump-game-primary-button"
+              onClick={resumeGame}
+            >
+              {t.resume}
+            </button>
+
+            <button
+              className="jump-game-secondary-button"
+              onClick={() => navigate(`/pair/${pairId}`)}
+            >
+              {t.back}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {screen === STATE.OVER && (
+        <div className="jump-game-overlay">
+          <div className="jump-game-panel jump-game-result-panel">
             {isNewRecord && (
-              <div style={{
-                display: 'inline-block',
-                margin: '0 auto 12px',
-                padding: '6px 16px',
-                borderRadius: 999,
-                background: `linear-gradient(135deg, ${ACCENT}, #ec4899)`,
-                color: '#fff',
-                fontSize: 14,
-                fontWeight: 700,
-                letterSpacing: 0.3,
-                boxShadow: '0 4px 14px rgba(155,114,207,0.4)',
-                animation: 'recordPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)',
-              }}>
-                ✨ Новый рекорд!
+              <div className="jump-game-record-badge">
+                🏆 {t.record}
               </div>
             )}
-            <p style={{ color: '#777', margin: '4px 0', fontSize: 15 }}>Очки: <b style={{ color: ACCENT }}>{score}</b></p>
-            <p style={{ color: '#777', margin: '4px 0 18px', fontSize: 15 }}>Рекорд: <b style={{ color: ACCENT }}>{bestScore}</b></p>
-            <button onClick={startGame} style={{
-              padding: '14px 28px', borderRadius: 16, border: 'none',
-              background: ACCENT, color: '#fff', fontSize: 16,
-              fontWeight: 600, cursor: 'pointer', marginBottom: 10, width: '100%',
-            }}>Играть снова</button>
-            <button onClick={goBack} style={{
-              padding: '14px 28px', borderRadius: 16, border: 'none',
-              background: '#f0ecf5', color: '#3a2a55', fontSize: 16,
-              cursor: 'pointer', width: '100%',
-            }}>К питомцу</button>
+
+            <div className="jump-game-over-emoji">
+              {isNewRecord ? '🎉' : '😿'}
+            </div>
+
+            <h2>{t.gameOver}</h2>
+
+            <div className="jump-game-result-score">
+              <span>{t.score}</span>
+              <strong>{score}</strong>
+            </div>
+
+            <div className="jump-game-result-best">
+              <span>{t.best}</span>
+              <strong>🏆 {bestScore}</strong>
+            </div>
+
+            <button
+              className="jump-game-primary-button"
+              onClick={startGame}
+            >
+              ↻ {t.again}
+            </button>
+
+            <button
+              className="jump-game-secondary-button"
+              onClick={() => navigate(`/pair/${pairId}`)}
+            >
+              {t.back}
+            </button>
           </div>
         </div>
       )}
     </div>
   );
-}
-
-// ── Хелперы рисования (вне компонента — чистые функции) ──
-
-function drawPlatformBody(ctx, x, y, w, h, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 9);
-  ctx.fill();
-}
-
-// Красивая ракета. flip=true — направлена влево
-function drawRocket(ctx, x, y, w, h, flip) {
-  ctx.save();
-  ctx.translate(x + w / 2, y + h / 2);
-  if (flip) ctx.scale(-1, 1);
-  // Ракета смотрит вправо (нос справа)
-  const bodyL = -w * 0.42, bodyR = w * 0.30;
-  const r = h * 0.26;
-
-  // Пламя сзади (мерцает)
-  const flame = (0.7 + Math.random() * 0.3);
-  const fgrad = ctx.createLinearGradient(bodyL, 0, bodyL - w * 0.45 * flame, 0);
-  fgrad.addColorStop(0, '#FFD24A');
-  fgrad.addColorStop(0.5, '#FF8A3D');
-  fgrad.addColorStop(1, 'rgba(255,80,40,0)');
-  ctx.fillStyle = fgrad;
-  ctx.beginPath();
-  ctx.moveTo(bodyL, -r * 0.6);
-  ctx.lineTo(bodyL - w * 0.5 * flame, 0);
-  ctx.lineTo(bodyL, r * 0.6);
-  ctx.closePath();
-  ctx.fill();
-
-  // Плавники
-  ctx.fillStyle = '#7C5CCB';
-  ctx.beginPath();
-  ctx.moveTo(bodyL + 4, -r);
-  ctx.lineTo(bodyL - 8, -r - 8);
-  ctx.lineTo(bodyL + 6, -r * 0.3);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(bodyL + 4, r);
-  ctx.lineTo(bodyL - 8, r + 8);
-  ctx.lineTo(bodyL + 6, r * 0.3);
-  ctx.closePath();
-  ctx.fill();
-
-  // Корпус
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.moveTo(bodyR, 0);                       // нос
-  ctx.quadraticCurveTo(bodyR, -r, bodyL + r * 0.4, -r);
-  ctx.lineTo(bodyL, -r * 0.7);
-  ctx.lineTo(bodyL, r * 0.7);
-  ctx.lineTo(bodyL + r * 0.4, r);
-  ctx.quadraticCurveTo(bodyR, r, bodyR, 0);
-  ctx.closePath();
-  ctx.fill();
-
-  // Нос-конус (акцентный)
-  ctx.fillStyle = ACCENT;
-  ctx.beginPath();
-  ctx.moveTo(bodyR, 0);
-  ctx.quadraticCurveTo(w * 0.12, -r * 0.55, -w * 0.02, -r * 0.7);
-  ctx.lineTo(-w * 0.02, r * 0.7);
-  ctx.quadraticCurveTo(w * 0.12, r * 0.55, bodyR, 0);
-  ctx.closePath();
-  ctx.fill();
-
-  // Иллюминатор
-  ctx.fillStyle = '#9AD0F0';
-  ctx.beginPath();
-  ctx.arc(-w * 0.12, 0, r * 0.4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.restore();
 }
