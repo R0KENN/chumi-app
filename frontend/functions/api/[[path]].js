@@ -786,7 +786,12 @@ export async function onRequest(context) {
       let previousScore = null;
       let previousRank = 0;
 
-      const leaders = (rows || []).map(
+      /*
+       * Сначала рассчитываем места синхронно.
+       * Пользователи с одинаковым количеством очков
+       * получают одинаковое место.
+       */
+      const rankedLeaders = (rows || []).map(
         (row, index) => {
           const rowScore =
             Number(row.best_score) || 0;
@@ -814,6 +819,42 @@ export async function onRequest(context) {
               String(userId),
           };
         },
+      );
+
+      /*
+       * <img> не может отправить X-Telegram-Init-Data,
+       * поэтому создаём для каждой аватарки временную
+       * подписанную ссылку.
+       *
+       * Ссылка доступна любому пользователю,
+       * получившему результат рейтинга, и действует 10 минут.
+       * Само изображение отдельно кешируется браузером/CDN.
+       */
+      const avatarExpiresAt =
+        Date.now() + 10 * 60 * 1000;
+
+      const leaders = await Promise.all(
+        rankedLeaders.map(async leader => {
+          const avatarSignature =
+            await makeAvatarToken(
+              env.BOT_TOKEN,
+              leader.userId,
+              avatarExpiresAt,
+            );
+
+          const avatarUrl =
+            `/api/avatar/${encodeURIComponent(
+              leader.userId,
+            )}` +
+            `?proxy=1` +
+            `&exp=${avatarExpiresAt}` +
+            `&sig=${avatarSignature}`;
+
+          return {
+            ...leader,
+            avatarUrl,
+          };
+        }),
       );
 
       const {

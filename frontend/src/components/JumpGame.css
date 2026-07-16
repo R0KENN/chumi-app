@@ -1473,3 +1473,133 @@
   cursor: default;
   pointer-events: none;
 }
+
+/* ══════════════════════════════════════
+   CHUMI JUMP — LEADERBOARD AVATARS
+   ══════════════════════════════════════ */
+
+.jump-game-leaderboard-user {
+  display: flex;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.jump-game-leaderboard-avatar {
+  position: relative;
+
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+
+  overflow: hidden;
+  border: 1px solid rgba(155, 114, 207, 0.2);
+  border-radius: 50%;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(194, 164, 229, 0.95),
+      rgba(128, 91, 177, 0.95)
+    );
+
+  box-shadow:
+    0 4px 12px rgba(74, 45, 110, 0.14);
+}
+
+.jump-game-leaderboard-avatar > span {
+  position: absolute;
+  inset: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #ffffff;
+
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.jump-game-leaderboard-avatar > img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+  object-position: center;
+
+  border-radius: inherit;
+}
+
+.jump-game-leaderboard-avatar > img[hidden] {
+  display: none;
+}
+
+.jump-game-leaderboard-user-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.jump-game-leaderboard-user-text strong {
+  width: 100%;
+  overflow: hidden;
+
+  color: inherit;
+
+  font-size: 14px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jump-game-leaderboard-user-text span {
+  width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+
+  color: rgba(45, 35, 60, 0.55);
+
+  font-size: 11px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jump-game-dark .jump-game-leaderboard-avatar {
+  border-color: rgba(215, 192, 243, 0.22);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(164, 125, 211, 0.95),
+      rgba(91, 61, 133, 0.95)
+    );
+}
+
+.jump-game-dark .jump-game-leaderboard-user-text span {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+@media (max-width: 380px) {
+  .jump-game-leaderboard-avatar {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .jump-game-leaderboard-user {
+    gap: 8px;
+  }
+}

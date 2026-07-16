@@ -32,9 +32,14 @@ const PHYSICS = {
   rocketSpeed: -720,
   rocketDuration: 1.25,
 
-  acceleration: 2400,
-  maxSpeed: 400,
-  friction: 0.84,
+  /*
+   * Более отзывчивое управление удержанием:
+   * питомец быстрее набирает скорость,
+   * а после отпускания быстрее останавливается.
+   */
+  acceleration: 4200,
+  maxSpeed: 520,
+  friction: 0.76,
   step: 1 / 60,
 };
 
@@ -294,12 +299,20 @@ function makeGame(width, height) {
 
     pointer: {
       active: false,
-      x: width / 2,
-    },
 
-    keys: {
-      left: false,
-      right: false,
+      /*
+       * ID активного пальца.
+       * Не позволяет второму одновременному касанию
+       * перехватить управление.
+       */
+      pointerId: null,
+
+      /*
+       * -1 — удерживается левая половина экрана;
+       *  1 — удерживается правая половина экрана;
+       *  0 — палец отпущен.
+       */
+      direction: 0,
     },
 
     player: {
@@ -991,7 +1004,7 @@ export default function JumpGame() {
         title: 'Прыжок Chumi',
         subtitle: 'Поднимайся как можно выше',
         play: 'Играть',
-        control: 'Веди пальцем влево и вправо',
+        control: 'Удерживай левую или правую половину',
         fragile: 'Оранжевые платформы ломаются',
         spike: 'Не приземляйся на шипы',
         rocket: 'Ракета подбросит тебя выше',
@@ -1017,7 +1030,7 @@ export default function JumpGame() {
         title: 'Chumi Jump',
         subtitle: 'Climb as high as you can',
         play: 'Play',
-        control: 'Drag left and right',
+        control: 'Hold the left or right side',
         fragile: 'Orange platforms break',
         spike: 'Do not land on spikes',
         rocket: 'Rockets boost you higher',
@@ -1286,8 +1299,9 @@ export default function JumpGame() {
      * не влиял на следующий запуск.
      */
     game.pointer.active = false;
-    game.keys.left = false;
-    game.keys.right = false;
+    game.pointer.pointerId = null;
+    game.pointer.direction = 0;
+    game.player.vx = 0;
 
     setScreen(STATE.OVER);
     setScore(finalScore);
@@ -1601,8 +1615,6 @@ export default function JumpGame() {
       game.player.y += offsetY;
       game.player.previousY += offsetY;
 
-      game.pointer.x *= scaleX;
-
       for (const platform of game.platforms) {
         platform.x *= scaleX;
         platform.baseX *= scaleX;
@@ -1648,46 +1660,6 @@ export default function JumpGame() {
       });
     };
 
-    const keyDown = event => {
-      const game = gameRef.current;
-      if (!game) return;
-
-      if (
-        event.key === 'ArrowLeft' ||
-        event.key.toLowerCase() === 'a'
-      ) {
-        game.keys.left = true;
-        event.preventDefault();
-      }
-
-      if (
-        event.key === 'ArrowRight' ||
-        event.key.toLowerCase() === 'd'
-      ) {
-        game.keys.right = true;
-        event.preventDefault();
-      }
-    };
-
-    const keyUp = event => {
-      const game = gameRef.current;
-      if (!game) return;
-
-      if (
-        event.key === 'ArrowLeft' ||
-        event.key.toLowerCase() === 'a'
-      ) {
-        game.keys.left = false;
-      }
-
-      if (
-        event.key === 'ArrowRight' ||
-        event.key.toLowerCase() === 'd'
-      ) {
-        game.keys.right = false;
-      }
-    };
-
     const visibilityChange = () => {
       const game = gameRef.current;
 
@@ -1697,6 +1669,12 @@ export default function JumpGame() {
       ) {
         game.state = STATE.PAUSED;
         game.accumulator = 0;
+
+        game.pointer.active = false;
+        game.pointer.pointerId = null;
+        game.pointer.direction = 0;
+        game.player.vx = 0;
+
         setScreen(STATE.PAUSED);
       }
     };
@@ -1767,41 +1745,25 @@ export default function JumpGame() {
       }
 
       /*
-       * Горизонтальное управление.
+       * Горизонтальное управление удержанием.
+       *
+       * Левая половина экрана:
+       * direction === -1.
+       *
+       * Правая половина экрана:
+       * direction === 1.
+       *
+       * Координата пальца не используется, поэтому
+       * вести пальцем за питомцем не нужно.
        */
-      let desiredVelocity = 0;
-
       if (
-        game.keys.left &&
-        !game.keys.right
+        game.pointer.active &&
+        game.pointer.direction !== 0
       ) {
-        desiredVelocity =
-          -PHYSICS.maxSpeed;
-      } else if (
-        game.keys.right &&
-        !game.keys.left
-      ) {
-        desiredVelocity =
+        const desiredVelocity =
+          game.pointer.direction *
           PHYSICS.maxSpeed;
-      } else if (game.pointer.active) {
-        const distance = wrappedDistance(
-          player.x,
-          game.pointer.x,
-          game.width,
-        );
 
-        desiredVelocity = clamp(
-          distance * 5.5,
-          -PHYSICS.maxSpeed,
-          PHYSICS.maxSpeed,
-        );
-      }
-
-      if (
-        game.pointer.active ||
-        game.keys.left ||
-        game.keys.right
-      ) {
         const difference =
           desiredVelocity - player.vx;
 
@@ -1814,6 +1776,10 @@ export default function JumpGame() {
           maximumChange,
         );
       } else {
+        /*
+         * После отпускания пальца питомец
+         * быстро и плавно останавливается.
+         */
         player.vx *= Math.pow(
           PHYSICS.friction,
           dt * 60,
@@ -2347,19 +2313,6 @@ export default function JumpGame() {
       requestResize,
     );
 
-    window.addEventListener(
-      'keydown',
-      keyDown,
-      {
-        passive: false,
-      },
-    );
-
-    window.addEventListener(
-      'keyup',
-      keyUp,
-    );
-
     document.addEventListener(
       'visibilitychange',
       visibilityChange,
@@ -2407,16 +2360,6 @@ export default function JumpGame() {
       tg?.offEvent?.(
         'contentSafeAreaChanged',
         requestResize,
-      );
-
-      window.removeEventListener(
-        'keydown',
-        keyDown,
-      );
-
-      window.removeEventListener(
-        'keyup',
-        keyUp,
       );
 
       document.removeEventListener(
@@ -2565,6 +2508,15 @@ export default function JumpGame() {
     game.state = STATE.PAUSED;
     game.accumulator = 0;
 
+    /*
+     * После паузы пользователь должен
+     * заново приложить палец к экрану.
+     */
+    game.pointer.active = false;
+    game.pointer.pointerId = null;
+    game.pointer.direction = 0;
+    game.player.vx = 0;
+
     setScreen(STATE.PAUSED);
     haptic('light');
   };
@@ -2584,7 +2536,15 @@ export default function JumpGame() {
     haptic('light');
   };
 
-  const updatePointer = event => {
+  /*
+   * Управление начинается при удержании
+   * левой или правой половины canvas.
+   *
+   * Перемещать палец не требуется:
+   * направление определяется в момент нажатия
+   * и сохраняется до отпускания.
+   */
+  const pointerDown = event => {
     const game = gameRef.current;
     const canvas = canvasRef.current;
 
@@ -2596,59 +2556,107 @@ export default function JumpGame() {
       return;
     }
 
-    const rect = canvas.getBoundingClientRect();
-
-    game.pointer.x = clamp(
-      ((event.clientX - rect.left) / rect.width) *
-        game.width,
-      0,
-      game.width,
-    );
-  };
-
-  const pointerDown = event => {
-    const game = gameRef.current;
-
-    if (!game || game.state !== STATE.RUNNING) {
+    /*
+     * Обрабатываем только основное касание.
+     * Второй палец не должен менять направление.
+     */
+    if (
+      event.isPrimary === false ||
+      game.pointer.active
+    ) {
       return;
     }
 
     event.preventDefault();
 
+    const rect =
+      canvas.getBoundingClientRect();
+
+    if (rect.width <= 0) {
+      return;
+    }
+
+    const localPointerX =
+      event.clientX - rect.left;
+
     game.pointer.active = true;
-    updatePointer(event);
+    game.pointer.pointerId =
+      event.pointerId;
+
+    game.pointer.direction =
+      localPointerX < rect.width / 2
+        ? -1
+        : 1;
 
     try {
-      canvasRef.current?.setPointerCapture(
+      canvas.setPointerCapture(
         event.pointerId,
       );
     } catch {
-      // Старый WebView.
+      /*
+       * Старые Telegram WebView могут
+       * не поддерживать Pointer Capture.
+       */
     }
   };
 
+  /*
+   * Движение пальца намеренно игнорируется.
+   * Для управления достаточно удерживать экран.
+   */
   const pointerMove = event => {
     const game = gameRef.current;
 
-    if (!game?.pointer.active) return;
+    if (
+      !game?.pointer.active ||
+      game.pointer.pointerId !==
+        event.pointerId
+    ) {
+      return;
+    }
 
     event.preventDefault();
-    updatePointer(event);
   };
 
   const pointerUp = event => {
     const game = gameRef.current;
+    const canvas = canvasRef.current;
 
-    if (!game) return;
+    if (!game) {
+      return;
+    }
+
+    /*
+     * Не завершаем управление, если событие
+     * пришло от другого пальца.
+     */
+    if (
+      game.pointer.pointerId !== null &&
+      game.pointer.pointerId !==
+        event.pointerId
+    ) {
+      return;
+    }
 
     game.pointer.active = false;
+    game.pointer.pointerId = null;
+    game.pointer.direction = 0;
 
     try {
-      canvasRef.current?.releasePointerCapture(
-        event.pointerId,
-      );
+      if (
+        canvas?.hasPointerCapture?.(
+          event.pointerId,
+        )
+      ) {
+        canvas.releasePointerCapture(
+          event.pointerId,
+        );
+      }
     } catch {
-      // Pointer уже освобождён.
+      /*
+       * Pointer Capture уже мог быть
+       * автоматически освобождён браузером.
+       */
     }
   };
 
@@ -2661,6 +2669,7 @@ export default function JumpGame() {
         onPointerMove={pointerMove}
         onPointerUp={pointerUp}
         onPointerCancel={pointerUp}
+        onLostPointerCapture={pointerUp}
       />
 
       <header className="jump-game-hud">
@@ -2966,16 +2975,40 @@ export default function JumpGame() {
                         </div>
 
                         <div className="jump-game-leaderboard-user">
-                          <strong>
-                            {name}
-                          </strong>
+                          <div className="jump-game-leaderboard-avatar">
+                            <span aria-hidden="true">
+                              {name
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase() || '👤'}
+                            </span>
 
-                          {leader.username &&
-                            leader.displayName && (
-                              <span>
-                                @{leader.username}
-                              </span>
+                            {leader.avatarUrl && (
+                              <img
+                                src={leader.avatarUrl}
+                                alt=""
+                                loading="lazy"
+                                decoding="async"
+                                referrerPolicy="no-referrer"
+                                onError={event => {
+                                  event.currentTarget.hidden = true;
+                                }}
+                              />
                             )}
+                          </div>
+
+                          <div className="jump-game-leaderboard-user-text">
+                            <strong>
+                              {name}
+                            </strong>
+
+                            {leader.username &&
+                              leader.displayName && (
+                                <span>
+                                  @{leader.username}
+                                </span>
+                              )}
+                          </div>
                         </div>
 
                         <div className="jump-game-leaderboard-score">
