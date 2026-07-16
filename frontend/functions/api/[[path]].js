@@ -827,11 +827,11 @@ export async function onRequest(context) {
        * подписанную ссылку.
        *
        * Ссылка доступна любому пользователю,
-       * получившему результат рейтинга, и действует 10 минут.
+       * получившему результат рейтинга, и действует 1 час.
        * Само изображение отдельно кешируется браузером/CDN.
        */
       const avatarExpiresAt =
-        Date.now() + 10 * 60 * 1000;
+        Date.now() + 60 * 60 * 1000;
 
       const leaders = await Promise.all(
         rankedLeaders.map(async leader => {
@@ -1370,10 +1370,11 @@ export async function onRequest(context) {
           .eq('user_id', tgUserId);
 
         /*
-         * Сохранённый Telegram file_path мог устареть.
-         * Повторяем тот же подписанный запрос после очистки кеша.
-         * На следующем запросе сервер заново выполнит
-         * getUserProfilePhotos и getFile.
+         * Telegram file_path мог устареть.
+         * После очистки сохранённого пути повторяем
+         * тот же подписанный запрос. На повторном
+         * запросе getUserProfilePhotos и getFile
+         * получат актуальный путь изображения.
          */
         return Response.redirect(request.url, 307);
       }
