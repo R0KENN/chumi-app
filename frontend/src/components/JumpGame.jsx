@@ -121,21 +121,53 @@ function addPlatform(game) {
     125 + difficulty * 60,
   );
 
-  const x = clamp(
-    previous.x + random(-horizontalLimit, horizontalLimit),
-    12,
-    game.width - width - 12,
-  );
-
   const type = choosePlatformType(score);
+
+  /*
+   * Для движущейся платформы заранее учитываем
+   * амплитуду движения. Иначе платформа,
+   * созданная около края, частично уезжает
+   * за границы экрана.
+   */
+  const moveRange =
+    type === TYPE.MOVING
+      ? random(16, 32)
+      : 0;
+
+  const edgePadding = 12;
+
+  const minPlatformX =
+    edgePadding + moveRange;
+
+  const maxPlatformX =
+    game.width -
+    width -
+    edgePadding -
+    moveRange;
+
+  const x = clamp(
+    previous.x +
+      random(
+        -horizontalLimit,
+        horizontalLimit,
+      ),
+    minPlatformX,
+    Math.max(
+      minPlatformX,
+      maxPlatformX,
+    ),
+  );
 
   const platform = createPlatform(game, {
     x,
     y: previous.y - verticalGap,
     width,
     type,
-    moveRange: type === TYPE.MOVING ? random(16, 32) : 0,
-    moveSpeed: type === TYPE.MOVING ? random(1.1, 1.7) : 0,
+    moveRange,
+    moveSpeed:
+      type === TYPE.MOVING
+        ? random(1.1, 1.7)
+        : 0,
   });
 
   game.platforms.push(platform);
@@ -782,6 +814,14 @@ export default function JumpGame() {
   const gameSessionRef = useRef(null);
   const gameSessionLoadingRef = useRef(false);
   const renderedScoreRef = useRef(-1);
+  const leaderboardAbortRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      leaderboardAbortRef.current?.abort();
+      leaderboardAbortRef.current = null;
+    };
+  }, []);
 
   const navigate = useNavigate();
   const { pairId } = useParams();
@@ -792,6 +832,8 @@ export default function JumpGame() {
   const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(0);
   const [isNewRecord, setIsNewRecord] = useState(false);
+  const [gameStarting, setGameStarting] =
+    useState(false);
 
   const [showLeaderboard, setShowLeaderboard] =
     useState(false);
@@ -1085,6 +1127,12 @@ export default function JumpGame() {
   );
 
   const loadLeaderboard = useCallback(async () => {
+    leaderboardAbortRef.current?.abort();
+
+    const controller = new AbortController();
+
+    leaderboardAbortRef.current = controller;
+
     setLeaderboardLoading(true);
     setLeaderboardError('');
 
@@ -1093,16 +1141,26 @@ export default function JumpGame() {
         '/api/game-leaderboard',
         {
           headers: authHeaders(),
+          signal: controller.signal,
         },
       );
 
-      const data = await response.json();
+      const data = await response
+        .json()
+        .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
           data.error ||
           'Leaderboard request failed',
         );
+      }
+
+      if (
+        leaderboardAbortRef.current !==
+        controller
+      ) {
+        return;
       }
 
       setLeaders(
@@ -1123,12 +1181,32 @@ export default function JumpGame() {
         setPersonalBest(0);
         setPersonalRank(null);
       }
-    } catch {
-      setLeaderboardError(
-        t.leaderboardError,
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+
+      console.error(
+        'Leaderboard loading failed:',
+        error,
       );
+
+      if (
+        leaderboardAbortRef.current ===
+        controller
+      ) {
+        setLeaderboardError(
+          t.leaderboardError,
+        );
+      }
     } finally {
-      setLeaderboardLoading(false);
+      if (
+        leaderboardAbortRef.current ===
+        controller
+      ) {
+        leaderboardAbortRef.current = null;
+        setLeaderboardLoading(false);
+      }
     }
   }, [
     authHeaders,
@@ -1141,6 +1219,9 @@ export default function JumpGame() {
   }, [loadLeaderboard]);
 
   const closeLeaderboard = useCallback(() => {
+    leaderboardAbortRef.current?.abort();
+    leaderboardAbortRef.current = null;
+
     setShowLeaderboard(false);
   }, []);
 
@@ -1241,15 +1322,17 @@ export default function JumpGame() {
     fetch('/api/game-score', {
       method: 'POST',
       headers: authHeaders(),
-body: JSON.stringify({
-  userId,
-  pairCode: pairId,
-  sessionId,
-  score: finalScore,
-}),
+      body: JSON.stringify({
+        userId,
+        pairCode: pairId,
+        sessionId,
+        score: finalScore,
+      }),
     })
       .then(async response => {
-        const data = await response.json();
+        const data = await response
+          .json()
+          .catch(() => ({}));
 
         if (!response.ok) {
           throw new Error(
@@ -1261,12 +1344,23 @@ body: JSON.stringify({
         return data;
       })
       .then(data => {
-        if (typeof data.best === 'number') {
-          saveBest(Math.max(bestRef.current, data.best));
+        if (
+          typeof data.best === 'number'
+        ) {
+          saveBest(
+            Math.max(
+              bestRef.current,
+              data.best,
+            ),
+          );
         }
 
-        if (typeof data.isRecord === 'boolean') {
-          setIsNewRecord(data.isRecord);
+        if (
+          typeof data.isRecord === 'boolean'
+        ) {
+          setIsNewRecord(
+            data.isRecord,
+          );
 
           if (data.isRecord) {
             haptic('success');
@@ -1289,7 +1383,12 @@ body: JSON.stringify({
           );
         }
       })
-      .catch(() => {});
+      .catch(error => {
+        console.error(
+          'Game score saving failed:',
+          error,
+        );
+      });
   }, [
     authHeaders,
     haptic,
@@ -1323,7 +1422,20 @@ body: JSON.stringify({
     fetch(`/api/game-score/${pairId}`, {
       headers: authHeaders(),
     })
-      .then(response => response.json())
+      .then(async response => {
+        const data = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+            'Failed to load game score',
+          );
+        }
+
+        return data;
+      })
       .then(data => {
         if (
           !cancelled &&
@@ -1352,7 +1464,14 @@ body: JSON.stringify({
           );
         }
       })
-      .catch(() => {});
+      .catch(error => {
+        if (!cancelled) {
+          console.error(
+            'Game score loading failed:',
+            error,
+          );
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -1400,14 +1519,27 @@ body: JSON.stringify({
     };
 
     const resize = () => {
+      const container =
+        canvas.parentElement;
+
+      const rect =
+        container?.getBoundingClientRect();
+
       const width = Math.max(
         280,
-        Math.round(window.innerWidth),
+        Math.round(
+          rect?.width ||
+          window.innerWidth,
+        ),
       );
 
       const height = Math.max(
         480,
-        Math.round(window.innerHeight),
+        Math.round(
+          rect?.height ||
+          window.visualViewport?.height ||
+          window.innerHeight,
+        ),
       );
 
       const nextDpr = clamp(
@@ -1726,18 +1858,18 @@ body: JSON.stringify({
           platform.type === TYPE.MOVING &&
           !platform.broken
         ) {
-          platform.x =
-            platform.baseX +
-            Math.sin(
-              game.time * platform.moveSpeed +
-              platform.phase,
-            ) *
-              platform.moveRange;
-
           platform.x = clamp(
-            platform.x,
-            8,
-            game.width - platform.width - 8,
+            platform.baseX +
+              Math.sin(
+                game.time *
+                  platform.moveSpeed +
+                  platform.phase,
+              ) *
+                platform.moveRange,
+            12,
+            game.width -
+              platform.width -
+              12,
           );
         }
 
@@ -2188,6 +2320,33 @@ body: JSON.stringify({
       requestResize,
     );
 
+    window.visualViewport?.addEventListener(
+      'resize',
+      requestResize,
+    );
+
+    const tg = window.Telegram?.WebApp;
+
+    tg?.onEvent?.(
+      'viewportChanged',
+      requestResize,
+    );
+
+    tg?.onEvent?.(
+      'fullscreenChanged',
+      requestResize,
+    );
+
+    tg?.onEvent?.(
+      'safeAreaChanged',
+      requestResize,
+    );
+
+    tg?.onEvent?.(
+      'contentSafeAreaChanged',
+      requestResize,
+    );
+
     window.addEventListener(
       'keydown',
       keyDown,
@@ -2222,6 +2381,31 @@ body: JSON.stringify({
 
       window.removeEventListener(
         'orientationchange',
+        requestResize,
+      );
+
+      window.visualViewport?.removeEventListener(
+        'resize',
+        requestResize,
+      );
+
+      tg?.offEvent?.(
+        'viewportChanged',
+        requestResize,
+      );
+
+      tg?.offEvent?.(
+        'fullscreenChanged',
+        requestResize,
+      );
+
+      tg?.offEvent?.(
+        'safeAreaChanged',
+        requestResize,
+      );
+
+      tg?.offEvent?.(
+        'contentSafeAreaChanged',
         requestResize,
       );
 
@@ -2299,28 +2483,77 @@ body: JSON.stringify({
     };
   }, [navigate, pairId]);
 
-    const startGame = useCallback(async () => {
+  const startGame = useCallback(async () => {
+    if (gameStarting) {
+      return;
+    }
+
+    setGameStarting(true);
+
     try {
       gameSessionRef.current = null;
 
       await createGameSession();
 
+      const canvas = canvasRef.current;
+      const currentGame = gameRef.current;
+
+      const containerRect =
+        canvas?.parentElement
+          ?.getBoundingClientRect();
+
+      const width = Math.max(
+        280,
+        Math.round(
+          containerRect?.width ||
+          currentGame?.width ||
+          window.innerWidth,
+        ),
+      );
+
+      const height = Math.max(
+        480,
+        Math.round(
+          containerRect?.height ||
+          currentGame?.height ||
+          window.visualViewport?.height ||
+          window.innerHeight,
+        ),
+      );
+
+      gameRef.current = makeGame(
+        width,
+        height,
+      );
+
+      renderedScoreRef.current = 0;
+
+      setScore(0);
       setIsNewRecord(false);
       setCountdown(3);
       setScreen(STATE.COUNTDOWN);
+
+      haptic('light');
     } catch (error) {
       console.error(
         'Unable to start game:',
-        error
+        error,
       );
 
       window.Telegram?.WebApp?.showAlert?.(
         lang === 'ru'
           ? 'Не удалось начать игру. Попробуй ещё раз.'
-          : 'Failed to start the game. Please try again.'
+          : 'Failed to start the game. Please try again.',
       );
+    } finally {
+      setGameStarting(false);
     }
-  }, [createGameSession, lang]);
+  }, [
+    createGameSession,
+    gameStarting,
+    haptic,
+    lang,
+  ]);
 
   const pauseGame = () => {
     const game = gameRef.current;
@@ -2497,8 +2730,11 @@ body: JSON.stringify({
             <button
               className="jump-game-primary-button"
               onClick={startGame}
+              disabled={gameStarting}
             >
-              {t.play}
+              {gameStarting
+                ? t.loading
+                : t.play}
             </button>
 
             <button
@@ -2585,8 +2821,11 @@ body: JSON.stringify({
             <button
               className="jump-game-primary-button"
               onClick={startGame}
+              disabled={gameStarting}
             >
-              ↻ {t.again}
+              {gameStarting
+                ? t.loading
+                : `↻ ${t.again}`}
             </button>
 
             <button

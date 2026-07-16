@@ -968,7 +968,7 @@
 }
 
 .jump-game-leaderboard-overlay {
-  z-index: 40;
+  z-index: 2100;
 }
 
 .jump-game-leaderboard-panel {
@@ -1213,4 +1213,233 @@
     min-width: 38px;
     font-size: 16px;
   }
+}
+
+/* ══════════════════════════════════════
+   CHUMI JUMP — TELEGRAM LAYOUT FIXES
+   Этот блок должен находиться в самом
+   конце файла JumpGame.css.
+   ══════════════════════════════════════ */
+
+/*
+ * Корневой контейнер игры.
+ *
+ * На корне нельзя оставлять touch-action: none,
+ * иначе вложенный список рейтинга может не
+ * прокручиваться в Telegram WebView.
+ *
+ * Управление игрой всё равно остаётся заблокировано
+ * на canvas через .jump-game-canvas.
+ */
+.jump-game {
+  height: 100vh;
+  height: 100dvh;
+  height: var(--tg-viewport-stable-height, 100dvh);
+
+  touch-action: auto;
+
+  --jump-layer-game: 2000;
+  --jump-layer-hud: 2010;
+  --jump-layer-overlay: 2020;
+  --jump-layer-countdown: 2030;
+  --jump-layer-leaderboard: 2100;
+}
+
+/*
+ * Canvas продолжает забирать игровые жесты.
+ */
+.jump-game-canvas {
+  touch-action: none;
+}
+
+/*
+ * Верхняя панель игры.
+ *
+ * Используем максимальное значение между:
+ * 1. браузерным safe area;
+ * 2. safe area, полученным от Telegram.
+ */
+.jump-game-hud {
+  z-index: var(--jump-layer-hud);
+
+  padding:
+    calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--chumi-safe-top, 0px)
+      ) + 12px
+    )
+    10px
+    0;
+}
+
+/*
+ * Обычные окна игры:
+ * старт, пауза и результат.
+ */
+.jump-game-overlay {
+  z-index: var(--jump-layer-overlay);
+
+  padding:
+    calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--chumi-safe-top, 0px)
+      ) + 70px
+    )
+    18px
+    calc(
+      max(
+        env(safe-area-inset-bottom, 0px),
+        var(--chumi-safe-bottom, 0px)
+      ) + 18px
+    );
+}
+
+/*
+ * Countdown должен оставаться выше HUD
+ * и обычных окон.
+ */
+.jump-game-countdown {
+  z-index: var(--jump-layer-countdown);
+}
+
+/*
+ * Критическое исправление рейтинга.
+ *
+ * Раньше у .jump-game-leaderboard-overlay
+ * был z-index: 40, поэтому рейтинг открывался
+ * под стартовым окном или окном результата,
+ * у которого z-index: 2020.
+ */
+.jump-game-leaderboard-overlay {
+  z-index: var(--jump-layer-leaderboard);
+}
+
+/*
+ * Разрешаем вертикальную прокрутку окон.
+ */
+.jump-game-panel,
+.jump-game-leaderboard-panel,
+.jump-game-leaderboard-list {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * Ограничиваем высоту окна рейтинга,
+ * чтобы нижняя кнопка не уходила за экран.
+ */
+.jump-game-leaderboard-panel {
+  max-height: calc(
+    100dvh -
+    max(
+      env(safe-area-inset-top, 0px),
+      var(--chumi-safe-top, 0px)
+    ) -
+    max(
+      env(safe-area-inset-bottom, 0px),
+      var(--chumi-safe-bottom, 0px)
+    ) -
+    36px
+  );
+
+  overflow: hidden;
+}
+
+/*
+ * Прокручивается только список пользователей,
+ * заголовок и кнопка закрытия остаются на месте.
+ */
+.jump-game-leaderboard-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/*
+ * Дополнительная защита для маленьких экранов.
+ */
+@media (max-height: 700px) {
+  .jump-game-hud {
+    padding-top: calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--chumi-safe-top, 0px)
+      ) + 8px
+    );
+  }
+
+  .jump-game-overlay {
+    padding:
+      calc(
+        max(
+          env(safe-area-inset-top, 0px),
+          var(--chumi-safe-top, 0px)
+        ) + 62px
+      )
+      14px
+      calc(
+        max(
+          env(safe-area-inset-bottom, 0px),
+          var(--chumi-safe-bottom, 0px)
+        ) + 14px
+      );
+  }
+
+  .jump-game-panel {
+    padding: 20px;
+  }
+}
+
+/*
+ * Уменьшение анимаций для пользователей,
+ * которые отключили их в системе.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .jump-game *,
+  .jump-game *::before,
+  .jump-game *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.jump-game-save-status {
+  margin: 12px 0;
+
+  color: rgba(33, 24, 44, 0.58);
+
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.jump-game-save-status-error {
+  padding: 10px 12px;
+
+  color: #a72e42;
+  background: rgba(229, 72, 95, 0.1);
+  border: 1px solid rgba(229, 72, 95, 0.15);
+  border-radius: 13px;
+}
+
+.jump-game-dark .jump-game-save-status {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.jump-game-dark .jump-game-save-status-error {
+  color: #ff9bab;
+  background: rgba(229, 72, 95, 0.14);
+  border-color: rgba(255, 155, 171, 0.17);
+}
+
+.jump-game-primary-button:disabled,
+.jump-game-secondary-button:disabled,
+.jump-game-circle-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
 }

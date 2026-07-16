@@ -214,97 +214,247 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let tgForCleanup = null;
+    let updateTelegramInsets = null;
+    let handleFullscreenFailed = null;
 
-    const initializeTelegram = async () => {
-      const isLocal =
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1';
-
-      /*
-       * Обычно локальный SDK уже загружен синхронно из index.html.
-       * Небольшое ожидание оставляем для старых WebView и кеша Telegram.
-       */
-      const startedAt = Date.now();
+    (async () => {
+      // Если SDK ещё не загрузился и не упал — ждём до 3 секунд
+      // (нужно при медленном/проксированном соединении в Telegram)
+      const start = Date.now();
 
       while (
         !window.Telegram?.WebApp &&
         !window.__tgSdkFailed &&
-        Date.now() - startedAt < 5000
+        Date.now() - start < 3000
       ) {
-        await new Promise((resolve) => {
-          window.setTimeout(resolve, 100);
-        });
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      if (cancelled) {
-        return;
-      }
-
-      if (window.__tgSdkFailed) {
-        setTelegramStatus('sdk-error');
-        return;
-      }
-
-      const tg = window.Telegram?.WebApp;
-
-      if (!tg) {
-        setTelegramStatus(isLocal ? 'local-error' : 'sdk-error');
-        return;
-      }
+      if (cancelled) return;
 
       try {
-        tg.ready?.();
-        tg.expand?.();
+        const tg = window.Telegram?.WebApp;
 
-        try {
-          tg.setHeaderColor?.('#FFF8E1');
-        } catch (error) {
-          console.warn('Telegram setHeaderColor failed:', error);
+        if (tg) {
+          tgForCleanup = tg;
+
+          tg.ready();
+          tg.expand();
+
+          if (tg.initData) {
+            setInitData(tg.initData);
+          }
+
+          /*
+           * Telegram имеет два разных типа safe area:
+           *
+           * safeAreaInset — системная безопасная зона устройства;
+           * contentSafeAreaInset — зона, свободная от элементов Telegram.
+           *
+           * Для верхней панели приложения и HUD игры важнее именно
+           * contentSafeAreaInset.
+           */
+          updateTelegramInsets = () => {
+            const safeTop =
+              Number(tg.safeAreaInset?.top) || 0;
+
+            const contentSafeTop =
+              Number(tg.contentSafeAreaInset?.top) || 0;
+
+            const safeBottom =
+              Number(tg.safeAreaInset?.bottom) || 0;
+
+            const contentSafeBottom =
+              Number(tg.contentSafeAreaInset?.bottom) || 0;
+
+            const topInset = Math.max(
+              safeTop,
+              contentSafeTop,
+            );
+
+            const bottomInset = Math.max(
+              safeBottom,
+              contentSafeBottom,
+            );
+
+            document.documentElement.style.setProperty(
+              '--chumi-safe-top',
+              `${topInset}px`,
+            );
+
+            document.documentElement.style.setProperty(
+              '--chumi-safe-bottom',
+              `${bottomInset}px`,
+            );
+
+            /*
+             * Эта переменная уже используется основным экраном приложения.
+             * Оставляем минимум 16px для браузера и десктопного Telegram.
+             */
+            document.documentElement.style.setProperty(
+              '--chumi-top-pad',
+              `${Math.max(16, topInset)}px`,
+            );
+          };
+
+          handleFullscreenFailed = error => {
+            console.warn(
+              'Telegram fullscreen request failed:',
+              error,
+            );
+
+            updateTelegramInsets?.();
+          };
+
+          updateTelegramInsets();
+
+          tg.onEvent?.(
+            'safeAreaChanged',
+            updateTelegramInsets,
+          );
+
+          tg.onEvent?.(
+            'contentSafeAreaChanged',
+            updateTelegramInsets,
+          );
+
+          tg.onEvent?.(
+            'fullscreenChanged',
+            updateTelegramInsets,
+          );
+
+          tg.onEvent?.(
+            'viewportChanged',
+            updateTelegramInsets,
+          );
+
+          tg.onEvent?.(
+            'fullscreenFailed',
+            handleFullscreenFailed,
+          );
+
+          const isMobile =
+            /iPhone|iPad|iPod|Android/i.test(
+              navigator.userAgent,
+            );
+
+          if (
+            isMobile &&
+            tg.isVersionAtLeast?.('8.0') &&
+            !tg.isFullscreen
+          ) {
+            try {
+              tg.requestFullscreen();
+            } catch (error) {
+              handleFullscreenFailed(error);
+            }
+          }
+
+          if (tg.disableVerticalSwipes) {
+            tg.disableVerticalSwipes();
+          }
+
+          try {
+            tg.setHeaderColor?.('#FFF8E1');
+          } catch (error) {
+            console.warn(
+              'Telegram header color failed:',
+              error,
+            );
+          }
+
+          try {
+            tg.setBackgroundColor?.('#FFF8E1');
+          } catch (error) {
+            console.warn(
+              'Telegram background color failed:',
+              error,
+            );
+          }
+
+          try {
+            tg.setBottomBarColor?.('#FFF8E1');
+          } catch (error) {
+            console.warn(
+              'Telegram bottom bar color failed:',
+              error,
+            );
+          }
+
+          const uid =
+            tg.initDataUnsafe?.user?.id?.toString();
+
+          if (uid) {
+            setTelegramUserId(uid);
+            return;
+          }
         }
-
-        try {
-          tg.setBackgroundColor?.('#FFF8E1');
-        } catch (error) {
-          console.warn('Telegram setBackgroundColor failed:', error);
-        }
-
-        try {
-          tg.setBottomBarColor?.('#FFF8E1');
-        } catch (error) {
-          console.warn('Telegram setBottomBarColor failed:', error);
-        }
-
-        const rawInitData =
-          typeof tg.initData === 'string'
-            ? tg.initData
-            : '';
-
-        const rawUserId =
-          tg.initDataUnsafe?.user?.id;
-
-        /*
-         * В production нужен одновременно пользователь и подписанный initData.
-         * На localhost main.jsx создаёт тестового пользователя без initData.
-         */
-        if (rawUserId && (rawInitData || isLocal)) {
-          setInitData(rawInitData);
-          setTelegramUserId(String(rawUserId));
-          setTelegramStatus('ready');
-          return;
-        }
-
-        setTelegramStatus('outside-telegram');
       } catch (error) {
-        console.error('Telegram initialization failed:', error);
-
-        setTelegramStatus('sdk-error');
+        console.error('TG init error:', error);
       }
-    };
 
-    initializeTelegram();
+      /*
+       * Если SDK именно упал, гостевой доступ не выдаём.
+       * Ниже отобразится экран с инструкцией про прокси.
+       */
+      if (window.__tgSdkFailed) {
+        return;
+      }
+
+      /*
+       * Fallback для локальной разработки вне Telegram.
+       */
+      try {
+        const testId =
+          localStorage.getItem('chumi_test_uid') ||
+          'guest';
+
+        localStorage.setItem(
+          'chumi_test_uid',
+          testId,
+        );
+
+        setTelegramUserId(testId);
+      } catch {
+        setTelegramUserId('guest');
+      }
+    })();
 
     return () => {
       cancelled = true;
+
+      if (tgForCleanup && updateTelegramInsets) {
+        tgForCleanup.offEvent?.(
+          'safeAreaChanged',
+          updateTelegramInsets,
+        );
+
+        tgForCleanup.offEvent?.(
+          'contentSafeAreaChanged',
+          updateTelegramInsets,
+        );
+
+        tgForCleanup.offEvent?.(
+          'fullscreenChanged',
+          updateTelegramInsets,
+        );
+
+        tgForCleanup.offEvent?.(
+          'viewportChanged',
+          updateTelegramInsets,
+        );
+      }
+
+      if (
+        tgForCleanup &&
+        handleFullscreenFailed
+      ) {
+        tgForCleanup.offEvent?.(
+          'fullscreenFailed',
+          handleFullscreenFailed,
+        );
+      }
     };
   }, []);
 
