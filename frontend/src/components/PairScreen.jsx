@@ -362,10 +362,8 @@ useEffect(() => {
 
     // Заголовки для GET-запросов: только авторизация, без Content-Type
   // (чтобы не провоцировать лишний CORS-preflight).
-  const authGetHeaders = useCallback(
-    () => buildAuthGetHeaders(userId),
-    [userId],
-  );
+  const authGetHeaders = () =>
+    buildAuthGetHeaders(userId);
 
   // FIX #8: корректный haptic с поддержкой notification типов
   const haptic = (type = 'medium') => {
