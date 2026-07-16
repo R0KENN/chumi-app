@@ -5,7 +5,7 @@
 
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
 
     <title>Chumi — Вырасти питомца вместе!</title>
@@ -20,7 +20,6 @@
       rel="stylesheet"
     />
 
-    <!-- Open Graph -->
     <meta property="og:title" content="Chumi 🐾" />
     <meta
       property="og:description"
@@ -36,11 +35,15 @@
     <meta property="og:url" content="https://chumi.space" />
 
     <!--
-      Telegram SDK подключается обычным синхронным тегом.
-      Не создавайте этот script через document.createElement:
-      React может запуститься раньше SDK и не получить initData.
+      Telegram SDK должен загрузиться до React-приложения.
+
+      Используется локальная копия, чтобы приложение не зависело от того,
+      разрешает ли прокси пользователя прямой доступ к telegram.org.
     -->
-    <script src="/telegram-web-app.js"></script>
+    <script
+      src="/telegram-web-app.js"
+      onerror="window.__tgSdkFailed = true;"
+    ></script>
   </head>
 
   <body>

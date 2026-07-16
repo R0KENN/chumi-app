@@ -2,6 +2,18 @@
    CHUMI JUMP
    ══════════════════════════════════════ */
 
+:root {
+  --tg-safe-area-inset-top: 0px;
+  --tg-safe-area-inset-right: 0px;
+  --tg-safe-area-inset-bottom: 0px;
+  --tg-safe-area-inset-left: 0px;
+
+  --tg-content-safe-area-inset-top: 0px;
+  --tg-content-safe-area-inset-right: 0px;
+  --tg-content-safe-area-inset-bottom: 0px;
+  --tg-content-safe-area-inset-left: 0px;
+}
+
 .jump-game {
   position: fixed;
   inset: 0;
@@ -79,9 +91,25 @@
   gap: 7px;
 
   padding:
-    calc(env(safe-area-inset-top, 0px) + 14px)
-    10px
-    0;
+    calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--tg-content-safe-area-inset-top, 0px)
+      ) + 14px
+    )
+    calc(
+      max(
+        env(safe-area-inset-right, 0px),
+        var(--tg-content-safe-area-inset-right, 0px)
+      ) + 10px
+    )
+    0
+    calc(
+      max(
+        env(safe-area-inset-left, 0px),
+        var(--tg-content-safe-area-inset-left, 0px)
+      ) + 10px
+    );
 
   pointer-events: none;
 }
@@ -233,9 +261,30 @@
   justify-content: center;
 
   padding:
-    calc(env(safe-area-inset-top, 0px) + 70px)
-    18px
-    calc(env(safe-area-inset-bottom, 0px) + 18px);
+    calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--tg-content-safe-area-inset-top, 0px)
+      ) + 70px
+    )
+    calc(
+      max(
+        env(safe-area-inset-right, 0px),
+        var(--tg-content-safe-area-inset-right, 0px)
+      ) + 18px
+    )
+    calc(
+      max(
+        env(safe-area-inset-bottom, 0px),
+        var(--tg-content-safe-area-inset-bottom, 0px)
+      ) + 18px
+    )
+    calc(
+      max(
+        env(safe-area-inset-left, 0px),
+        var(--tg-content-safe-area-inset-left, 0px)
+      ) + 18px
+    );
 
   background: rgba(24, 15, 36, 0.34);
 

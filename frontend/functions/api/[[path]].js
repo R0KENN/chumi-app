@@ -142,9 +142,14 @@ async function notifyAdmins(env, text) {
 function validateInitData(
   initDataRaw,
   botToken,
-  maxAgeSec = 86400,
+  maxAgeSec = 21_600,
 ) {
-  if (!initDataRaw || !botToken) {
+  if (
+    typeof initDataRaw !== 'string' ||
+    !initDataRaw ||
+    typeof botToken !== 'string' ||
+    !botToken
+  ) {
     return null;
   }
 
@@ -161,9 +166,12 @@ function validateInitData(
 
     params.delete('hash');
 
-    const dataCheckString = [...params.entries()]
-      .sort(([leftKey], [rightKey]) =>
-        leftKey.localeCompare(rightKey))
+    const entries = [...params.entries()]
+      .sort(([firstKey], [secondKey]) =>
+        firstKey.localeCompare(secondKey)
+      );
+
+    const dataCheckString = entries
       .map(([key, value]) => `${key}=${value}`)
       .join('\n');
 
@@ -179,18 +187,19 @@ function validateInitData(
       secretKey,
     )
       .update(dataCheckString)
-      .digest();
+      .digest('hex');
 
-    const receivedHashBuffer = Buffer.from(
-      receivedHash,
-      'hex',
-    );
+    const receivedBuffer =
+      Buffer.from(receivedHash, 'hex');
+
+    const computedBuffer =
+      Buffer.from(computedHash, 'hex');
 
     if (
-      receivedHashBuffer.length !== computedHash.length ||
+      receivedBuffer.length !== computedBuffer.length ||
       !timingSafeEqual(
-        receivedHashBuffer,
-        computedHash,
+        receivedBuffer,
+        computedBuffer,
       )
     ) {
       return null;
@@ -200,20 +209,20 @@ function validateInitData(
       params.get('auth_date'),
     );
 
-    if (!Number.isFinite(authDate)) {
+    if (!Number.isInteger(authDate) || authDate <= 0) {
       return null;
     }
 
-    const currentTimestamp = Math.floor(
+    const currentUnixTime = Math.floor(
       Date.now() / 1000,
     );
 
     const ageSeconds =
-      currentTimestamp - authDate;
+      currentUnixTime - authDate;
 
     /*
-     * Допускаем не более 30 секунд расхождения часов
-     * в сторону будущего.
+     * Максимум 30 секунд в будущем допускается из-за
+     * небольшой разницы часов между устройствами.
      */
     if (
       ageSeconds < -30 ||
@@ -222,18 +231,19 @@ function validateInitData(
       return null;
     }
 
-    const rawUser = params.get('user');
+    const userRaw = params.get('user');
 
-    if (!rawUser) {
+    if (!userRaw) {
       return null;
     }
 
-    const user = JSON.parse(rawUser);
+    const user = JSON.parse(userRaw);
     const userId = user?.id;
 
     if (
       userId === undefined ||
-      userId === null
+      userId === null ||
+      !/^\d+$/.test(String(userId))
     ) {
       return null;
     }
@@ -241,6 +251,7 @@ function validateInitData(
     return {
       userId: String(userId),
       user,
+      authDate,
     };
   } catch (error) {
     console.warn(
@@ -413,12 +424,59 @@ async function makeAvatarToken(botToken, userId, expTs) {
     .slice(0, 32);
 }
 
-async function verifyAvatarToken(botToken, userId, expTs, token) {
-  if (!token || !expTs) return false;
-  const exp = parseInt(expTs, 10);
-  if (!Number.isFinite(exp) || Date.now() > exp) return false;
-  const expected = await makeAvatarToken(botToken, userId, exp);
-  return expected === token;
+async function verifyAvatarToken(
+  botToken,
+  userId,
+  expTs,
+  token,
+) {
+  if (
+    typeof token !== 'string' ||
+    !/^[a-f0-9]{32}$/i.test(token) ||
+    !expTs
+  ) {
+    return false;
+  }
+
+  const expiresAt = Number(expTs);
+
+  if (
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= Date.now()
+  ) {
+    return false;
+  }
+
+  /*
+   * Не принимаем ссылки, срок которых находится слишком далеко
+   * в будущем. Это ограничивает последствия ошибочной генерации.
+   */
+  if (expiresAt - Date.now() > 15 * 60 * 1000) {
+    return false;
+  }
+
+  const expectedToken = await makeAvatarToken(
+    botToken,
+    userId,
+    expiresAt,
+  );
+
+  const receivedBuffer =
+    Buffer.from(token, 'hex');
+
+  const expectedBuffer =
+    Buffer.from(expectedToken, 'hex');
+
+  if (
+    receivedBuffer.length !== expectedBuffer.length
+  ) {
+    return false;
+  }
+
+  return timingSafeEqual(
+    receivedBuffer,
+    expectedBuffer,
+  );
 }
 
 

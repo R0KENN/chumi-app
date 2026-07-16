@@ -821,6 +821,151 @@ export default function JumpGame() {
     }
   });
 
+  useEffect(() => {
+    const pauseGame = () => {
+      setState((currentState) =>
+        currentState === STATE.RUNNING
+          ? STATE.PAUSED
+          : currentState
+      );
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') {
+        pauseGame();
+      }
+    };
+
+    window.addEventListener(
+      'chumi-game-deactivated',
+      pauseGame,
+    );
+
+    document.addEventListener(
+      'visibilitychange',
+      handleVisibilityChange,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'chumi-game-deactivated',
+        pauseGame,
+      );
+
+      document.removeEventListener(
+        'visibilitychange',
+        handleVisibilityChange,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+
+    if (!tg) {
+      return undefined;
+    }
+
+    const handleTelegramDeactivate = () => {
+      window.dispatchEvent(
+        new CustomEvent('chumi-game-deactivated'),
+      );
+    };
+
+    const handleTelegramActivate = () => {
+      window.dispatchEvent(
+        new CustomEvent('chumi-game-activated'),
+      );
+    };
+
+    try {
+      tg.expand?.();
+    } catch (error) {
+      console.warn('Telegram expand failed:', error);
+    }
+
+    try {
+      if (
+        tg.isVersionAtLeast?.('8.0') &&
+        !tg.isFullscreen
+      ) {
+        tg.requestFullscreen?.();
+      }
+    } catch (error) {
+      console.warn(
+        'Telegram fullscreen request failed:',
+        error,
+      );
+    }
+
+    try {
+      tg.disableVerticalSwipes?.();
+    } catch (error) {
+      console.warn(
+        'Telegram disableVerticalSwipes failed:',
+        error,
+      );
+    }
+
+    try {
+      tg.lockOrientation?.();
+    } catch (error) {
+      console.warn(
+        'Telegram lockOrientation failed:',
+        error,
+      );
+    }
+
+    tg.onEvent?.(
+      'deactivated',
+      handleTelegramDeactivate,
+    );
+
+    tg.onEvent?.(
+      'activated',
+      handleTelegramActivate,
+    );
+
+    return () => {
+      tg.offEvent?.(
+        'deactivated',
+        handleTelegramDeactivate,
+      );
+
+      tg.offEvent?.(
+        'activated',
+        handleTelegramActivate,
+      );
+
+      try {
+        tg.enableVerticalSwipes?.();
+      } catch (error) {
+        console.warn(
+          'Telegram enableVerticalSwipes failed:',
+          error,
+        );
+      }
+
+      try {
+        tg.unlockOrientation?.();
+      } catch (error) {
+        console.warn(
+          'Telegram unlockOrientation failed:',
+          error,
+        );
+      }
+
+      try {
+        tg.exitFullscreen?.();
+      } catch (error) {
+        console.warn(
+          'Telegram exitFullscreen failed:',
+          error,
+        );
+      }
+    };
+  }, []);
+
   const petName = searchParams.get('pet') || '';
 
   const userId = String(
@@ -1983,10 +2128,13 @@ body: JSON.stringify({
         game.previousTime = timestamp;
       }
 
-      const frameTime = Math.min(
-        (timestamp - game.previousTime) / 1000,
-        0.1,
-      );
+      const frameDelta = Math.min(
+  0.05,
+  Math.max(
+    0,
+    (timestamp - game.previousTime) / 1000,
+  ),
+);
 
       game.previousTime = timestamp;
 
