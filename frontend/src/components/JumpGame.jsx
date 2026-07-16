@@ -308,11 +308,18 @@ function makeGame(width, height) {
       pointerId: null,
 
       /*
-       * -1 — удерживается левая половина экрана;
-       *  1 — удерживается правая половина экрана;
-       *  0 — палец отпущен.
+       * -1 — палец движется влево;
+       * 1 — палец движется вправо;
+       * 0 — направление ещё не выбрано.
        */
       direction: 0,
+
+      /*
+       * Последняя горизонтальная координата пальца.
+       * Используется для определения направления
+       * относительно предыдущего pointer-события.
+       */
+      lastX: null,
     },
 
     player: {
@@ -1298,10 +1305,11 @@ export default function JumpGame() {
      * Отключаем управление, чтобы сохранённый pointer
      * не влиял на следующий запуск.
      */
-    game.pointer.active = false;
-    game.pointer.pointerId = null;
-    game.pointer.direction = 0;
-    game.player.vx = 0;
+      game.pointer.active = false;
+      game.pointer.pointerId = null;
+      game.pointer.direction = 0;
+      game.pointer.lastX = null;
+      game.player.vx = 0;
 
     setScreen(STATE.OVER);
     setScore(finalScore);
@@ -1673,6 +1681,7 @@ export default function JumpGame() {
         game.pointer.active = false;
         game.pointer.pointerId = null;
         game.pointer.direction = 0;
+        game.pointer.lastX = null;
         game.player.vx = 0;
 
         setScreen(STATE.PAUSED);
@@ -1747,14 +1756,13 @@ export default function JumpGame() {
       /*
        * Горизонтальное управление удержанием.
        *
-       * Левая половина экрана:
+       * Движение пальца влево:
        * direction === -1.
        *
-       * Правая половина экрана:
+       * Движение пальца вправо:
        * direction === 1.
        *
-       * Пока палец удерживается, pointerMove
-       * позволяет менять направление без отпускания.
+       * Направление меняется без отпускания пальца.
        */
       if (
         game.pointer.active &&
@@ -2569,24 +2577,12 @@ export default function JumpGame() {
 
     event.preventDefault();
 
-    const rect =
-      canvas.getBoundingClientRect();
-
-    if (rect.width <= 0) {
-      return;
-    }
-
-    const localPointerX =
-      event.clientX - rect.left;
-
     game.pointer.active = true;
     game.pointer.pointerId =
       event.pointerId;
-
-    game.pointer.direction =
-      localPointerX < rect.width / 2
-        ? -1
-        : 1;
+    game.pointer.direction = 0;
+    game.pointer.lastX =
+      event.clientX;
 
     try {
       canvas.setPointerCapture(
@@ -2610,11 +2606,9 @@ export default function JumpGame() {
    */
   const pointerMove = event => {
     const game = gameRef.current;
-    const canvas = canvasRef.current;
 
     if (
       !game?.pointer.active ||
-      !canvas ||
       game.pointer.pointerId !==
         event.pointerId
     ) {
@@ -2623,20 +2617,36 @@ export default function JumpGame() {
 
     event.preventDefault();
 
-    const rect =
-      canvas.getBoundingClientRect();
+    const previousX =
+      game.pointer.lastX;
 
-    if (rect.width <= 0) {
+    if (!Number.isFinite(previousX)) {
+      game.pointer.lastX =
+        event.clientX;
+
       return;
     }
 
-    const localPointerX =
-      event.clientX - rect.left;
+    const movementX =
+      event.clientX - previousX;
+
+    /*
+     * Небольшая мёртвая зона убирает дрожание
+     * направления из-за микродвижений пальца.
+     * Координату обновляем только после выхода
+     * из мёртвой зоны, поэтому движение накапливается.
+     */
+    if (Math.abs(movementX) < 4) {
+      return;
+    }
 
     game.pointer.direction =
-      localPointerX < rect.width / 2
+      movementX < 0
         ? -1
         : 1;
+
+    game.pointer.lastX =
+      event.clientX;
   };
 
   const pointerUp = event => {

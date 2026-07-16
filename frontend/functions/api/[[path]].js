@@ -451,7 +451,7 @@ async function verifyAvatarToken(
    * Не принимаем ссылки, срок которых находится слишком далеко
    * в будущем. Это ограничивает последствия ошибочной генерации.
    */
-  if (expiresAt - Date.now() > 15 * 60 * 1000) {
+  if (expiresAt - Date.now() > 2 * 60 * 60 * 1000) {
     return false;
   }
 
@@ -1364,20 +1364,40 @@ export async function onRequest(context) {
         if (wantProxy === '1') {
           const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
           const imgRes = await fetch(avatarUrl);
-      if (!imgRes.ok) {
-        await supabase.from('pair_users')
-          .update({ avatar_file_path: null })
-          .eq('user_id', tgUserId);
+          if (!imgRes.ok) {
+            await supabase.from('pair_users')
+              .update({ avatar_file_path: null })
+              .eq('user_id', tgUserId);
 
-        /*
-         * Telegram file_path мог устареть.
-         * После очистки сохранённого пути повторяем
-         * тот же подписанный запрос. На повторном
-         * запросе getUserProfilePhotos и getFile
-         * получат актуальный путь изображения.
-         */
-        return Response.redirect(request.url, 307);
-      }
+            const alreadyRefreshed =
+              url.searchParams.get('refresh') === '1';
+
+            if (alreadyRefreshed) {
+              return json(
+                { avatar_url: null },
+                404,
+                request,
+              );
+            }
+
+            /*
+             * Telegram file_path мог устареть.
+             * Очищаем сохранённый путь и один раз
+             * повторяем подписанный запрос.
+             */
+            const retryUrl =
+              new URL(request.url);
+
+            retryUrl.searchParams.set(
+              'refresh',
+              '1',
+            );
+
+            return Response.redirect(
+              retryUrl.toString(),
+              307,
+            );
+          }
           const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
           const imgBuffer = await imgRes.arrayBuffer();
           return new Response(imgBuffer, {
@@ -1391,11 +1411,9 @@ export async function onRequest(context) {
         }
 
         {
-          // Подписанная ссылка действует 10 минут.
+          // Подписанная ссылка действует 1 час.
           // Само изображение кешируется браузером и CDN отдельно.
-          const exp =
-            Date.now() +
-            10 * 60 * 1000;
+          const exp = Date.now() + 60 * 60 * 1000;
           const sig = await makeAvatarToken(BOT_TOKEN, tgUserId, exp);
           return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1&exp=${exp}&sig=${sig}` });
         }
