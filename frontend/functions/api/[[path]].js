@@ -822,38 +822,19 @@ export async function onRequest(context) {
       );
 
       /*
-       * <img> не может отправить X-Telegram-Init-Data,
-       * поэтому создаём для каждой аватарки временную
-       * подписанную ссылку.
+       * Аватары участников рейтинга доступны публично.
        *
-       * Ссылка доступна любому пользователю,
-       * получившему результат рейтинга, и действует 1 час.
-       * Само изображение отдельно кешируется браузером/CDN.
+       * Сам avatar-endpoint дополнительно проверяет,
+       * что пользователь действительно присутствует
+       * в таблице игровых результатов.
        */
-      const avatarExpiresAt =
-        Date.now() + 60 * 60 * 1000;
-
-      const leaders = await Promise.all(
-        rankedLeaders.map(async leader => {
-          const avatarSignature =
-            await makeAvatarToken(
-              env.BOT_TOKEN,
-              leader.userId,
-              avatarExpiresAt,
-            );
-
-          const avatarUrl =
+      const leaders = rankedLeaders.map(
+        leader => ({
+          ...leader,
+          avatarUrl:
             `/api/avatar/${encodeURIComponent(
               leader.userId,
-            )}` +
-            `?proxy=1` +
-            `&exp=${avatarExpiresAt}` +
-            `&sig=${avatarSignature}`;
-
-          return {
-            ...leader,
-            avatarUrl,
-          };
+            )}?proxy=1&leaderboard=1`,
         }),
       );
 
@@ -1373,10 +1354,22 @@ export async function onRequest(context) {
               url.searchParams.get('refresh') === '1';
 
             if (alreadyRefreshed) {
-              return json(
-                { avatar_url: null },
-                404,
-                request,
+              return new Response(
+                JSON.stringify({
+                  avatar_url: null,
+                }),
+                {
+                  status: 404,
+                  headers: corsHeaders(
+                    request,
+                    {
+                      'Content-Type':
+                        'application/json',
+                      'Cache-Control':
+                        'no-store',
+                    },
+                  ),
+                },
               );
             }
 
