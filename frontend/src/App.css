@@ -88,8 +88,18 @@ html, body {
 
   width: 100%;
 
+  /*
+   * Верхняя строка должна начинаться ниже:
+   *
+   * 1. safe area браузера;
+   * 2. content safe area Telegram;
+   * 3. значения, рассчитанного App.jsx.
+   */
   padding-top: max(
     env(safe-area-inset-top, 0px),
+    var(--tg-safe-area-inset-top, 0px),
+    var(--tg-content-safe-area-inset-top, 0px),
+    var(--chumi-content-top, 16px),
     var(--chumi-top-pad, 16px)
   );
 
@@ -189,8 +199,20 @@ html, body {
 /* ── Menu — МЕНЕЕ ПРОЗРАЧНОЕ + СДВИНУТО НИЖЕ ── */
 .sk-menu-overlay { position: fixed; inset: 0; z-index: 1099; }
 .sk-menu {
-  position: absolute; top: max(180px, calc(env(safe-area-inset-top) + 150px)); right: 16px;
-  border-radius: 16px; padding: 6px;
+  position: absolute;
+
+  top: calc(
+    max(
+      env(safe-area-inset-top, 0px),
+      var(--tg-content-safe-area-inset-top, 0px),
+      var(--chumi-content-top, 16px)
+    ) + 64px
+  );
+
+  right: 16px;
+
+  border-radius: 16px;
+  padding: 6px;
   min-width: 220px; z-index: 201;
   background: rgba(255, 255, 255, 0.96) !important;
   backdrop-filter: blur(28px) saturate(1.8);
@@ -779,4 +801,68 @@ html, body {
   0%   { transform: scale(0); opacity: 0; }
   60%  { transform: scale(1.15); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
+}
+
+/* ══════════════════════════════════════
+   TELEGRAM FULLSCREEN SAFE AREA
+   ══════════════════════════════════════ */
+
+/*
+ * Страховка на случай, если Telegram iOS
+ * вернул нулевой contentSafeAreaInset.
+ *
+ * data-атрибуты устанавливаются в App.jsx.
+ */
+html[data-chumi-platform="iphone"]
+[data-chumi-fullscreen="true"] {
+  --chumi-safe-top: max(
+    112px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+
+  --chumi-top-pad: max(
+    124px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+
+  --chumi-content-top: max(
+    124px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+}
+
+html[data-chumi-platform="ipad"]
+[data-chumi-fullscreen="true"] {
+  --chumi-safe-top: max(
+    92px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+
+  --chumi-top-pad: max(
+    104px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+
+  --chumi-content-top: max(
+    104px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+}
+
+html[data-chumi-platform="android"]
+[data-chumi-fullscreen="true"] {
+  --chumi-safe-top: max(
+    60px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+
+  --chumi-top-pad: max(
+    72px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
+
+  --chumi-content-top: max(
+    72px,
+    var(--tg-content-safe-area-inset-top, 0px)
+  );
 }

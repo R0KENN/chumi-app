@@ -1268,12 +1268,10 @@
   z-index: var(--jump-layer-hud);
 
   padding:
-    calc(
-      max(
-        env(safe-area-inset-top, 0px),
-        var(--tg-content-safe-area-inset-top, 0px),
-        var(--chumi-safe-top, 0px)
-      ) + 12px
+    max(
+      env(safe-area-inset-top, 0px),
+      var(--tg-content-safe-area-inset-top, 0px),
+      var(--chumi-content-top, 16px)
     )
     calc(
       max(
@@ -1302,8 +1300,8 @@
       max(
         env(safe-area-inset-top, 0px),
         var(--tg-content-safe-area-inset-top, 0px),
-        var(--chumi-safe-top, 0px)
-      ) + 70px
+        var(--chumi-content-top, 16px)
+      ) + 56px
     )
     calc(
       max(
@@ -1392,11 +1390,10 @@
  */
 @media (max-height: 700px) {
   .jump-game-hud {
-    padding-top: calc(
-      max(
-        env(safe-area-inset-top, 0px),
-        var(--chumi-safe-top, 0px)
-      ) + 8px
+    padding-top: max(
+      env(safe-area-inset-top, 0px),
+      var(--tg-content-safe-area-inset-top, 0px),
+      var(--chumi-content-top, 16px)
     );
   }
 
@@ -1405,8 +1402,9 @@
       calc(
         max(
           env(safe-area-inset-top, 0px),
-          var(--chumi-safe-top, 0px)
-        ) + 62px
+          var(--tg-content-safe-area-inset-top, 0px),
+          var(--chumi-content-top, 16px)
+        ) + 50px
       )
       14px
       calc(

@@ -248,6 +248,35 @@ function App() {
           tg.ready();
           tg.expand();
 
+          /*
+           * Определяем платформу один раз.
+           *
+           * iPad с современным User-Agent может
+           * определяться как Macintosh, поэтому
+           * дополнительно проверяем maxTouchPoints.
+           */
+          const userAgent =
+            navigator.userAgent || '';
+
+          const isIPhone =
+            /iPhone|iPod/i.test(userAgent);
+
+          const isIPad =
+            /iPad/i.test(userAgent) ||
+            (
+              /Macintosh/i.test(userAgent) &&
+              navigator.maxTouchPoints > 1
+            );
+
+          const isIOS =
+            isIPhone || isIPad;
+
+          const isAndroid =
+            /Android/i.test(userAgent);
+
+          const isMobile =
+            isIOS || isAndroid;
+
           if (tg.initData) {
             setInitData(tg.initData);
           }
@@ -275,16 +304,53 @@ function App() {
               Number(tg.contentSafeAreaInset?.bottom) || 0;
 
             /*
-             * В fullscreen Telegram показывает поверх приложения
-             * собственную верхнюю панель: закрытие/сворачивание и меню.
+             * В fullscreen Telegram рисует поверх Mini App:
              *
-             * На некоторых Android WebView
-             * contentSafeAreaInset.top ошибочно остаётся равным нулю.
-             * Поэтому в fullscreen резервируем минимум 60px.
+             * 1. системную строку iOS;
+             * 2. кнопку закрытия;
+             * 3. кнопку сворачивания;
+             * 4. меню Telegram.
+             *
+             * На некоторых версиях Telegram iOS
+             * contentSafeAreaInset.top возвращает 0
+             * или слишком маленькое значение.
+             *
+             * Поэтому используем разные минимальные
+             * fallback-значения для разных устройств.
              */
-            const fullscreenTopFallback =
-              tg.isFullscreen ? 60 : 0;
+            let fullscreenTopFallback = 0;
 
+            if (tg.isFullscreen) {
+              if (isIPhone) {
+                /*
+                 * Dynamic Island/status bar плюс
+                 * верхние управляющие кнопки Telegram.
+                 */
+                fullscreenTopFallback = 112;
+              } else if (isIPad) {
+                /*
+                 * На iPad верхняя панель обычно ниже,
+                 * чем на iPhone.
+                 */
+                fullscreenTopFallback = 92;
+              } else if (isAndroid) {
+                /*
+                 * На большинстве Android-устройств
+                 * достаточно 60px.
+                 */
+                fullscreenTopFallback = 60;
+              } else {
+                fullscreenTopFallback = 60;
+              }
+            }
+
+            /*
+             * Берём наибольшее значение из:
+             *
+             * 1. системного safe area;
+             * 2. content safe area Telegram;
+             * 3. нашего fullscreen fallback.
+             */
             const topInset = Math.max(
               safeTop,
               contentSafeTop,
@@ -297,9 +363,9 @@ function App() {
             );
 
             /*
-             * Эту переменную использует игра.
-             * В JumpGame.css к ней дополнительно прибавляется 12px,
-             * поэтому HUD окажется примерно на высоте 72px.
+             * --chumi-safe-top используют игровые экраны.
+             * JumpGame.css самостоятельно добавляет
+             * небольшой визуальный отступ.
              */
             document.documentElement.style.setProperty(
               '--chumi-safe-top',
@@ -312,13 +378,47 @@ function App() {
             );
 
             /*
-             * Основной экран питомца не добавляет собственный
-             * отступ к переменной, поэтому добавляем здесь 12px.
+             * --chumi-top-pad используется основным
+             * экраном питомца.
+             *
+             * Добавляем 12px, чтобы элементы не просто
+             * касались панели Telegram, а имели небольшой
+             * визуальный промежуток.
              */
+            const contentTop =
+              Math.max(16, topInset + 12);
+
             document.documentElement.style.setProperty(
               '--chumi-top-pad',
-              `${Math.max(16, topInset + 12)}px`,
+              `${contentTop}px`,
             );
+
+            /*
+             * Общая переменная для новых экранов.
+             * Все будущие верхние панели приложения
+             * должны использовать именно её.
+             */
+            document.documentElement.style.setProperty(
+              '--chumi-content-top',
+              `${contentTop}px`,
+            );
+
+            /*
+             * Атрибуты полезны для CSS и диагностики.
+             */
+            document.documentElement.dataset.chumiPlatform =
+              isIPhone
+                ? 'iphone'
+                : isIPad
+                  ? 'ipad'
+                  : isAndroid
+                    ? 'android'
+                    : 'desktop';
+
+            document.documentElement.dataset.chumiFullscreen =
+              tg.isFullscreen
+                ? 'true'
+                : 'false';
           };
 
           handleFullscreenFailed = error => {
@@ -357,11 +457,6 @@ function App() {
             handleFullscreenFailed,
           );
 
-          const isMobile =
-            /iPhone|iPad|iPod|Android/i.test(
-              navigator.userAgent,
-            );
-
           if (
             isMobile &&
             tg.isVersionAtLeast?.('8.0') &&
@@ -375,17 +470,34 @@ function App() {
                * fullscreenChanged. Повторно проверяем состояние
                * после завершения fullscreen-анимации.
                */
+              /*
+               * Telegram iOS может обновлять isFullscreen
+               * с задержкой. Проверяем safe-area несколько раз
+               * после fullscreen-анимации.
+               */
               window.setTimeout(() => {
                 if (!cancelled) {
                   updateTelegramInsets?.();
                 }
-              }, 300);
+              }, 150);
 
               window.setTimeout(() => {
                 if (!cancelled) {
                   updateTelegramInsets?.();
                 }
-              }, 800);
+              }, 400);
+
+              window.setTimeout(() => {
+                if (!cancelled) {
+                  updateTelegramInsets?.();
+                }
+              }, 900);
+
+              window.setTimeout(() => {
+                if (!cancelled) {
+                  updateTelegramInsets?.();
+                }
+              }, 1500);
             } catch (error) {
               handleFullscreenFailed(error);
             }

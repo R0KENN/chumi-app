@@ -1005,15 +1005,6 @@ useEffect(() => {
     ? [darkenHex(baseBg[0], 0.16), darkenHex(baseBg[1], 0.30)]
     : baseBg;
 
-    // ── Postcard helpers ──
-  const loadImage = (src) => new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-
     // Кеш загруженных изображений по URL — чтобы смена фона открытки не
   // перегружала тяжёлый кадр питомца и фон заново.
   const loadImageCached = (src) => new Promise((resolve, reject) => {
