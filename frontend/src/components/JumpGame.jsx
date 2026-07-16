@@ -779,6 +779,8 @@ export default function JumpGame() {
   const gameRef = useRef(null);
   const petImageRef = useRef(null);
   const bestRef = useRef(0);
+  const gameSessionRef = useRef(null);
+  const gameSessionLoadingRef = useRef(false);
   const renderedScoreRef = useRef(-1);
 
   const navigate = useNavigate();
@@ -913,6 +915,67 @@ export default function JumpGame() {
 
     return headers;
   }, [userId]);
+
+  const createGameSession = useCallback(
+    async () => {
+      if (!pairId) {
+        throw new Error(
+          'Pair ID is missing'
+        );
+      }
+
+      if (gameSessionLoadingRef.current) {
+        throw new Error(
+          'Game session is already being created'
+        );
+      }
+
+      gameSessionLoadingRef.current = true;
+
+      try {
+        const response = await fetch(
+          '/api/game-session',
+          {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+              userId,
+              pairCode: pairId,
+            }),
+          }
+        );
+
+        const data = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+            'Failed to create game session'
+          );
+        }
+
+        if (!data.sessionId) {
+          throw new Error(
+            'Server did not return sessionId'
+          );
+        }
+
+        gameSessionRef.current =
+          data.sessionId;
+
+        return data.sessionId;
+      } finally {
+        gameSessionLoadingRef.current = false;
+      }
+    },
+    [
+      authHeaders,
+      pairId,
+      userId,
+    ]
+  );
 
   const loadLeaderboard = useCallback(async () => {
     setLeaderboardLoading(true);
@@ -1055,14 +1118,28 @@ export default function JumpGame() {
 
     if (!pairId || finalScore <= 0) return;
 
+    const sessionId =
+      gameSessionRef.current;
+
+    gameSessionRef.current = null;
+
+    if (!sessionId) {
+      console.error(
+        'Score was not saved: game session is missing'
+      );
+
+      return;
+    }
+
     fetch('/api/game-score', {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({
-        userId,
-        pairCode: pairId,
-        score: finalScore,
-      }),
+body: JSON.stringify({
+  userId,
+  pairCode: pairId,
+  sessionId,
+  score: finalScore,
+}),
     })
       .then(async response => {
         const data = await response.json();
@@ -2111,6 +2188,29 @@ export default function JumpGame() {
       }
     };
   }, [navigate, pairId]);
+
+    const startGame = useCallback(async () => {
+    try {
+      gameSessionRef.current = null;
+
+      await createGameSession();
+
+      setIsNewRecord(false);
+      setCountdown(3);
+      setScreen(STATE.COUNTDOWN);
+    } catch (error) {
+      console.error(
+        'Unable to start game:',
+        error
+      );
+
+      window.Telegram?.WebApp?.showAlert?.(
+        lang === 'ru'
+          ? 'Не удалось начать игру. Попробуй ещё раз.'
+          : 'Failed to start the game. Please try again.'
+      );
+    }
+  }, [createGameSession, lang]);
 
   const startGame = useCallback(() => {
     const width = Math.max(

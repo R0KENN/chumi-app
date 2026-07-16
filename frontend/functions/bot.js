@@ -10,19 +10,62 @@ import {
 //   'dup'  — charge уже обрабатывался (дубликат вебхука), выдавать НЕ нужно;
 //   'error'— ошибка БД (не дубликат); товар не выдан, нужно вмешательство.
 // Атомарность обеспечивается UNIQUE-констрейнтом processed_charges.charge_id.
-async function claimCharge(supabase, chargeId, userId, product) {
-  if (!chargeId) {
-    // Telegram Stars всегда присылает charge_id; его отсутствие — аномалия.
-    // Выдаём товар (как раньше), но логируем, чтобы заметить дубли.
-    console.warn(`claimCharge: no chargeId for user ${userId}, product ${product} — fulfilling without idempotency guard`);
+async function claimCharge(
+  supabase,
+  chargeId,
+  userId,
+  product
+) {
+  const normalizedChargeId =
+    typeof chargeId === 'string'
+      ? chargeId.trim()
+      : '';
+
+  if (!normalizedChargeId) {
+    console.error(
+      'Payment fulfillment rejected: chargeId is missing',
+      {
+        userId: String(userId),
+        product: String(product),
+      }
+    );
+
+    return 'error';
+  }
+
+  const {
+    error,
+  } = await supabase
+    .from('processed_charges')
+    .insert({
+      charge_id: normalizedChargeId,
+      user_id: String(userId),
+      product: String(product),
+    });
+
+  if (!error) {
     return 'new';
   }
-  const { error } = await supabase
-    .from('processed_charges')
-    .insert({ charge_id: chargeId, user_id: userId, product });
-  if (!error) return 'new';
-  if (error.code === '23505') return 'dup'; // unique_violation
-  console.error('claimCharge insert error:', error);
+
+  if (error.code === '23505') {
+    console.warn(
+      'Duplicate payment event ignored:',
+      normalizedChargeId
+    );
+
+    return 'dup';
+  }
+
+  console.error(
+    'Failed to reserve payment charge:',
+    {
+      chargeId: normalizedChargeId,
+      userId: String(userId),
+      product: String(product),
+      error,
+    }
+  );
+
   return 'error';
 }
 

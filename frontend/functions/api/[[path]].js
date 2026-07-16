@@ -1,4 +1,7 @@
-import { createHmac } from 'node:crypto';
+import {
+  createHmac,
+  timingSafeEqual,
+} from 'node:crypto';
 import { LEVELS, getLevel } from '../_levels.js';
 import { SKIN_PRICES, PRODUCT_PRICES } from '../_prices.js';
 import {
@@ -74,11 +77,6 @@ function json(data, status = 200, request = null) {
   });
 }
 
-async function isPremium(supabase, userId) {
-  // Премиум как функция удалён. Все привилегии остаются только у админа.
-  return ADMIN_IDS.includes(String(userId));
-}
-
 async function sendTelegramMessage(env, chatId, text, extra = {}) {
   try {
     const body = { chat_id: chatId, text, parse_mode: 'Markdown', ...extra };
@@ -132,30 +130,118 @@ async function notifyAdmins(env, text) {
 
 
 // ────────── Telegram initData validation ──────────
-function validateInitData(initDataRaw, botToken, maxAgeSec = 86400) {
-  if (!initDataRaw || !botToken) return null;
+function validateInitData(
+  initDataRaw,
+  botToken,
+  maxAgeSec = 86400
+) {
+  if (
+    typeof initDataRaw !== 'string' ||
+    !initDataRaw ||
+    !botToken
+  ) {
+    return null;
+  }
+
   try {
     const params = new URLSearchParams(initDataRaw);
-    const hash = params.get('hash');
-    if (!hash) return null;
+    const receivedHash = params.get('hash');
+
+    if (
+      !receivedHash ||
+      !/^[a-f0-9]{64}$/i.test(receivedHash)
+    ) {
+      return null;
+    }
+
     params.delete('hash');
 
-    const entries = [...params.entries()];
-    entries.sort((a, b) => a[0].localeCompare(b[0]));
-    const dataCheckString = entries.map(([k, v]) => `${k}=${v}`).join('\n');
+    const dataCheckString = [...params.entries()]
+      .sort(([firstKey], [secondKey]) =>
+        firstKey.localeCompare(secondKey)
+      )
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
 
-    const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
-    const computedHash = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-    if (computedHash !== hash) return null;
+    const secretKey = createHmac(
+      'sha256',
+      'WebAppData'
+    )
+      .update(botToken)
+      .digest();
 
-    const authDate = parseInt(params.get('auth_date') || '0', 10);
-    if (!authDate || (Date.now() / 1000) - authDate > maxAgeSec) return null;
+    const computedHash = createHmac(
+      'sha256',
+      secretKey
+    )
+      .update(dataCheckString)
+      .digest();
 
-    const userStr = params.get('user');
-    if (!userStr) return null;
-    const user = JSON.parse(userStr);
-    return { userId: String(user.id), user };
-  } catch {
+    const receivedHashBuffer = Buffer.from(
+      receivedHash,
+      'hex'
+    );
+
+    if (
+      computedHash.length !==
+      receivedHashBuffer.length
+    ) {
+      return null;
+    }
+
+    if (
+      !timingSafeEqual(
+        computedHash,
+        receivedHashBuffer
+      )
+    ) {
+      return null;
+    }
+
+    const authDate = Number(
+      params.get('auth_date')
+    );
+
+    if (!Number.isInteger(authDate)) {
+      return null;
+    }
+
+    const currentTimestamp = Math.floor(
+      Date.now() / 1000
+    );
+
+    const age = currentTimestamp - authDate;
+
+    if (age < -30 || age > maxAgeSec) {
+      return null;
+    }
+
+    const rawUser = params.get('user');
+
+    if (!rawUser) {
+      return null;
+    }
+
+    const user = JSON.parse(rawUser);
+
+    if (
+      !user ||
+      user.id === undefined ||
+      user.id === null
+    ) {
+      return null;
+    }
+
+    return {
+      userId: String(user.id),
+      user,
+    };
+  } catch (error) {
+    console.warn(
+      'Telegram initData validation failed:',
+      error
+    );
+
     return null;
   }
 }
@@ -211,6 +297,61 @@ async function isPairMember(supabase, pairCode, userId) {
     .from('pair_users').select('user_id')
     .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
   return !!data;
+}
+
+async function usersSharePair(
+  supabase,
+  firstUserId,
+  secondUserId
+) {
+  if (!firstUserId || !secondUserId) {
+    return false;
+  }
+
+  if (
+    String(firstUserId) ===
+    String(secondUserId)
+  ) {
+    return true;
+  }
+
+  const {
+    data: firstMemberships,
+    error: firstError,
+  } = await supabase
+    .from('pair_users')
+    .select('pair_code')
+    .eq('user_id', String(firstUserId));
+
+  if (firstError || !firstMemberships?.length) {
+    return false;
+  }
+
+  const pairCodes = firstMemberships.map(
+    (membership) => membership.pair_code
+  );
+
+  const {
+    data: sharedMembership,
+    error: sharedError,
+  } = await supabase
+    .from('pair_users')
+    .select('pair_code')
+    .eq('user_id', String(secondUserId))
+    .in('pair_code', pairCodes)
+    .limit(1)
+    .maybeSingle();
+
+  if (sharedError) {
+    console.error(
+      'Shared pair check failed:',
+      sharedError
+    );
+
+    return false;
+  }
+
+  return Boolean(sharedMembership);
 }
 
 function isCronAuthorized(request, env) {
@@ -318,6 +459,463 @@ export async function onRequest(context) {
     const path = url.pathname;
     const supabase = getSupabase(env);
 
+        // ── POST /api/game-session ──
+    if (
+      request.method === 'POST' &&
+      path === '/api/game-session'
+    ) {
+      const body = await request
+        .json()
+        .catch(() => ({}));
+
+      const userId = extractUserId(
+        request,
+        env,
+        body.userId
+      );
+
+      if (!userId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request
+        );
+      }
+
+      const pairCode =
+        typeof body.pairCode === 'string'
+          ? body.pairCode.trim().toUpperCase()
+          : '';
+
+      if (!pairCode) {
+        return json(
+          { error: 'pairCode is required' },
+          400,
+          request
+        );
+      }
+
+      if (
+        !(await isPairMember(
+          supabase,
+          pairCode,
+          userId
+        ))
+      ) {
+        return json(
+          { error: 'Not a member' },
+          403,
+          request
+        );
+      }
+
+      const {
+        data: session,
+        error: sessionError,
+      } = await supabase
+        .from('jump_game_sessions')
+        .insert({
+          user_id: userId,
+          pair_code: pairCode,
+          started_at: new Date().toISOString(),
+          expires_at: new Date(
+            Date.now() + 30 * 60 * 1000
+          ).toISOString(),
+        })
+        .select('id, expires_at')
+        .single();
+
+      if (sessionError) {
+        console.error(
+          'Game session creation failed:',
+          sessionError
+        );
+
+        return json(
+          { error: 'Failed to create game session' },
+          500,
+          request
+        );
+      }
+
+      return json(
+        {
+          sessionId: session.id,
+          expiresAt: session.expires_at,
+        },
+        201,
+        request
+      );
+    }
+
+    // ── GET /api/game-score/:pairCode ──
+    if (
+      request.method === 'GET' &&
+      path.match(/^\/api\/game-score\/[^/]+$/)
+    ) {
+      const pairCode = path
+        .split('/')[3]
+        .trim()
+        .toUpperCase();
+
+      const userId = getAuthedUserId(
+        request,
+        env
+      );
+
+      if (!userId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request
+        );
+      }
+
+      if (
+        !(await isPairMember(
+          supabase,
+          pairCode,
+          userId
+        ))
+      ) {
+        return json(
+          { error: 'Not a member' },
+          403,
+          request
+        );
+      }
+
+      const {
+        data: pair,
+        error: pairError,
+      } = await supabase
+        .from('pairs')
+        .select('game_best_score')
+        .eq('code', pairCode)
+        .maybeSingle();
+
+      if (pairError) {
+        console.error(
+          'Pair score query failed:',
+          pairError
+        );
+
+        return json(
+          { error: 'Failed to load pair score' },
+          500,
+          request
+        );
+      }
+
+      const {
+        data: personal,
+        error: personalError,
+      } = await supabase
+        .from('jump_game_scores')
+        .select('best_score')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (personalError) {
+        console.error(
+          'Personal score query failed:',
+          personalError
+        );
+
+        return json(
+          { error: 'Failed to load personal score' },
+          500,
+          request
+        );
+      }
+
+      const personalBest =
+        Number(personal?.best_score) || 0;
+
+      let rank = null;
+
+      if (personalBest > 0) {
+        const {
+          count,
+          error: rankError,
+        } = await supabase
+          .from('jump_game_scores')
+          .select('*', {
+            count: 'exact',
+            head: true,
+          })
+          .gt('best_score', personalBest);
+
+        if (rankError) {
+          console.error(
+            'Rank query failed:',
+            rankError
+          );
+        } else {
+          rank = (count || 0) + 1;
+        }
+      }
+
+      return json(
+        {
+          best:
+            Number(pair?.game_best_score) || 0,
+          personalBest,
+          rank,
+        },
+        200,
+        request
+      );
+    }
+
+    // ── GET /api/game-leaderboard ──
+    if (
+      request.method === 'GET' &&
+      path === '/api/game-leaderboard'
+    ) {
+      const userId = getAuthedUserId(
+        request,
+        env
+      );
+
+      if (!userId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request
+        );
+      }
+
+      const {
+        data: rows,
+        error: leadersError,
+      } = await supabase
+        .from('jump_game_scores')
+        .select(
+          'user_id, display_name, username, best_score, updated_at'
+        )
+        .gt('best_score', 0)
+        .order('best_score', {
+          ascending: false,
+        })
+        .order('updated_at', {
+          ascending: true,
+        })
+        .order('user_id', {
+          ascending: true,
+        })
+        .limit(50);
+
+      if (leadersError) {
+        console.error(
+          'Leaderboard query failed:',
+          leadersError
+        );
+
+        return json(
+          { error: 'Failed to load leaderboard' },
+          500,
+          request
+        );
+      }
+
+      const leaders = (rows || []).map(
+        (row, index) => ({
+          rank: index + 1,
+          userId: String(row.user_id),
+          displayName:
+            row.display_name || 'Player',
+          username: row.username || null,
+          score:
+            Number(row.best_score) || 0,
+        })
+      );
+
+      const {
+        data: personal,
+        error: personalError,
+      } = await supabase
+        .from('jump_game_scores')
+        .select('best_score')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (personalError) {
+        console.error(
+          'Personal leaderboard query failed:',
+          personalError
+        );
+      }
+
+      const personalBest =
+        Number(personal?.best_score) || 0;
+
+      let personalRank = null;
+
+      if (personalBest > 0) {
+        const {
+          count,
+          error: rankError,
+        } = await supabase
+          .from('jump_game_scores')
+          .select('*', {
+            count: 'exact',
+            head: true,
+          })
+          .gt('best_score', personalBest);
+
+        if (rankError) {
+          console.error(
+            'Personal rank query failed:',
+            rankError
+          );
+        } else {
+          personalRank = (count || 0) + 1;
+        }
+      }
+
+      return json(
+        {
+          leaders,
+          me: personalBest > 0
+            ? {
+                rank: personalRank,
+                score: personalBest,
+              }
+            : null,
+        },
+        200,
+        request
+      );
+    }
+
+    // ── POST /api/game-score ──
+    if (
+      request.method === 'POST' &&
+      path === '/api/game-score'
+    ) {
+      const body = await request
+        .json()
+        .catch(() => ({}));
+
+      const initDataRaw = request.headers.get(
+        'X-Telegram-Init-Data'
+      );
+
+      const telegramData = initDataRaw
+        ? validateInitData(
+            initDataRaw,
+            env.BOT_TOKEN
+          )
+        : null;
+
+      const userId = extractUserId(
+        request,
+        env,
+        body.userId
+      );
+
+      if (!userId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request
+        );
+      }
+
+      const pairCode =
+        typeof body.pairCode === 'string'
+          ? body.pairCode.trim().toUpperCase()
+          : '';
+
+      const sessionId =
+        typeof body.sessionId === 'string'
+          ? body.sessionId.trim()
+          : '';
+
+      const score = Number(body.score);
+
+      if (!pairCode) {
+        return json(
+          { error: 'pairCode is required' },
+          400,
+          request
+        );
+      }
+
+      if (!sessionId) {
+        return json(
+          { error: 'sessionId is required' },
+          400,
+          request
+        );
+      }
+
+      if (
+        !Number.isInteger(score) ||
+        score < 0 ||
+        score > 100000
+      ) {
+        return json(
+          { error: 'Invalid score' },
+          400,
+          request
+        );
+      }
+
+      const displayName =
+        telegramData?.user?.first_name ||
+        telegramData?.user?.username ||
+        null;
+
+      const username =
+        telegramData?.user?.username || null;
+
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        'finish_jump_game',
+        {
+          p_session_id: sessionId,
+          p_user_id: userId,
+          p_pair_code: pairCode,
+          p_score: score,
+          p_display_name: displayName,
+          p_username: username,
+        }
+      );
+
+      if (error) {
+        console.error(
+          'Game score submission failed:',
+          error
+        );
+
+        const message =
+          error.message || 'Failed to save score';
+
+        const clientError =
+          /session|score|member|pair/i.test(
+            message
+          );
+
+        return json(
+          {
+            error: message,
+          },
+          clientError ? 400 : 500,
+          request
+        );
+      }
+
+      return json(
+        data || { success: true },
+        200,
+        request
+      );
+    }
+
     // ── GET /api/pairs/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/pairs\/[^/]+$/)) {
       const userId = path.split('/')[3];
@@ -358,33 +956,140 @@ export async function onRequest(context) {
     }
 
     // ── GET /api/pair/:pairCode/:userId ──
-    if (request.method === 'GET' && path.match(/^\/api\/pair\/[^/]+\/[^/]+$/)) {
+    if (
+      request.method === 'GET' &&
+      path.match(/^\/api\/pair\/[^/]+\/[^/]+$/)
+    ) {
       const parts = path.split('/');
       const pairCode = parts[3];
-      const userId = parts[4];
+      const requestedUserId = parts[4];
 
-      const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-      if (!(await isPairMember(supabase, pairCode, authedId))) {
-        return json({ error: 'Not a member' }, 403);
+      const authedId = getAuthedUserId(
+        request,
+        env
+      );
+
+      if (!authedId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request
+        );
       }
 
-      const { data: pair } = await supabase
-        .from('pairs').select('*').eq('code', pairCode).single();
-      if (!pair) return json({ error: 'Pair not found' }, 404);
+      if (
+        String(requestedUserId) !==
+        String(authedId)
+      ) {
+        return json(
+          { error: 'Forbidden' },
+          403,
+          request
+        );
+      }
 
-      const today = getTodayDate(pair.timezone || 'UTC');
+      if (
+        !(await isPairMember(
+          supabase,
+          pairCode,
+          authedId
+        ))
+      ) {
+        return json(
+          { error: 'Not a member' },
+          403,
+          request
+        );
+      }
 
-      const { data: members } = await supabase
-        .from('pair_users').select('*').eq('pair_code', pairCode);
+      const {
+        data: pair,
+        error: pairError,
+      } = await supabase
+        .from('pairs')
+        .select('*')
+        .eq('code', pairCode)
+        .maybeSingle();
 
-      const { data: tasks } = await supabase
-        .from('daily_tasks').select('*')
+      if (pairError) {
+        console.error(
+          'Pair query failed:',
+          pairError
+        );
+
+        return json(
+          { error: 'Failed to load pair' },
+          500,
+          request
+        );
+      }
+
+      if (!pair) {
+        return json(
+          { error: 'Pair not found' },
+          404,
+          request
+        );
+      }
+
+      const today = getTodayDate(
+        pair.timezone || 'UTC'
+      );
+
+      const {
+        data: members,
+        error: membersError,
+      } = await supabase
+        .from('pair_users')
+        .select('*')
+        .eq('pair_code', pairCode);
+
+      if (membersError) {
+        console.error(
+          'Pair members query failed:',
+          membersError
+        );
+
+        return json(
+          { error: 'Failed to load members' },
+          500,
+          request
+        );
+      }
+
+      const {
+        data: tasks,
+        error: tasksError,
+      } = await supabase
+        .from('daily_tasks')
+        .select('*')
         .eq('pair_code', pairCode)
-        .eq('user_id', userId)
+        .eq('user_id', authedId)
         .eq('task_date', today);
 
-      return json(formatPair(pair, members, tasks, userId));
+      if (tasksError) {
+        console.error(
+          'Daily tasks query failed:',
+          tasksError
+        );
+
+        return json(
+          { error: 'Failed to load tasks' },
+          500,
+          request
+        );
+      }
+
+      return json(
+        formatPair(
+          pair,
+          members || [],
+          tasks || [],
+          authedId
+        ),
+        200,
+        request
+      );
     }
 
     // ── GET /api/avatar/:userId ──
@@ -403,8 +1108,33 @@ export async function onRequest(context) {
         if (!okToken) return json({ error: 'Forbidden' }, 403);
       } else {
         // JSON-ответ со ссылкой отдаём только авторизованным
-        const avatarAuthedId = getAuthedUserId(request, env);
-        if (!avatarAuthedId) return json({ error: 'Unauthorized' }, 401);
+        const avatarAuthedId = getAuthedUserId(
+          request,
+          env
+        );
+
+        if (!avatarAuthedId) {
+          return json(
+            { error: 'Unauthorized' },
+            401,
+            request
+          );
+        }
+
+        const canViewAvatar =
+          await usersSharePair(
+            supabase,
+            avatarAuthedId,
+            tgUserId
+          );
+
+        if (!canViewAvatar) {
+          return json(
+            { error: 'Forbidden' },
+            403,
+            request
+          );
+        }
       }
 
             // Только аватары пользователей, которые состоят в паре, доступны.
@@ -2641,666 +3371,6 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       }
 
       return json({ success: true, timezone: tz });
-    }
-
-    // ── GET /api/game-score/:pairCode ──
-    // Возвращает рекорд пары и личный рекорд текущего пользователя.
-    if (
-      request.method === 'GET' &&
-      path.match(/^\/api\/game-score\/[^/]+$/)
-    ) {
-      const pairCode = path.split('/')[3];
-
-      const authedId = getAuthedUserId(request, env);
-
-      if (!authedId) {
-        return json({ error: 'Unauthorized' }, 401);
-      }
-
-      if (
-        !(await isPairMember(
-          supabase,
-          pairCode,
-          authedId,
-        ))
-      ) {
-        return json({ error: 'Not a member' }, 403);
-      }
-
-      const { data: pair, error: pairError } =
-        await supabase
-          .from('pairs')
-          .select('game_best_score')
-          .eq('code', pairCode)
-          .maybeSingle();
-
-      if (pairError) {
-        return json(
-          {
-            error:
-              'Pair score query failed: ' +
-              pairError.message,
-          },
-          500,
-        );
-      }
-
-      if (!pair) {
-        return json({ error: 'Pair not found' }, 404);
-      }
-
-      const { data: personalScore } =
-        await supabase
-          .from('jump_game_scores')
-          .select('best_score')
-          .eq('user_id', authedId)
-          .maybeSingle();
-
-      const personalBest =
-        personalScore?.best_score || 0;
-
-      let rank = null;
-
-      if (personalBest > 0) {
-        const {
-          count: higherScoresCount,
-          error: rankError,
-        } = await supabase
-          .from('jump_game_scores')
-          .select(
-            'user_id',
-            {
-              count: 'exact',
-              head: true,
-            },
-          )
-          .gt('best_score', personalBest);
-
-        if (!rankError) {
-          rank =
-            (higherScoresCount || 0) + 1;
-        }
-      }
-
-      return json({
-        best: pair.game_best_score || 0,
-        personalBest,
-        rank,
-      });
-    }
-
-    // ── GET /api/game-leaderboard ──
-    // Возвращает топ-50 и место текущего пользователя.
-    if (
-      request.method === 'GET' &&
-      path === '/api/game-leaderboard'
-    ) {
-      const authedId = getAuthedUserId(
-        request,
-        env,
-      );
-
-      if (!authedId) {
-        return json({ error: 'Unauthorized' }, 401);
-      }
-
-      const {
-        data: scores,
-        error: scoresError,
-      } = await supabase
-        .from('jump_game_scores')
-        .select(
-          [
-            'user_id',
-            'display_name',
-            'username',
-            'best_score',
-            'updated_at',
-          ].join(','),
-        )
-        .gt('best_score', 0)
-        .order(
-          'best_score',
-          {
-            ascending: false,
-          },
-        )
-        .order(
-          'updated_at',
-          {
-            ascending: true,
-          },
-        )
-        .limit(50);
-
-      if (scoresError) {
-        return json(
-          {
-            error:
-              'Leaderboard query failed: ' +
-              scoresError.message,
-          },
-          500,
-        );
-      }
-
-      let previousScore = null;
-      let previousRank = 0;
-
-      const leaders = (scores || []).map(
-        (row, index) => {
-          const rowScore =
-            Number(row.best_score) || 0;
-
-          const rank =
-            previousScore === rowScore
-              ? previousRank
-              : index + 1;
-
-          previousScore = rowScore;
-          previousRank = rank;
-
-          return {
-            rank,
-            userId: String(row.user_id),
-            displayName:
-              row.display_name || null,
-            username:
-              row.username || null,
-            score: rowScore,
-            isMe:
-              String(row.user_id) ===
-              String(authedId),
-          };
-        },
-      );
-
-      const { data: myScoreRow } =
-        await supabase
-          .from('jump_game_scores')
-          .select(
-            'best_score, display_name, username',
-          )
-          .eq('user_id', authedId)
-          .maybeSingle();
-
-      let me = null;
-
-      if (
-        myScoreRow &&
-        Number(myScoreRow.best_score) > 0
-      ) {
-        const personalBest =
-          Number(myScoreRow.best_score) || 0;
-
-        const {
-          count: higherScoresCount,
-          error: rankError,
-        } = await supabase
-          .from('jump_game_scores')
-          .select(
-            'user_id',
-            {
-              count: 'exact',
-              head: true,
-            },
-          )
-          .gt('best_score', personalBest);
-
-        if (rankError) {
-          return json(
-            {
-              error:
-                'Rank query failed: ' +
-                rankError.message,
-            },
-            500,
-          );
-        }
-
-        me = {
-          rank:
-            (higherScoresCount || 0) + 1,
-          userId: String(authedId),
-          displayName:
-            myScoreRow.display_name || null,
-          username:
-            myScoreRow.username || null,
-          score: personalBest,
-        };
-      }
-
-      return json({
-        leaders,
-        me,
-      });
-    }
-
-    // ── POST /api/game-score ──
-    // Сохраняет рекорд пары и личный рекорд пользователя.
-    if (
-      request.method === 'POST' &&
-      path === '/api/game-score'
-    ) {
-      const body = await request.json();
-
-      const userId = extractUserId(
-        request,
-        env,
-        body.userId,
-      );
-
-      if (!userId) {
-        return json({ error: 'Unauthorized' }, 401);
-      }
-
-      const pairCode =
-        body.pairCode || body.code;
-
-      const score = Math.floor(
-        Number(body.score),
-      );
-
-      if (!pairCode) {
-        return json(
-          {
-            error: 'pairCode required',
-          },
-          400,
-        );
-      }
-
-      if (
-        !Number.isFinite(score) ||
-        score < 0 ||
-        score > 100000
-      ) {
-        return json(
-          {
-            error: 'Invalid score',
-          },
-          400,
-        );
-      }
-
-      const {
-        data: membership,
-        error: membershipError,
-      } = await supabase
-        .from('pair_users')
-        .select(
-          'user_id, display_name, username',
-        )
-        .eq('pair_code', pairCode)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (membershipError) {
-        return json(
-          {
-            error:
-              'Membership query failed: ' +
-              membershipError.message,
-          },
-          500,
-        );
-      }
-
-      if (!membership) {
-        return json(
-          {
-            error: 'Not a member',
-          },
-          403,
-        );
-      }
-
-      /*
-       * Имя берём из Telegram initData.
-       * Если initData недоступен в локальной разработке,
-       * используем имя из pair_users.
-       */
-      let displayName =
-        membership.display_name || null;
-
-      let username =
-        membership.username || null;
-
-      const initDataRaw =
-        request.headers.get(
-          'X-Telegram-Init-Data',
-        );
-
-      if (initDataRaw) {
-        const validated =
-          validateInitData(
-            initDataRaw,
-            env.BOT_TOKEN,
-          );
-
-        if (
-          validated &&
-          String(validated.userId) ===
-            String(userId)
-        ) {
-          const telegramUser =
-            validated.user || {};
-
-          const fullName = [
-            telegramUser.first_name,
-            telegramUser.last_name,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .trim();
-
-          if (fullName) {
-            displayName =
-              fullName.slice(0, 64);
-          }
-
-          if (telegramUser.username) {
-            username = String(
-              telegramUser.username,
-            ).slice(0, 32);
-          }
-        }
-      }
-
-      displayName = displayName
-        ? String(displayName).slice(0, 64)
-        : null;
-
-      username = username
-        ? String(username).slice(0, 32)
-        : null;
-
-      /*
-       * Сохраняем личный рекорд.
-       * Оптимистическая проверка не позволяет
-       * более слабому результату затереть сильный.
-       */
-      let personalBest = 0;
-      let isPersonalRecord = false;
-
-      for (
-        let attempt = 0;
-        attempt < 3;
-        attempt += 1
-      ) {
-        const {
-          data: existingScore,
-          error: existingScoreError,
-        } = await supabase
-          .from('jump_game_scores')
-          .select('best_score')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (existingScoreError) {
-          return json(
-            {
-              error:
-                'Personal score query failed: ' +
-                existingScoreError.message,
-            },
-            500,
-          );
-        }
-
-        if (!existingScore) {
-          const {
-            data: insertedScore,
-            error: insertError,
-          } = await supabase
-            .from('jump_game_scores')
-            .insert({
-              user_id: userId,
-              display_name: displayName,
-              username,
-              best_score: score,
-              last_pair_code: pairCode,
-              updated_at:
-                new Date().toISOString(),
-            })
-            .select('best_score')
-            .maybeSingle();
-
-          if (insertedScore) {
-            personalBest =
-              insertedScore.best_score || 0;
-
-            isPersonalRecord =
-              score > 0;
-
-            break;
-          }
-
-          /*
-           * Если два запроса одновременно попытались
-           * создать строку, повторяем чтение и обновление.
-           */
-          if (
-            insertError?.code === '23505'
-          ) {
-            continue;
-          }
-
-          return json(
-            {
-              error:
-                'Personal score insert failed: ' +
-                (
-                  insertError?.message ||
-                  'Unknown error'
-                ),
-            },
-            500,
-          );
-        }
-
-        const currentPersonalBest =
-          existingScore.best_score || 0;
-
-        personalBest =
-          currentPersonalBest;
-
-        if (
-          score <= currentPersonalBest
-        ) {
-          /*
-           * Даже без нового рекорда обновляем имя,
-           * если оно изменилось в Telegram.
-           */
-          await supabase
-            .from('jump_game_scores')
-            .update({
-              display_name: displayName,
-              username,
-              last_pair_code: pairCode,
-            })
-            .eq('user_id', userId);
-
-          break;
-        }
-
-        const {
-          data: updatedScore,
-          error: updateError,
-        } = await supabase
-          .from('jump_game_scores')
-          .update({
-            display_name: displayName,
-            username,
-            best_score: score,
-            last_pair_code: pairCode,
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq('user_id', userId)
-          .eq(
-            'best_score',
-            currentPersonalBest,
-          )
-          .select('best_score')
-          .maybeSingle();
-
-        if (updateError) {
-          return json(
-            {
-              error:
-                'Personal score update failed: ' +
-                updateError.message,
-            },
-            500,
-          );
-        }
-
-        if (updatedScore) {
-          personalBest =
-            updatedScore.best_score || 0;
-
-          isPersonalRecord = true;
-          break;
-        }
-      }
-
-      /*
-       * После возможной гонки перечитываем
-       * окончательный личный рекорд.
-       */
-      const { data: finalPersonalScore } =
-        await supabase
-          .from('jump_game_scores')
-          .select('best_score')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      personalBest =
-        finalPersonalScore?.best_score ||
-        personalBest ||
-        0;
-
-      /*
-       * Сохраняем прежний общий рекорд пары.
-       */
-      const {
-        data: pair,
-        error: pairError,
-      } = await supabase
-        .from('pairs')
-        .select('game_best_score')
-        .eq('code', pairCode)
-        .maybeSingle();
-
-      if (pairError) {
-        return json(
-          {
-            error:
-              'Pair score query failed: ' +
-              pairError.message,
-          },
-          500,
-        );
-      }
-
-      if (!pair) {
-        return json(
-          {
-            error: 'Pair not found',
-          },
-          404,
-        );
-      }
-
-      const rawPairBest =
-        pair.game_best_score;
-
-      const currentPairBest =
-        rawPairBest || 0;
-
-      let best = currentPairBest;
-      let isRecord = false;
-
-      if (score > currentPairBest) {
-        let updateQuery = supabase
-          .from('pairs')
-          .update({
-            game_best_score: score,
-          })
-          .eq('code', pairCode);
-
-        /*
-         * Старые пары могут иметь NULL.
-         * eq('game_best_score', 0) не найдёт NULL,
-         * поэтому NULL проверяем отдельно.
-         */
-        updateQuery =
-          rawPairBest === null
-            ? updateQuery.is(
-                'game_best_score',
-                null,
-              )
-            : updateQuery.eq(
-                'game_best_score',
-                rawPairBest,
-              );
-
-        const { data: updatedPair } =
-          await updateQuery
-            .select('game_best_score')
-            .maybeSingle();
-
-        if (updatedPair) {
-          best =
-            updatedPair.game_best_score || 0;
-
-          isRecord = true;
-        } else {
-          const { data: rereadPair } =
-            await supabase
-              .from('pairs')
-              .select('game_best_score')
-              .eq('code', pairCode)
-              .maybeSingle();
-
-          best =
-            rereadPair?.game_best_score ||
-            currentPairBest;
-        }
-      }
-
-      let rank = null;
-
-      if (personalBest > 0) {
-        const {
-          count: higherScoresCount,
-        } = await supabase
-          .from('jump_game_scores')
-          .select(
-            'user_id',
-            {
-              count: 'exact',
-              head: true,
-            },
-          )
-          .gt(
-            'best_score',
-            personalBest,
-          );
-
-        rank =
-          (higherScoresCount || 0) + 1;
-      }
-
-      return json({
-        success: true,
-        best,
-        isRecord,
-        personalBest,
-        isPersonalRecord,
-        rank,
-      });
     }
 
     // ── Fallback 404 ──

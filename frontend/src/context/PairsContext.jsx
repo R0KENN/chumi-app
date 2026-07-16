@@ -1,137 +1,327 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { setInitDataGlobal } from './initDataStore';
 
 const API_URL = '/api';
-const PairsContext = createContext();
+const REQUEST_TIMEOUT = 15000;
 
-// Реэкспорт для обратной совместимости
+const PairsContext = createContext(null);
+
 export { getInitData } from './initDataStore';
 
 export function usePairs() {
-  return useContext(PairsContext);
+  const context = useContext(PairsContext);
+
+  if (!context) {
+    throw new Error(
+      'usePairs must be used inside PairsProvider'
+    );
+  }
+
+  return context;
 }
 
-// ─── DeviceStorage helpers (Bot API 9.0+) с localStorage fallback ───
-const ds = window.Telegram?.WebApp?.DeviceStorage;
+function isLocalDevelopment() {
+  return (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
+}
+
+function getDeviceStorage() {
+  return window.Telegram?.WebApp?.DeviceStorage || null;
+}
 
 async function dsGet(key) {
-  if (ds) {
+  const storage = getDeviceStorage();
+
+  if (storage) {
     try {
-      const val = await new Promise((resolve) => {
-        ds.getItem(key, (err, value) => {
-          if (err || !value) resolve(null);
-          else {
-            try { resolve(JSON.parse(value)); }
-            catch { resolve(null); }
+      const value = await new Promise((resolve) => {
+        storage.getItem(key, (error, storedValue) => {
+          if (error || !storedValue) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            resolve(JSON.parse(storedValue));
+          } catch {
+            resolve(null);
           }
         });
       });
-      if (val !== null) return val;
-    } catch {}
+
+      if (value !== null) {
+        return value;
+      }
+    } catch (error) {
+      console.warn(
+        `DeviceStorage read failed for "${key}":`,
+        error
+      );
+    }
   }
+
   try {
-    const stored = localStorage.getItem(`ds_${key}`);
-    if (stored) return JSON.parse(stored);
-  } catch {}
-  return null;
+    const storedValue = localStorage.getItem(`ds_${key}`);
+
+    if (!storedValue) {
+      return null;
+    }
+
+    return JSON.parse(storedValue);
+  } catch (error) {
+    console.warn(
+      `localStorage read failed for "${key}":`,
+      error
+    );
+
+    return null;
+  }
 }
 
 async function dsSet(key, value) {
-  const json = JSON.stringify(value);
-  if (ds) {
-    try { ds.setItem(key, json, () => {}); } catch {}
+  const serializedValue = JSON.stringify(value);
+  const storage = getDeviceStorage();
+
+  if (storage) {
+    try {
+      storage.setItem(
+        key,
+        serializedValue,
+        (error) => {
+          if (error) {
+            console.warn(
+              `DeviceStorage write failed for "${key}":`,
+              error
+            );
+          }
+        }
+      );
+    } catch (error) {
+      console.warn(
+        `DeviceStorage write failed for "${key}":`,
+        error
+      );
+    }
   }
-  try { localStorage.setItem(`ds_${key}`, json); } catch {}
+
+  try {
+    localStorage.setItem(
+      `ds_${key}`,
+      serializedValue
+    );
+  } catch (error) {
+    console.warn(
+      `localStorage write failed for "${key}":`,
+      error
+    );
+  }
 }
 
-export function PairsProvider({ children, telegramUserId, initData }) {
+async function readJsonResponse(response) {
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data.error ||
+      `Request failed with status ${response.status}`
+    );
+  }
+
+  return data;
+}
+
+export function PairsProvider({
+  children,
+  telegramUserId,
+  initData,
+}) {
   const [pairs, setPairs] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Store initData globally — теперь через initDataStore
   useEffect(() => {
-    setInitDataGlobal(initData);
+    setInitDataGlobal(initData || '');
   }, [initData]);
 
   const fetchPairs = useCallback(async () => {
-    if (!telegramUserId) return;
-    const ctrl = new AbortController();
-    const timeoutId = setTimeout(() => ctrl.abort(), 15000);
+    if (!telegramUserId) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+    }, REQUEST_TIMEOUT);
+
     try {
-      const devHeaders = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-        ? { 'X-Dev-User-Id': String(telegramUserId) }
-        : {};
-      const res = await fetch(`${API_URL}/pairs/${telegramUserId}`, {
-        headers: {
-          ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
-          ...devHeaders,
-        },
-        signal: ctrl.signal,
-      });
-      clearTimeout(timeoutId);
-      const data = await res.json();
-      const freshPairs = data.pairs || [];
+      const headers = {};
+
+      if (initData) {
+        headers['X-Telegram-Init-Data'] = initData;
+      }
+
+      if (isLocalDevelopment()) {
+        headers['X-Dev-User-Id'] =
+          String(telegramUserId);
+      }
+
+      const response = await fetch(
+        `${API_URL}/pairs/${encodeURIComponent(
+          telegramUserId
+        )}`,
+        {
+          headers,
+          signal: controller.signal,
+        }
+      );
+
+      const data = await readJsonResponse(response);
+
+      const freshPairs = Array.isArray(data.pairs)
+        ? data.pairs
+        : [];
+
       setPairs(freshPairs);
       setError(null);
-      dsSet(`pairs_${telegramUserId}`, freshPairs);
-      dsSet(`pairs_ts_${telegramUserId}`, Date.now());
-    } catch (e) {
-      clearTimeout(timeoutId);
-      if (e.name === 'AbortError') {
-        setError('Сеть слишком медленная. Проверь прокси или интернет.');
+
+      await Promise.allSettled([
+        dsSet(
+          `pairs_${telegramUserId}`,
+          freshPairs
+        ),
+        dsSet(
+          `pairs_ts_${telegramUserId}`,
+          Date.now()
+        ),
+      ]);
+    } catch (requestError) {
+      if (requestError.name === 'AbortError') {
+        setError(
+          'Сеть слишком медленная. Проверь интернет, VPN или прокси.'
+        );
       } else {
-        setError(e.message);
+        console.error(
+          'Failed to load pairs:',
+          requestError
+        );
+
+        setError(
+          requestError.message ||
+          'Не удалось загрузить пары'
+        );
       }
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [telegramUserId, initData]);
 
   useEffect(() => {
-    if (!telegramUserId) return;
-    (async () => {
-      const cached = await dsGet(`pairs_${telegramUserId}`);
-      if (cached && Array.isArray(cached) && cached.length > 0) {
-        setPairs(cached);
+    if (!telegramUserId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const initialize = async () => {
+      const cachedPairs = await dsGet(
+        `pairs_${telegramUserId}`
+      );
+
+      if (
+        !cancelled &&
+        Array.isArray(cachedPairs)
+      ) {
+        setPairs(cachedPairs);
         setLoading(false);
       }
-      fetchPairs();
-    })();
+
+      if (!cancelled) {
+        await fetchPairs();
+      }
+    };
+
+    initialize();
+
+    return () => {
+      cancelled = true;
+    };
   }, [telegramUserId, fetchPairs]);
 
-    // Обновляем пары, когда пользователь возвращается в приложение
   useEffect(() => {
-    if (!telegramUserId) return;
-    const onVisible = () => {
+    if (!telegramUserId) {
+      return undefined;
+    }
+
+    const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchPairs();
       }
     };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+
+    document.addEventListener(
+      'visibilitychange',
+      handleVisibilityChange
+    );
+
+    return () => {
+      document.removeEventListener(
+        'visibilitychange',
+        handleVisibilityChange
+      );
+    };
   }, [telegramUserId, fetchPairs]);
 
+  const addPair = useCallback((newPair) => {
+    setPairs((currentPairs) => [
+      ...(currentPairs || []),
+      newPair,
+    ]);
+  }, []);
 
-  const addPair = (newPair) => {
-    setPairs(prev => [...(prev || []), newPair]);
-  };
+  const updatePair = useCallback(
+    (pairId, updates) => {
+      setPairs((currentPairs) =>
+        (currentPairs || []).map((pair) =>
+          pair.code === pairId
+            ? { ...pair, ...updates }
+            : pair
+        )
+      );
+    },
+    []
+  );
 
-  const updatePair = (pairId, updates) => {
-    setPairs(prev => (prev || []).map(p =>
-      p.code === pairId ? { ...p, ...updates } : p
-    ));
-  };
-
-  const value = {
-    pairs: pairs || [],
-    loading,
-    error,
-    addPair,
-    updatePair,
-    refreshPairs: fetchPairs,
-    initData: initData || '',
-  };
+  const value = useMemo(
+    () => ({
+      pairs: pairs || [],
+      loading,
+      error,
+      addPair,
+      updatePair,
+      refreshPairs: fetchPairs,
+      initData: initData || '',
+    }),
+    [
+      pairs,
+      loading,
+      error,
+      addPair,
+      updatePair,
+      fetchPairs,
+      initData,
+    ]
+  );
 
   return (
     <PairsContext.Provider value={value}>

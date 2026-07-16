@@ -144,76 +144,110 @@ function App() {
 
     // Обновляем таймзону на сервере при каждом запуске (но не чаще раза в сутки)
   useEffect(() => {
-    if (!telegramUserId) return;
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (!tz) return;
-      const lastSent = localStorage.getItem('chumi_tz_sent_at');
-      const lastTz = localStorage.getItem('chumi_tz_value');
-      const now = Date.now();
-      if (lastTz === tz && lastSent && (now - parseInt(lastSent, 10)) < 86400000) return;
+    if (!telegramUserId) {
+      return undefined;
+    }
 
-      const headers = { 'Content-Type': 'application/json' };
-      if (initData) headers['X-Telegram-Init-Data'] = initData;
-      fetch('/api/update-timezone', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ userId: telegramUserId, timezone: tz }),
-      }).then(() => {
-        localStorage.setItem('chumi_tz_sent_at', String(now));
-        localStorage.setItem('chumi_tz_value', tz);
-      }).catch(() => {});
-    } catch (e) {}
+    const controller = new AbortController();
+
+    const updateTimezone = async () => {
+      try {
+        const timezone =
+          Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone;
+
+        if (!timezone) {
+          return;
+        }
+
+        const lastSent = localStorage.getItem(
+          'chumi_tz_sent_at'
+        );
+
+        const lastTimezone = localStorage.getItem(
+          'chumi_tz_value'
+        );
+
+        const now = Date.now();
+        const parsedLastSent = Number(lastSent);
+
+        const wasRecentlySent =
+          lastTimezone === timezone &&
+          Number.isFinite(parsedLastSent) &&
+          now - parsedLastSent < 86400000;
+
+        if (wasRecentlySent) {
+          return;
+        }
+
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+
+        if (initData) {
+          headers['X-Telegram-Init-Data'] =
+            initData;
+        }
+
+        if (
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1'
+        ) {
+          headers['X-Dev-User-Id'] =
+            String(telegramUserId);
+        }
+
+        const response = await fetch(
+          '/api/update-timezone',
+          {
+            method: 'POST',
+            headers,
+            signal: controller.signal,
+            body: JSON.stringify({
+              userId: telegramUserId,
+              timezone,
+            }),
+          }
+        );
+
+        const data = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+            `Timezone update failed: ${response.status}`
+          );
+        }
+
+        localStorage.setItem(
+          'chumi_tz_sent_at',
+          String(now)
+        );
+
+        localStorage.setItem(
+          'chumi_tz_value',
+          timezone
+        );
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error(
+            'Timezone update failed:',
+            error
+          );
+        }
+      }
+    };
+
+    updateTimezone();
+
+    return () => {
+      controller.abort();
+    };
   }, [telegramUserId, initData]);
 
-  if (window.__tgSdkFailed) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif', maxWidth: 360, margin: '0 auto' }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>🌐</div>
-        <h3 style={{ marginBottom: 12 }}>Не удалось загрузить Telegram</h3>
-        <p style={{ color: '#666', fontSize: 14, lineHeight: 1.5, marginBottom: 20 }}>
-          Похоже, твой прокси или VPN блокирует <code>telegram.org</code>.
-          Попробуй отключить прокси в Telegram (Настройки → Данные и память → Прокси)
-          или переключиться на другой.
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          style={{ padding: '12px 24px', borderRadius: 12, border: 'none', background: '#9B72CF', color: '#fff', fontSize: 15, cursor: 'pointer' }}
-        >
-          Перезагрузить
-        </button>
-      </div>
-    );
-  }
-
-if (!telegramUserId) {
-  // Пока не определён пользователь — показываем спиннер.
-  // На проде technical-дамп не показываем; для отладки можно временно
-  // включить его через ?diag=1 в URL.
-  const tgw = window.Telegram?.WebApp;
-  const showDiag = new URLSearchParams(window.location.search).get('diag') === '1';
-
-  if (showDiag) {
-    return (
-      <div style={{ padding: 24, fontSize: 13, fontFamily: 'monospace', wordBreak: 'break-all', color: '#333' }}>
-        <div>DIAG (нет telegramUserId)</div>
-        <div>WebApp exists: {String(!!tgw)}</div>
-        <div>user id: {String(tgw?.initDataUnsafe?.user?.id)}</div>
-        <div>initData len: {String((tgw?.initData || '').length)}</div>
-        <div>platform: {String(tgw?.platform)}</div>
-        <div>version: {String(tgw?.version)}</div>
-        <div>hash: {String((window.location.hash || '').slice(0, 80))}</div>
-        <div>sdkFailed: {String(!!window.__tgSdkFailed)}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="sk-loading">
-      <div className="sk-spinner" />
-    </div>
-  );
-}
 
     // ── Гостевой режим: приложение открыто вне Telegram ──
   // SDK не упал (иначе сработал бы __tgSdkFailed выше), но настоящего
