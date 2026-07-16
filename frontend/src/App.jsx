@@ -68,7 +68,7 @@ function App() {
   const [telegramUserId, setTelegramUserId] = useState(null);
   const [initData, setInitData] = useState('');
   const [telegramSdkFailed, setTelegramSdkFailed] = useState(false);
-  const [telegramError, setTelegramError] = useState('');
+  const [telegramError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +91,76 @@ function App() {
       }
 
       if (cancelled) return;
+
+  useEffect(() => {
+    if (!telegramUserId) return;
+
+    const updateTimezone = async () => {
+      try {
+        const timezone =
+          Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+        if (!timezone) return;
+
+        const lastSentRaw =
+          localStorage.getItem('chumi_tz_sent_at');
+
+        const lastTimezone =
+          localStorage.getItem('chumi_tz_value');
+
+        const lastSent = Number(lastSentRaw);
+        const now = Date.now();
+
+        const wasSentRecently =
+          Number.isFinite(lastSent) &&
+          now - lastSent < 24 * 60 * 60 * 1000;
+
+        if (
+          lastTimezone === timezone &&
+          wasSentRecently
+        ) {
+          return;
+        }
+
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+
+        if (initData) {
+          headers['X-Telegram-Init-Data'] = initData;
+        }
+
+        const response = await fetch('/api/update-timezone', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            userId: telegramUserId,
+            timezone,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Timezone update failed with HTTP ${response.status}`,
+          );
+        }
+
+        localStorage.setItem(
+          'chumi_tz_sent_at',
+          String(now),
+        );
+
+        localStorage.setItem(
+          'chumi_tz_value',
+          timezone,
+        );
+      } catch (error) {
+        console.warn('Timezone update failed:', error);
+      }
+    };
+
+    updateTimezone();
+  }, [telegramUserId, initData]);
 
   if (telegramSdkFailed) {
         setTelegramSdkFailed(true);
@@ -276,77 +346,6 @@ function App() {
       </div>
     );
   }
-
-  useEffect(() => {
-    if (!telegramUserId) return;
-
-    const updateTimezone = async () => {
-      try {
-        const timezone =
-          Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-        if (!timezone) return;
-
-        const lastSentRaw =
-          localStorage.getItem('chumi_tz_sent_at');
-
-        const lastTimezone =
-          localStorage.getItem('chumi_tz_value');
-
-        const lastSent = Number(lastSentRaw);
-        const now = Date.now();
-
-        const wasSentRecently =
-          Number.isFinite(lastSent) &&
-          now - lastSent < 24 * 60 * 60 * 1000;
-
-        if (
-          lastTimezone === timezone &&
-          wasSentRecently
-        ) {
-          return;
-        }
-
-        const headers = {
-          'Content-Type': 'application/json',
-        };
-
-        if (initData) {
-          headers['X-Telegram-Init-Data'] = initData;
-        }
-
-        const response = await fetch('/api/update-timezone', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            userId: telegramUserId,
-            timezone,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(
-            `Timezone update failed with HTTP ${response.status}`,
-          );
-        }
-
-        localStorage.setItem(
-          'chumi_tz_sent_at',
-          String(now),
-        );
-
-        localStorage.setItem(
-          'chumi_tz_value',
-          timezone,
-        );
-      } catch (error) {
-        console.warn('Timezone update failed:', error);
-      }
-    };
-
-    updateTimezone();
-  }, [telegramUserId, initData]);
-
 
     // ── Гостевой режим: приложение открыто вне Telegram ──
   // SDK не упал (иначе сработал бы __tgSdkFailed выше), но настоящего

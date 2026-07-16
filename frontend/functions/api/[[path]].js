@@ -305,7 +305,7 @@ async function isPairMember(supabase, pairCode, userId) {
   return !!data;
 }
 
-async function usersSharePair(
+async function _usersSharePair(
   supabase,
   firstUserId,
   secondUserId
@@ -2573,7 +2573,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
 
     // ── GET /api/user-lang/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/user-lang\/[^/]+$/)) {
-      const userId = path.split('/')[3];
+      const _userId = path.split('/')[3];
 
       // Язык — некритичные данные, нужные на самом старте (ещё до полной
       // инициализации). Если initData недоступен, не валим старт ошибкой —

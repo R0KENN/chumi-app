@@ -878,11 +878,82 @@ if (startParam.startsWith('ref_')) {
 
     // /create
     if (text === '/create') {
-      const maxPairs = await getMaxPairs(supabase, userId);
-      const isAdmin = ADMIN_IDS.includes(userId);
-      const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
-      if (!isAdmin && existing && existing.length >= maxPairs) { await sendMessage(env, chatId, T[lang].maxPairs(existing.length, maxPairs), webAppButton); return new Response('OK'); }
-      const code = await generateUniqueCode(supabase);
+      const maxPairs = await getMaxPairs(
+        supabase,
+        userId,
+      );
+
+      const isAdmin =
+        ADMIN_IDS.includes(userId);
+
+      const {
+        data: existing,
+        error: existingError,
+      } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq('user_id', userId);
+
+      if (existingError) {
+        console.error(
+          'Failed to load user pairs:',
+          existingError,
+        );
+
+        await sendMessage(
+          env,
+          chatId,
+          lang === 'ru'
+            ? '❌ Не удалось проверить список пар. Попробуй позже.'
+            : '❌ Failed to check your pairs. Please try again later.',
+          webAppButton,
+        );
+
+        return new Response('OK');
+      }
+
+      if (
+        !isAdmin &&
+        existing &&
+        existing.length >= maxPairs
+      ) {
+        await sendMessage(
+          env,
+          chatId,
+          T[lang].maxPairs(
+            existing.length,
+            maxPairs,
+          ),
+          webAppButton,
+        );
+
+        return new Response('OK');
+      }
+
+      let code;
+
+      try {
+        code = await generateUniqueCode(
+          supabase,
+        );
+      } catch (error) {
+        console.error(
+          'Failed to generate pair code:',
+          error,
+        );
+
+        await sendMessage(
+          env,
+          chatId,
+          lang === 'ru'
+            ? '❌ Не удалось создать код пары. Попробуй позже.'
+            : '❌ Failed to generate a pair code. Please try again later.',
+          webAppButton,
+        );
+
+        return new Response('OK');
+      }
+
       const {
         error: pairInsertError,
       } = await supabase
@@ -896,23 +967,28 @@ if (startParam.startsWith('ref_')) {
           bg_id: 'room',
           pet_name: null,
           streak_recoveries_used: 0,
-          last_recovery_month: null,
-          last_streak_date: null,
           is_dead: false,
-          timezone: userTz,
+          timezone: null,
+          last_streak_date: null,
+          last_pair_streak_date: null,
         });
 
       if (pairInsertError) {
         console.error(
-          'Pair insert failed:',
+          'Failed to create pair:',
           pairInsertError,
         );
 
-        return json(
-          { error: 'Failed to create pair' },
-          500,
-          request,
+        await sendMessage(
+          env,
+          chatId,
+          lang === 'ru'
+            ? '❌ Не удалось создать пару. Попробуй позже.'
+            : '❌ Failed to create the pair. Please try again later.',
+          webAppButton,
         );
+
+        return new Response('OK');
       }
 
       const {
@@ -922,22 +998,17 @@ if (startParam.startsWith('ref_')) {
         .insert({
           pair_code: code,
           user_id: userId,
-          display_name: displayName,
+          display_name: firstName,
           username,
-          timezone: userTz,
+          timezone: null,
         });
 
       if (memberInsertError) {
         console.error(
-          'Pair member insert failed:',
+          'Failed to add pair owner:',
           memberInsertError,
         );
 
-        /*
-         * Компенсирующее удаление. Это не заменяет
-         * настоящую транзакцию, но не оставляет
-         * пустую пару при обычной ошибке.
-         */
         const {
           error: rollbackError,
         } = await supabase
@@ -947,40 +1018,86 @@ if (startParam.startsWith('ref_')) {
 
         if (rollbackError) {
           console.error(
-            'Pair rollback failed:',
+            'Failed to roll back pair creation:',
             rollbackError,
           );
         }
 
-        return json(
-          { error: 'Failed to add pair owner' },
-          500,
-          request,
+        await sendMessage(
+          env,
+          chatId,
+          lang === 'ru'
+            ? '❌ Не удалось добавить тебя в пару. Попробуй ещё раз.'
+            : '❌ Failed to add you to the pair. Please try again.',
+          webAppButton,
         );
+
+        return new Response('OK');
       }
 
-      // ── Засчитываем pending-реферал, если он есть ──
-      const { data: pending } = await supabase
+      // Засчитываем pending-реферал.
+      const {
+        data: pending,
+      } = await supabase
         .from('pending_referrals')
         .select('inviter_user_id')
         .eq('invited_user_id', userId)
         .maybeSingle();
+
       if (pending?.inviter_user_id) {
-        await supabase.from('user_referrals').insert({
-          inviter_user_id: pending.inviter_user_id,
-          invited_user_id: userId,
-          pair_code: code,
-        }).then(() => {}, () => {});
-        await supabase.from('pending_referrals')
-          .delete()
-          .eq('invited_user_id', userId);
+        const {
+          error: referralInsertError,
+        } = await supabase
+          .from('user_referrals')
+          .insert({
+            inviter_user_id:
+              pending.inviter_user_id,
+            invited_user_id: userId,
+            pair_code: code,
+          });
+
+        if (referralInsertError) {
+          console.warn(
+            'Failed to save referral:',
+            referralInsertError,
+          );
+        } else {
+          const {
+            error: pendingDeleteError,
+          } = await supabase
+            .from('pending_referrals')
+            .delete()
+            .eq(
+              'invited_user_id',
+              userId,
+            );
+
+          if (pendingDeleteError) {
+            console.warn(
+              'Failed to delete pending referral:',
+              pendingDeleteError,
+            );
+          }
+        }
       }
 
-      const botUser = env.BOT_USERNAME || 'ChumiPetBot';
-      await sendMessage(env, chatId, T[lang].pairCreated(code), inviteButton(code, lang, botUser));
+      const botUsername =
+        env.BOT_USERNAME ||
+        'ChumiPetBot';
+
+      await sendMessage(
+        env,
+        chatId,
+        T[lang].pairCreated(code),
+        inviteButton(
+          code,
+          lang,
+          botUsername,
+        ),
+      );
+
       return new Response('OK');
     }
-
 
     // /join
     if (text.startsWith('/join')) {

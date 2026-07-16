@@ -339,15 +339,31 @@ useEffect(() => {
 
     // Заголовки для GET-запросов: только авторизация, без Content-Type
   // (чтобы не провоцировать лишний CORS-preflight).
-  const authGetHeaders = () => {
+  const authGetHeaders = useCallback(() => {
     const headers = {};
-    const initData = getInitData();
-    if (initData) headers['X-Telegram-Init-Data'] = initData;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      headers['X-Dev-User-Id'] = String(userId);
+    const currentInitData = getInitData();
+
+    if (currentInitData) {
+      headers['X-Telegram-Init-Data'] =
+        currentInitData;
     }
+
+    const isLocalDevelopment =
+      window.location.hostname ===
+        'localhost' ||
+      window.location.hostname ===
+        '127.0.0.1';
+
+    if (
+      isLocalDevelopment &&
+      userId
+    ) {
+      headers['X-Dev-User-Id'] =
+        String(userId);
+    }
+
     return headers;
-  };
+  }, [userId]);
 
   // FIX #8: корректный haptic с поддержкой notification типов
   const haptic = (type = 'medium') => {
