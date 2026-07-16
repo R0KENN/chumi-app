@@ -36,10 +36,14 @@ const PHYSICS = {
    * Мягкое управление удержанием:
    * питомец плавно набирает горизонтальную скорость,
    * сохраняя возможность быстро изменить направление.
+   *
+   * Сниженная чувствительность для более комфортного управления:
+   * меньше maxSpeed/acceleration → мягче отклик,
+   * ниже friction → быстрее гасится инерция после отпускания.
    */
-  acceleration: 1400,
-  maxSpeed: 270,
-  friction: 0.82,
+  acceleration: 1000,
+  maxSpeed: 200,
+  friction: 0.75,
   step: 1 / 60,
 };
 
@@ -2635,8 +2639,9 @@ export default function JumpGame() {
      * из-за микродвижений удерживаемого пальца.
      * Координату обновляем только после выхода
      * из мёртвой зоны, поэтому движение накапливается.
+     * Увеличена для менее чувствительного управления.
      */
-    if (Math.abs(movementX) < 10) {
+    if (Math.abs(movementX) < 16) {
       return;
     }
 
@@ -2672,6 +2677,7 @@ export default function JumpGame() {
     game.pointer.active = false;
     game.pointer.pointerId = null;
     game.pointer.direction = 0;
+    game.pointer.lastX = null;
 
     try {
       if (

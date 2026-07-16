@@ -563,21 +563,20 @@ useEffect(() => {
   ]);
 
   const loadRankingAvatars = useCallback((entries) => {
-    const ids = new Set();
-    entries.forEach(r => { if (r.members) r.members.forEach(m => ids.add(m.user_id)); });
-    ids.forEach(async (uid) => {
-      if (rankingAvatarsRef.current[uid]) return;
-      rankingAvatarsRef.current[uid] = true;
-      try {
-        const r = await fetch(`${API}/avatar/${uid}`, { headers: authGetHeaders() });
-        const d = await r.json();
-        if (d.avatar_url) {
-          rankingAvatarsRef.current[uid] = d.avatar_url;
-          setRankingAvatars(p => ({ ...p, [uid]: d.avatar_url }));
-        }
-      } catch (e) {}
+    // avatar_url приходит прямо в данных рейтинга (подписанные ссылки с сервера),
+    // поэтому просто раскладываем их в state — без запроса на каждый user_id.
+    const next = {};
+    entries.forEach(r => {
+      if (r.members) {
+        r.members.forEach(m => {
+          if (m.avatar_url) next[m.user_id] = m.avatar_url;
+        });
+      }
     });
-  }, [authGetHeaders]);
+    if (Object.keys(next).length > 0) {
+      setRankingAvatars(p => ({ ...p, ...next }));
+    }
+  }, []);
 
   const loadRanking = async () => {
     setRankingLoading(true);

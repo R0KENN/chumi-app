@@ -594,8 +594,10 @@ export async function onRequestPost(context) {
 
       // Цена берётся из общего модуля _prices.js — единый источник правды
       // для скинов (по skinId) и товаров (extra_slot и т.п.).
+      // Как и в pre_checkout: неизвестный продукт (expected === undefined)
+      // считаем невалидным и товар не выдаём — иначе сумма не проверяется вообще.
       const expected = expectedAmount(productKey, pSkinId);
-      if (expected !== undefined && payment.total_amount !== expected) {
+      if (!Number.isFinite(expected) || payment.total_amount !== expected) {
         console.error(`Payment amount mismatch: got ${payment.total_amount}, expected ${expected}`);
         return new Response('OK');
       }

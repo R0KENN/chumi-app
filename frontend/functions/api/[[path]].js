@@ -1048,8 +1048,8 @@ export async function onRequest(context) {
 
       // ── Авторизация: запросить пары можно только за самого себя ──
       const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403, request);
 
       const { data: userPairs } = await supabase
         .from('pair_users')
@@ -1379,15 +1379,13 @@ export async function onRequest(context) {
                 }),
                 {
                   status: 404,
-                  headers: corsHeaders(
-                    request,
-                    {
-                      'Content-Type':
-                        'application/json',
-                      'Cache-Control':
-                        'no-store',
-                    },
-                  ),
+                  headers: {
+                    ...corsHeaders(request),
+                    'Content-Type':
+                      'application/json',
+                    'Cache-Control':
+                      'no-store',
+                  },
                 },
               );
             }
@@ -2291,12 +2289,21 @@ try {
         .select('pair_code, user_id, display_name, username')
         .in('pair_code', codes);
 
+      // Временные подписанные ссылки на аватарки: действуют 1 час, показываются
+      // всем, кто получил рейтинг (не требуют общей пары с целевым юзером).
+      const avatarExpiresAt = Date.now() + 60 * 60 * 1000;
+      const buildAvatarUrl = async (uid) => {
+        const sig = await makeAvatarToken(env.BOT_TOKEN, String(uid), avatarExpiresAt);
+        return `/api/avatar/${encodeURIComponent(String(uid))}?proxy=1&exp=${avatarExpiresAt}&sig=${sig}`;
+      };
+
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
         if (!membersByPair.has(m.pair_code)) membersByPair.set(m.pair_code, []);
         membersByPair.get(m.pair_code).push({
           user_id: m.user_id,
           display_name: m.display_name || null,
+          avatar_url: await buildAvatarUrl(m.user_id),
         });
       }
 
@@ -2340,12 +2347,19 @@ try {
         .select('pair_code, user_id, display_name, username')
         .in('pair_code', codes);
 
+      const avatarExpiresAt = Date.now() + 60 * 60 * 1000;
+      const buildAvatarUrl = async (uid) => {
+        const sig = await makeAvatarToken(env.BOT_TOKEN, String(uid), avatarExpiresAt);
+        return `/api/avatar/${encodeURIComponent(String(uid))}?proxy=1&exp=${avatarExpiresAt}&sig=${sig}`;
+      };
+
       const membersByPair = new Map();
       for (const m of (allMembers || [])) {
         if (!membersByPair.has(m.pair_code)) membersByPair.set(m.pair_code, []);
         membersByPair.get(m.pair_code).push({
           user_id: m.user_id,
           display_name: m.display_name || null,
+          avatar_url: await buildAvatarUrl(m.user_id),
         });
       }
 
