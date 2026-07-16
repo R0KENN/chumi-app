@@ -822,19 +822,38 @@ export async function onRequest(context) {
       );
 
       /*
-       * Аватары участников рейтинга доступны публично.
+       * <img> не может отправить X-Telegram-Init-Data,
+       * поэтому создаём для каждой аватарки временную
+       * подписанную ссылку.
        *
-       * Сам avatar-endpoint дополнительно проверяет,
-       * что пользователь действительно присутствует
-       * в таблице игровых результатов.
+       * Ссылка доступна любому пользователю,
+       * получившему результат рейтинга, и действует 1 час.
+       * Само изображение отдельно кешируется браузером/CDN.
        */
-      const leaders = rankedLeaders.map(
-        leader => ({
-          ...leader,
-          avatarUrl:
+      const avatarExpiresAt =
+        Date.now() + 60 * 60 * 1000;
+
+      const leaders = await Promise.all(
+        rankedLeaders.map(async leader => {
+          const avatarSignature =
+            await makeAvatarToken(
+              env.BOT_TOKEN,
+              leader.userId,
+              avatarExpiresAt,
+            );
+
+          const avatarUrl =
             `/api/avatar/${encodeURIComponent(
               leader.userId,
-            )}?proxy=1&leaderboard=1`,
+            )}` +
+            `?proxy=1` +
+            `&exp=${avatarExpiresAt}` +
+            `&sig=${avatarSignature}`;
+
+          return {
+            ...leader,
+            avatarUrl,
+          };
         }),
       );
 
