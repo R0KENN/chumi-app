@@ -325,8 +325,10 @@ function App() {
                 /*
                  * Dynamic Island/status bar плюс
                  * верхние управляющие кнопки Telegram.
+                 * Понижено, чтобы верхняя панель приложения
+                 * не уезжала слишком низко под панель Telegram.
                  */
-                fullscreenTopFallback = 112;
+                fullscreenTopFallback = 92;
               } else if (isIPad) {
                 /*
                  * На iPad верхняя панель обычно ниже,
@@ -381,12 +383,13 @@ function App() {
              * --chumi-top-pad используется основным
              * экраном питомца.
              *
-             * Добавляем 12px, чтобы элементы не просто
+             * Добавляем 6px, чтобы элементы не просто
              * касались панели Telegram, а имели небольшой
-             * визуальный промежуток.
+             * визуальный промежуток. Значение понижено,
+             * чтобы верхняя панель располагалась выше.
              */
             const contentTop =
-              Math.max(16, topInset + 12);
+              Math.max(16, topInset + 6);
 
             document.documentElement.style.setProperty(
               '--chumi-top-pad',

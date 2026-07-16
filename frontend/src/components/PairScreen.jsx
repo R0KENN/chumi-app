@@ -1807,10 +1807,14 @@ const renderPet = () => (
         <div className="sk-info-row-right">
           <div className="sk-avatars">
             <div className="sk-ava glass-circle">
-              {avatars[userId] ? <img src={avatars[userId]} alt="" onError={e => e.target.style.display='none'} /> : <span>👤</span>}
+              {avatars[userId]
+                ? <img src={avatars[userId]} alt="" onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<span>👤</span>'); }} />
+                : <span>👤</span>}
             </div>
             <div className="sk-ava sk-ava-partner glass-circle">
-              {partner && avatars[partner.user_id] ? <img src={avatars[partner.user_id]} alt="" onError={e => e.target.style.display='none'} /> : <span>👤</span>}
+              {partner && avatars[partner.user_id]
+                ? <img src={avatars[partner.user_id]} alt="" onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<span>👤</span>'); }} />
+                : <span>👤</span>}
             </div>
           </div>
         </div>
@@ -2226,7 +2230,9 @@ if (tab.key === 'game') {
                         if (sorted.length === 0) return <div className="sk-ranking-ava"><span style={{ fontSize: 14 }}>👤</span></div>;
                         return sorted.map((m, idx) => (
                           <div key={m.user_id} className="sk-ranking-ava" style={{ zIndex: sorted.length - idx }}>
-                            {rankingAvatars[m.user_id] ? <img src={rankingAvatars[m.user_id]} alt="" onError={e => e.target.style.display='none'} /> : <span style={{ fontSize: 14 }}>👤</span>}
+                            {rankingAvatars[m.user_id]
+                              ? <img src={rankingAvatars[m.user_id]} alt="" onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', '<span style="font-size:14px">👤</span>'); }} />
+                              : <span style={{ fontSize: 14 }}>👤</span>}
                           </div>
                         ));
                       })()}
