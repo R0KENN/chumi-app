@@ -9,6 +9,29 @@ import {
   IconSun, IconMoon, IconGame,
 } from './Icons';
 
+function buildAuthGetHeaders(userId) {
+  const headers = {};
+  const currentInitData = getInitData();
+
+  if (currentInitData) {
+    headers['X-Telegram-Init-Data'] =
+      currentInitData;
+  }
+
+  const isLocalDevelopment =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1';
+
+  if (
+    isLocalDevelopment &&
+    userId
+  ) {
+    headers['X-Dev-User-Id'] =
+      String(userId);
+  }
+
+  return headers;
+}
 
 const API = '/api';
 const ADMIN_IDS = ['713156118'];
@@ -339,31 +362,10 @@ useEffect(() => {
 
     // Заголовки для GET-запросов: только авторизация, без Content-Type
   // (чтобы не провоцировать лишний CORS-preflight).
-  const authGetHeaders = useCallback(() => {
-    const headers = {};
-    const currentInitData = getInitData();
-
-    if (currentInitData) {
-      headers['X-Telegram-Init-Data'] =
-        currentInitData;
-    }
-
-    const isLocalDevelopment =
-      window.location.hostname ===
-        'localhost' ||
-      window.location.hostname ===
-        '127.0.0.1';
-
-    if (
-      isLocalDevelopment &&
-      userId
-    ) {
-      headers['X-Dev-User-Id'] =
-        String(userId);
-    }
-
-    return headers;
-  }, [userId]);
+  const authGetHeaders = useCallback(
+    () => buildAuthGetHeaders(userId),
+    [userId],
+  );
 
   // FIX #8: корректный haptic с поддержкой notification типов
   const haptic = (type = 'medium') => {

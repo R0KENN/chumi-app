@@ -822,44 +822,6 @@ export default function JumpGame() {
   });
 
   useEffect(() => {
-    const pauseGame = () => {
-      setState((currentState) =>
-        currentState === STATE.RUNNING
-          ? STATE.PAUSED
-          : currentState
-      );
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') {
-        pauseGame();
-      }
-    };
-
-    window.addEventListener(
-      'chumi-game-deactivated',
-      pauseGame,
-    );
-
-    document.addEventListener(
-      'visibilitychange',
-      handleVisibilityChange,
-    );
-
-    return () => {
-      window.removeEventListener(
-        'chumi-game-deactivated',
-        pauseGame,
-      );
-
-      document.removeEventListener(
-        'visibilitychange',
-        handleVisibilityChange,
-      );
-    };
-  }, []);
-
-  useEffect(() => {
     const tg = window.Telegram?.WebApp;
 
     if (!tg) {
@@ -2128,13 +2090,13 @@ body: JSON.stringify({
         game.previousTime = timestamp;
       }
 
-      const frameDelta = Math.min(
-  0.05,
-  Math.max(
-    0,
-    (timestamp - game.previousTime) / 1000,
-  ),
-);
+      const frameTime = Math.min(
+        0.05,
+        Math.max(
+          0,
+          (timestamp - game.previousTime) / 1000,
+        ),
+      );
 
       game.previousTime = timestamp;
 
