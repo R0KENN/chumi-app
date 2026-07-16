@@ -274,9 +274,21 @@ function App() {
             const contentSafeBottom =
               Number(tg.contentSafeAreaInset?.bottom) || 0;
 
+            /*
+             * В fullscreen Telegram показывает поверх приложения
+             * собственную верхнюю панель: закрытие/сворачивание и меню.
+             *
+             * На некоторых Android WebView
+             * contentSafeAreaInset.top ошибочно остаётся равным нулю.
+             * Поэтому в fullscreen резервируем минимум 60px.
+             */
+            const fullscreenTopFallback =
+              tg.isFullscreen ? 60 : 0;
+
             const topInset = Math.max(
               safeTop,
               contentSafeTop,
+              fullscreenTopFallback,
             );
 
             const bottomInset = Math.max(
@@ -284,6 +296,11 @@ function App() {
               contentSafeBottom,
             );
 
+            /*
+             * Эту переменную использует игра.
+             * В JumpGame.css к ней дополнительно прибавляется 12px,
+             * поэтому HUD окажется примерно на высоте 72px.
+             */
             document.documentElement.style.setProperty(
               '--chumi-safe-top',
               `${topInset}px`,
@@ -295,12 +312,12 @@ function App() {
             );
 
             /*
-             * Эта переменная уже используется основным экраном приложения.
-             * Оставляем минимум 16px для браузера и десктопного Telegram.
+             * Основной экран питомца не добавляет собственный
+             * отступ к переменной, поэтому добавляем здесь 12px.
              */
             document.documentElement.style.setProperty(
               '--chumi-top-pad',
-              `${Math.max(16, topInset)}px`,
+              `${Math.max(16, topInset + 12)}px`,
             );
           };
 
@@ -352,6 +369,23 @@ function App() {
           ) {
             try {
               tg.requestFullscreen();
+
+              /*
+               * Некоторые версии Telegram не сразу присылают
+               * fullscreenChanged. Повторно проверяем состояние
+               * после завершения fullscreen-анимации.
+               */
+              window.setTimeout(() => {
+                if (!cancelled) {
+                  updateTelegramInsets?.();
+                }
+              }, 300);
+
+              window.setTimeout(() => {
+                if (!cancelled) {
+                  updateTelegramInsets?.();
+                }
+              }, 800);
             } catch (error) {
               handleFullscreenFailed(error);
             }

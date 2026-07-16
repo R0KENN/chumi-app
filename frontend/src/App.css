@@ -82,12 +82,17 @@ html, body {
 
 /* ── Info row — СДВИНУТО НИЖЕ чтобы не пересекалось с кнопками бота ── */
 .sk-info-row {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
   width: 100%;
-  padding-top: calc(
-    env(safe-area-inset-top, 0px) +
+
+  padding-top: max(
+    env(safe-area-inset-top, 0px),
     var(--chumi-top-pad, 16px)
   );
+
   padding-bottom: 8px;
 }
 .sk-info-row-left {
