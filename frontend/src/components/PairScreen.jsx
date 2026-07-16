@@ -156,8 +156,18 @@ export default function PairScreen() {
   const { lang, setLang } = useLang();
   const { pairs, refreshPairs } = usePairs();
   const tg = window.Telegram?.WebApp;
-  const userId = String(tg?.initDataUnsafe?.user?.id || localStorage.getItem('chumi_test_uid') || 'guest');
+  const userId = String(
+    tg?.initDataUnsafe?.user?.id ||
+    localStorage.getItem('chumi_test_uid') ||
+    'guest',
+  );
+
   const isAdmin = ADMIN_IDS.includes(userId);
+
+  const authGetHeaders = useCallback(
+    () => buildAuthGetHeaders(userId),
+    [userId],
+  );
 
   const [pair, setPair] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -284,7 +294,7 @@ const loadCalendar = useCallback(async (month) => {
     const data = await res.json();
     if (!data.error) setCalendarData(data);
   } catch (e) {}
-}, [pairId]);
+}, [pairId, authGetHeaders]);
 
 const changeMonth = (delta) => {
   const [y, m] = calendarMonth.split('-').map(Number);
@@ -304,13 +314,23 @@ const [diarySaving, setDiarySaving] = useState(false);
 
 const loadDiary = useCallback(async () => {
   setDiaryLoading(true);
+
   try {
-    const res = await fetch(`${API}/diary/${pairId}`, { headers: authGetHeaders() });
+    const res = await fetch(
+      `${API}/diary/${pairId}`,
+      {
+        headers: authGetHeaders(),
+      },
+    );
+
     const data = await res.json();
     setDiaryEntries(data.entries || []);
-  } catch (e) {}
-  finally { setDiaryLoading(false); }
-}, [pairId]);
+  } catch (error) {
+    console.error('Failed to load diary:', error);
+  } finally {
+    setDiaryLoading(false);
+  }
+}, [pairId, authGetHeaders]);
 
 useEffect(() => {
   if (showDiary) loadDiary();
@@ -360,10 +380,8 @@ useEffect(() => {
     return headers;
   };
 
-    // Заголовки для GET-запросов: только авторизация, без Content-Type
-  // (чтобы не провоцировать лишний CORS-preflight).
-  const authGetHeaders = () =>
-    buildAuthGetHeaders(userId);
+  // Заголовки для GET-запросов создаются через стабильный
+  // authGetHeaders, объявленный в начале компонента.
 
   // FIX #8: корректный haptic с поддержкой notification типов
   const haptic = (type = 'medium') => {
@@ -503,9 +521,17 @@ useEffect(() => {
       setLoadError(true);
     }
     finally { setLoading(false); }
-  }, [pairId, userId, navigate, completeTask]);
+  }, [
+    pairId,
+    userId,
+    navigate,
+    completeTask,
+    authGetHeaders,
+  ]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (isAdmin) { setMaxPairs(999); return; }
@@ -516,7 +542,11 @@ useEffect(() => {
         if (data.maxPairs) setMaxPairs(data.maxPairs);
       } catch (e) {}
     })();
-  }, [userId, isAdmin]);
+  }, [
+    userId,
+    isAdmin,
+    authGetHeaders,
+  ]);
 
   useEffect(() => {
     if (!pair?.members) return;
@@ -527,7 +557,10 @@ useEffect(() => {
         if (data.avatar_url) setAvatars(prev => ({ ...prev, [m.user_id]: data.avatar_url }));
       } catch (e) {}
     });
-  }, [pair?.members]);
+  }, [
+    pair?.members,
+    authGetHeaders,
+  ]);
 
   const loadRankingAvatars = useCallback((entries) => {
     const ids = new Set();
@@ -544,7 +577,7 @@ useEffect(() => {
         }
       } catch (e) {}
     });
-  }, []);
+  }, [authGetHeaders]);
 
   const loadRanking = async () => {
     setRankingLoading(true);
@@ -586,7 +619,13 @@ useEffect(() => {
         if (typeof data.remaining === 'number') setRecoveriesLeft(data.remaining);
       } catch (e) {}
     })();
-  }, [pairId, pair?.is_dead, pair?.streak_recoveries_used, pair?.last_recovery_month]);
+  }, [
+    pairId,
+    pair?.is_dead,
+    pair?.streak_recoveries_used,
+    pair?.last_recovery_month,
+    authGetHeaders,
+  ]);
 
 
   // ══════ Хелпер: оборачиваем квадратную карточку в формат Stories 9:16 ──

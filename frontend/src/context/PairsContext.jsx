@@ -430,6 +430,12 @@ export function PairsProvider({
     clearPairsCache,
   ]);
 
+  const refreshPairs = useCallback(() => {
+    return fetchPairs({
+      showLoading: true,
+    });
+  }, [fetchPairs]);
+
   useEffect(() => {
     if (!telegramUserId) {
       setPairs([]);
