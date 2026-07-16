@@ -7,7 +7,7 @@ import CreatePairModal from './CreatePairModal';
 import JoinPairModal from './JoinPairModal';
 
 export default function PairSelector() {
-  const { pairs, loading } = usePairs();
+  const { loading } = usePairs();
   const { t } = useLang();
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);

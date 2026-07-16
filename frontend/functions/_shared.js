@@ -34,10 +34,10 @@ export async function generateUniqueCode(supabase, attempts = 10) {
 
 // ── Экранирование Markdown (legacy parse_mode: 'Markdown') ──
 // Обратный слеш экранируем ПЕРВЫМ, иначе он испортит уже добавленные слеши.
-export function escapeMd(s) {
-  return String(s || '')
+export function escapeMd(value) {
+  return String(value || '')
     .replace(/\\/g, '\\\\')
-    .replace(/([_*`\[\]])/g, '\\$1');
+    .replace(/([_*`[\]])/g, '\\$1');
 }
 
 // ── Лимит пар ──

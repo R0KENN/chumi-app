@@ -317,21 +317,6 @@ const handleSaveDiary = async () => {
   finally { setDiarySaving(false); }
 };
 
-const handleDeleteDiary = async (entryId) => {
-  try {
-    const res = await fetch(`${API}/diary-delete`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ userId, entryId }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      haptic('light');
-      await loadDiary();
-    }
-  } catch (e) {}
-};
-
 // Когда открывается календарь — сбрасываем месяц на текущий
 useEffect(() => {
   if (showCalendar) {
@@ -1159,7 +1144,7 @@ const POSTCARD_BACKGROUNDS = [
 ];
 
   // Открытка 1080×1920 (тот же размер что и Stories) — фон + полароид
-const generatePostcard = () => new Promise(async (resolve) => {
+const generatePostcard = async () => {
   const W = 1080, H = 1440;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
@@ -1178,8 +1163,11 @@ const generatePostcard = () => new Promise(async (resolve) => {
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.textAlign = 'right';
   ctx.fillText('@ChumiPetBot', W - 28, H - 22);
-  resolve(canvas.toDataURL('image/jpeg', 0.85));
-});
+  return canvas.toDataURL(
+    'image/jpeg',
+    0.85
+  );
+};
 
 const wrapPostcardForStory = () => new Promise((resolve) => {
   const W = 1080, H = 1920;

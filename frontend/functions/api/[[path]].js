@@ -19,6 +19,15 @@ const TASK_POINTS = {
   pet_touch: 1,
 };
 
+async function isPremium(
+  _supabase,
+  userId
+) {
+  return ADMIN_IDS.includes(
+    String(userId)
+  );
+}
+
 // Дата YYYY-MM-DD в указанной таймзоне (UTC по умолчанию)
 function getTodayDate(tz) {
   const date = new Date();

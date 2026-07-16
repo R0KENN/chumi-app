@@ -2212,31 +2212,6 @@ body: JSON.stringify({
     }
   }, [createGameSession, lang]);
 
-  const startGame = useCallback(() => {
-    const width = Math.max(
-      280,
-      window.innerWidth,
-    );
-
-    const height = Math.max(
-      480,
-      window.innerHeight,
-    );
-
-    const game = makeGame(width, height);
-    game.state = STATE.COUNTDOWN;
-
-    gameRef.current = game;
-    renderedScoreRef.current = 0;
-
-    setScore(0);
-    setIsNewRecord(false);
-    setCountdown(3);
-    setScreen(STATE.COUNTDOWN);
-
-    haptic('light');
-  }, [haptic]);
-
   const pauseGame = () => {
     const game = gameRef.current;
 
