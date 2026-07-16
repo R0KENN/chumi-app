@@ -1364,12 +1364,19 @@ export async function onRequest(context) {
         if (wantProxy === '1') {
           const avatarUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
           const imgRes = await fetch(avatarUrl);
-          if (!imgRes.ok) {
-            await supabase.from('pair_users')
-              .update({ avatar_file_path: null })
-              .eq('user_id', tgUserId);
-            return json({ avatar_url: null });
-          }
+      if (!imgRes.ok) {
+        await supabase.from('pair_users')
+          .update({ avatar_file_path: null })
+          .eq('user_id', tgUserId);
+
+        /*
+         * Сохранённый Telegram file_path мог устареть.
+         * Повторяем тот же подписанный запрос после очистки кеша.
+         * На следующем запросе сервер заново выполнит
+         * getUserProfilePhotos и getFile.
+         */
+        return Response.redirect(request.url, 307);
+      }
           const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
           const imgBuffer = await imgRes.arrayBuffer();
           return new Response(imgBuffer, {

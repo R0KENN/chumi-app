@@ -1004,7 +1004,7 @@ export default function JumpGame() {
         title: 'Прыжок Chumi',
         subtitle: 'Поднимайся как можно выше',
         play: 'Играть',
-        control: 'Удерживай левую или правую половину',
+        control: 'Удерживай палец и веди влево или вправо',
         fragile: 'Оранжевые платформы ломаются',
         spike: 'Не приземляйся на шипы',
         rocket: 'Ракета подбросит тебя выше',
@@ -1030,7 +1030,7 @@ export default function JumpGame() {
         title: 'Chumi Jump',
         subtitle: 'Climb as high as you can',
         play: 'Play',
-        control: 'Hold the left or right side',
+        control: 'Hold and move left or right',
         fragile: 'Orange platforms break',
         spike: 'Do not land on spikes',
         rocket: 'Rockets boost you higher',
@@ -1753,8 +1753,8 @@ export default function JumpGame() {
        * Правая половина экрана:
        * direction === 1.
        *
-       * Координата пальца не используется, поэтому
-       * вести пальцем за питомцем не нужно.
+       * Пока палец удерживается, pointerMove
+       * позволяет менять направление без отпускания.
        */
       if (
         game.pointer.active &&
@@ -2537,12 +2537,12 @@ export default function JumpGame() {
   };
 
   /*
-   * Управление начинается при удержании
-   * левой или правой половины canvas.
+   * Управление начинается при касании canvas.
    *
-   * Перемещать палец не требуется:
-   * направление определяется в момент нажатия
-   * и сохраняется до отпускания.
+   * Начальное направление определяется
+   * по месту касания. Затем пользователь
+   * может менять его, двигая палец между
+   * половинами canvas без отпускания.
    */
   const pointerDown = event => {
     const game = gameRef.current;
@@ -2601,14 +2601,20 @@ export default function JumpGame() {
   };
 
   /*
-   * Движение пальца намеренно игнорируется.
-   * Для управления достаточно удерживать экран.
+   * Пока палец удерживается, направление
+   * меняется по его текущему положению.
+   *
+   * Палец можно непрерывно вести между
+   * левой и правой половинами canvas,
+   * не отпуская его.
    */
   const pointerMove = event => {
     const game = gameRef.current;
+    const canvas = canvasRef.current;
 
     if (
       !game?.pointer.active ||
+      !canvas ||
       game.pointer.pointerId !==
         event.pointerId
     ) {
@@ -2616,6 +2622,21 @@ export default function JumpGame() {
     }
 
     event.preventDefault();
+
+    const rect =
+      canvas.getBoundingClientRect();
+
+    if (rect.width <= 0) {
+      return;
+    }
+
+    const localPointerX =
+      event.clientX - rect.left;
+
+    game.pointer.direction =
+      localPointerX < rect.width / 2
+        ? -1
+        : 1;
   };
 
   const pointerUp = event => {
@@ -2990,6 +3011,9 @@ export default function JumpGame() {
                                 loading="lazy"
                                 decoding="async"
                                 referrerPolicy="no-referrer"
+                                onLoad={event => {
+                                  event.currentTarget.hidden = false;
+                                }}
                                 onError={event => {
                                   event.currentTarget.hidden = true;
                                 }}
