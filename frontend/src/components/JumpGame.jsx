@@ -1315,15 +1315,16 @@ export default function JumpGame() {
     setScreen(STATE.OVER);
     setScore(finalScore);
 
+    /*
+     * Локальная предварительная оценка нового личного рекорда
+     * (до ответа сервера). Точный результат придёт из RPC
+     * в поле isPersonalRecord ниже.
+     */
     const localRecord =
-      finalScore > bestRef.current &&
+      finalScore > personalBest &&
       finalScore > 0;
 
     setIsNewRecord(localRecord);
-
-    if (localRecord) {
-      saveBest(finalScore);
-    }
 
     haptic('error');
 
@@ -1368,24 +1369,13 @@ export default function JumpGame() {
       })
       .then(data => {
         if (
-          typeof data.best === 'number'
-        ) {
-          saveBest(
-            Math.max(
-              bestRef.current,
-              data.best,
-            ),
-          );
-        }
-
-        if (
-          typeof data.isRecord === 'boolean'
+          typeof data.isPersonalRecord === 'boolean'
         ) {
           setIsNewRecord(
-            data.isRecord,
+            data.isPersonalRecord,
           );
 
-          if (data.isRecord) {
+          if (data.isPersonalRecord) {
             haptic('success');
           }
         }
@@ -1460,15 +1450,6 @@ export default function JumpGame() {
         return data;
       })
       .then(data => {
-        if (
-          !cancelled &&
-          typeof data.best === 'number'
-        ) {
-          saveBest(
-            Math.max(bestRef.current, data.best),
-          );
-        }
-
         if (
           !cancelled &&
           typeof data.personalBest === 'number'
@@ -2723,7 +2704,7 @@ export default function JumpGame() {
 
         <div className="jump-game-best-card">
           <span>🏆</span>
-          <strong>{bestScore}</strong>
+          <strong>{personalBest}</strong>
         </div>
 
         {screen === STATE.RUNNING ? (
@@ -2851,16 +2832,9 @@ export default function JumpGame() {
             </div>
 
             <div className="jump-game-result-best">
-              <span>{t.best}</span>
-              <strong>🏆 {bestScore}</strong>
+              <span>{t.personalBest}</span>
+              <strong>🏆 {personalBest}</strong>
             </div>
-
-            {personalBest > 0 && (
-              <div className="jump-game-result-best">
-                <span>{t.personalBest}</span>
-                <strong>{personalBest}</strong>
-              </div>
-            )}
 
             <button
               className="jump-game-primary-button"
@@ -2988,11 +2962,7 @@ export default function JumpGame() {
 
                     const name =
                       leader.displayName ||
-                      (
-                        leader.username
-                          ? `@${leader.username}`
-                          : t.player
-                      );
+                      t.player;
 
                     return (
                       <div
@@ -3039,13 +3009,6 @@ export default function JumpGame() {
                             <strong>
                               {name}
                             </strong>
-
-                            {leader.username &&
-                              leader.displayName && (
-                                <span>
-                                  @{leader.username}
-                                </span>
-                              )}
                           </div>
                         </div>
 

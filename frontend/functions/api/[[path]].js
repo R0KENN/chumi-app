@@ -650,28 +650,6 @@ export async function onRequest(context) {
       }
 
       const {
-        data: pair,
-        error: pairError,
-      } = await supabase
-        .from('pairs')
-        .select('game_best_score')
-        .eq('code', pairCode)
-        .maybeSingle();
-
-      if (pairError) {
-        console.error(
-          'Pair score query failed:',
-          pairError
-        );
-
-        return json(
-          { error: 'Failed to load pair score' },
-          500,
-          request
-        );
-      }
-
-      const {
         data: personal,
         error: personalError,
       } = await supabase
@@ -722,8 +700,6 @@ export async function onRequest(context) {
 
       return json(
         {
-          best:
-            Number(pair?.game_best_score) || 0,
           personalBest,
           rank,
         },
@@ -1033,6 +1009,48 @@ export async function onRequest(context) {
           clientError ? 400 : 500,
           request
         );
+      }
+
+      // ── Уведомление партнёру о новом личном рекорде ──
+      // isPersonalRecord приходит из RPC finish_jump_game. Шлём партнёру
+      // сообщение «установил новый личный рекорд: N». Не роняем сохранение
+      // счёта, если Telegram-отправка не удалась.
+      if (data && data.isPersonalRecord === true && score > 0) {
+        try {
+          const { data: recordMembers } = await supabase
+            .from('pair_users')
+            .select('user_id')
+            .eq('pair_code', pairCode);
+
+          const recordPartner = (recordMembers || [])
+            .find(m => String(m.user_id) !== String(userId));
+
+          if (recordPartner) {
+            const { data: recordPs } = await supabase
+              .from('user_settings')
+              .select('lang')
+              .eq('telegram_user_id', recordPartner.user_id)
+              .maybeSingle();
+
+            const recordLang = recordPs?.lang || 'ru';
+            const recordPlayerName = displayName
+              || (recordLang === 'ru' ? 'Партнёр' : 'Partner');
+            const safeRecordPlayer = escapeMd(recordPlayerName);
+
+            const recordText = recordLang === 'ru'
+              ? `🏆 *${safeRecordPlayer}* установил новый личный рекорд в игре: *${score}* очков! 🎮`
+              : `🏆 *${safeRecordPlayer}* set a new personal best in the game: *${score}* points! 🎮`;
+            const recordBtn = recordLang === 'ru' ? '🎮 Играть' : '🎮 Play';
+
+            await sendTelegramMessage(env, recordPartner.user_id, recordText, {
+              reply_markup: {
+                inline_keyboard: [[{ text: recordBtn, web_app: { url: 'https://chumi.space' } }]],
+              },
+            });
+          }
+        } catch (notifyError) {
+          console.error('Game record notify error:', notifyError);
+        }
       }
 
       return json(
