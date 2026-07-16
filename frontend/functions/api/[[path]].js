@@ -783,16 +783,37 @@ export async function onRequest(context) {
         );
       }
 
+      let previousScore = null;
+      let previousRank = 0;
+
       const leaders = (rows || []).map(
-        (row, index) => ({
-          rank: index + 1,
-          userId: String(row.user_id),
-          displayName:
-            row.display_name || 'Player',
-          username: row.username || null,
-          score:
-            Number(row.best_score) || 0,
-        })
+        (row, index) => {
+          const rowScore =
+            Number(row.best_score) || 0;
+
+          const rank =
+            previousScore === rowScore
+              ? previousRank
+              : index + 1;
+
+          previousScore = rowScore;
+          previousRank = rank;
+
+          return {
+            rank,
+            userId:
+              String(row.user_id),
+            displayName:
+              row.display_name ||
+              'Player',
+            username:
+              row.username || null,
+            score: rowScore,
+            isMe:
+              String(row.user_id) ===
+              String(userId),
+          };
+        },
       );
 
       const {
@@ -1321,7 +1342,11 @@ export async function onRequest(context) {
         }
 
         {
-          const exp = Date.now() + 24 * 60 * 60 * 1000; // ссылка живёт 24 часа
+          // Подписанная ссылка действует 10 минут.
+          // Само изображение кешируется браузером и CDN отдельно.
+          const exp =
+            Date.now() +
+            10 * 60 * 1000;
           const sig = await makeAvatarToken(BOT_TOKEN, tgUserId, exp);
           return json({ avatar_url: `/api/avatar/${tgUserId}?proxy=1&exp=${exp}&sig=${sig}` });
         }

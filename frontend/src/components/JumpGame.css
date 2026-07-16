@@ -891,8 +891,13 @@
   .jump-game-overlay {
     align-items: flex-start;
 
-    padding-top:
-      calc(env(safe-area-inset-top, 0px) + 64px);
+    padding-top: calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--tg-content-safe-area-inset-top, 0px),
+        var(--chumi-safe-top, 0px)
+      ) + 64px
+    );
   }
 
   .jump-game-panel {
@@ -1266,11 +1271,23 @@
     calc(
       max(
         env(safe-area-inset-top, 0px),
+        var(--tg-content-safe-area-inset-top, 0px),
         var(--chumi-safe-top, 0px)
       ) + 12px
     )
-    10px
-    0;
+    calc(
+      max(
+        env(safe-area-inset-right, 0px),
+        var(--tg-content-safe-area-inset-right, 0px)
+      ) + 10px
+    )
+    0
+    calc(
+      max(
+        env(safe-area-inset-left, 0px),
+        var(--tg-content-safe-area-inset-left, 0px)
+      ) + 10px
+    );
 }
 
 /*
@@ -1284,14 +1301,27 @@
     calc(
       max(
         env(safe-area-inset-top, 0px),
+        var(--tg-content-safe-area-inset-top, 0px),
         var(--chumi-safe-top, 0px)
       ) + 70px
     )
-    18px
+    calc(
+      max(
+        env(safe-area-inset-right, 0px),
+        var(--tg-content-safe-area-inset-right, 0px)
+      ) + 18px
+    )
     calc(
       max(
         env(safe-area-inset-bottom, 0px),
+        var(--tg-content-safe-area-inset-bottom, 0px),
         var(--chumi-safe-bottom, 0px)
+      ) + 18px
+    )
+    calc(
+      max(
+        env(safe-area-inset-left, 0px),
+        var(--tg-content-safe-area-inset-left, 0px)
       ) + 18px
     );
 }
