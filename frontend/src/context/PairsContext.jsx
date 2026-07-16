@@ -153,71 +153,80 @@ export function PairsProvider({
   }, [initData]);
 
   const fetchPairs = useCallback(async () => {
-    if (!telegramUserId) {
-      return;
-    }
+    if (!telegramUserId) return;
 
     const controller = new AbortController();
 
     const timeoutId = window.setTimeout(() => {
       controller.abort();
-    }, REQUEST_TIMEOUT);
+    }, 15000);
+
+    setLoading(true);
 
     try {
+      const isLocalhost =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
+
       const headers = {};
 
       if (initData) {
         headers['X-Telegram-Init-Data'] = initData;
       }
 
-      if (isLocalDevelopment()) {
-        headers['X-Dev-User-Id'] =
-          String(telegramUserId);
+      if (isLocalhost) {
+        headers['X-Dev-User-Id'] = String(telegramUserId);
       }
 
       const response = await fetch(
-        `${API_URL}/pairs/${encodeURIComponent(
-          telegramUserId
-        )}`,
+        `${API_URL}/pairs/${encodeURIComponent(telegramUserId)}`,
         {
+          method: 'GET',
           headers,
           signal: controller.signal,
         }
       );
 
-      const data = await readJsonResponse(response);
+      const data = await response
+        .json()
+        .catch(() => ({}));
 
-      const freshPairs = Array.isArray(data.pairs)
-        ? data.pairs
-        : [];
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          data.message ||
+          `Не удалось загрузить пары: HTTP ${response.status}`
+        );
+      }
+
+      const freshPairs =
+        Array.isArray(data.pairs)
+          ? data.pairs
+          : [];
 
       setPairs(freshPairs);
       setError(null);
 
-      await Promise.allSettled([
-        dsSet(
-          `pairs_${telegramUserId}`,
-          freshPairs
-        ),
-        dsSet(
-          `pairs_ts_${telegramUserId}`,
-          Date.now()
-        ),
-      ]);
+      await dsSet(
+        `pairs_${telegramUserId}`,
+        freshPairs
+      );
+
+      await dsSet(
+        `pairs_ts_${telegramUserId}`,
+        Date.now()
+      );
     } catch (requestError) {
       if (requestError.name === 'AbortError') {
         setError(
-          'Сеть слишком медленная. Проверь интернет, VPN или прокси.'
+          'Сервер не ответил вовремя. Проверь интернет и попробуй ещё раз.'
         );
       } else {
-        console.error(
-          'Failed to load pairs:',
-          requestError
-        );
+        console.error('Unable to load pairs:', requestError);
 
         setError(
           requestError.message ||
-          'Не удалось загрузить пары'
+          'Не удалось загрузить пары.'
         );
       }
     } finally {
@@ -225,38 +234,6 @@ export function PairsProvider({
       setLoading(false);
     }
   }, [telegramUserId, initData]);
-
-  useEffect(() => {
-    if (!telegramUserId) {
-      return undefined;
-    }
-
-    let cancelled = false;
-
-    const initialize = async () => {
-      const cachedPairs = await dsGet(
-        `pairs_${telegramUserId}`
-      );
-
-      if (
-        !cancelled &&
-        Array.isArray(cachedPairs)
-      ) {
-        setPairs(cachedPairs);
-        setLoading(false);
-      }
-
-      if (!cancelled) {
-        await fetchPairs();
-      }
-    };
-
-    initialize();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [telegramUserId, fetchPairs]);
 
   useEffect(() => {
     if (!telegramUserId) {

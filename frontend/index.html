@@ -10,183 +10,42 @@
 
     <title>Chumi — Вырасти питомца вместе!</title>
 
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="/favicon.svg"
-    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-    <link
-      rel="preconnect"
-      href="https://fonts.googleapis.com"
-    />
-
-    <link
-      rel="preconnect"
-      href="https://fonts.gstatic.com"
-      crossorigin
-    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
     <link
       href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap"
       rel="stylesheet"
     />
 
-    <meta
-      property="og:title"
-      content="Chumi 🐾"
-    />
-
+    <!-- Open Graph -->
+    <meta property="og:title" content="Chumi 🐾" />
     <meta
       property="og:description"
       content="Заведи питомца и расти его вместе с другом! Выполняй задания каждый день."
     />
-
     <meta
       property="og:image"
       content="https://chumi.space/pets/og-preview.png"
     />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://chumi.space" />
 
-    <meta
-      property="og:image:width"
-      content="1200"
-    />
-
-    <meta
-      property="og:image:height"
-      content="630"
-    />
-
-    <meta
-      property="og:type"
-      content="website"
-    />
-
-    <meta
-      property="og:url"
-      content="https://chumi.space"
-    />
-
-    <script>
-      (function () {
-        var isLocal =
-          location.hostname === 'localhost' ||
-          location.hostname === '127.0.0.1';
-
-        if (!isLocal) {
-          var script = document.createElement('script');
-
-          script.src = '/telegram-web-app.js';
-
-          script.onerror = function () {
-            window.__tgSdkFailed = true;
-          };
-
-          document.head.appendChild(script);
-          return;
-        }
-
-        var testUserId = 999000001;
-
-        try {
-          var savedUserId = localStorage.getItem('chumi_test_uid');
-
-          if (savedUserId && /^\d+$/.test(savedUserId)) {
-            testUserId = Number(savedUserId);
-          } else {
-            localStorage.setItem(
-              'chumi_test_uid',
-              String(testUserId)
-            );
-          }
-        } catch (error) {
-          console.warn(
-            'Unable to initialize local Telegram user ID:',
-            error
-          );
-        }
-
-        window.Telegram = {
-          WebApp: {
-            initData: '',
-            initDataUnsafe: {
-              user: {
-                id: testUserId,
-                first_name: 'Test',
-                username: 'chumi_test',
-                language_code: 'ru'
-              }
-            },
-            ready: function () {},
-            expand: function () {},
-            close: function () {},
-            setHeaderColor: function () {},
-            setBackgroundColor: function () {},
-            setBottomBarColor: function () {},
-            disableVerticalSwipes: function () {},
-            isVersionAtLeast: function () {
-              return false;
-            },
-            isFullscreen: false,
-            requestFullscreen: function () {},
-            platform: 'web',
-            version: '9.0',
-            colorScheme: 'light',
-            themeParams: {},
-            HapticFeedback: {
-              impactOccurred: function () {},
-              notificationOccurred: function () {},
-              selectionChanged: function () {}
-            },
-            MainButton: {
-              show: function () {},
-              hide: function () {},
-              enable: function () {},
-              disable: function () {},
-              setText: function () {},
-              onClick: function () {},
-              offClick: function () {}
-            },
-            SecondaryButton: {
-              show: function () {},
-              hide: function () {},
-              enable: function () {},
-              disable: function () {},
-              setText: function () {},
-              onClick: function () {},
-              offClick: function () {}
-            },
-            BackButton: {
-              show: function () {},
-              hide: function () {},
-              onClick: function () {},
-              offClick: function () {}
-            },
-            onEvent: function () {},
-            offEvent: function () {},
-            openInvoice: function () {},
-            openLink: function () {},
-            openTelegramLink: function () {},
-            showAlert: function (message) {
-              window.alert(message);
-            },
-            showConfirm: function (message, callback) {
-              callback(window.confirm(message));
-            },
-            CloudStorage: null,
-            DeviceStorage: null
-          }
-        };
-      })();
-    </script>
+    <!--
+      Telegram SDK подключается обычным синхронным тегом.
+      Не создавайте этот script через document.createElement:
+      React может запуститься раньше SDK и не получить initData.
+    -->
+    <script src="/telegram-web-app.js"></script>
   </head>
 
   <body>
     <div id="root"></div>
 
-    <script
-      type="module"
-      src="/src/main.jsx"
-    ></script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -2,41 +2,106 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './App.css';
 
-// ── Локальный мок Telegram (только на localhost) ──
-if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-  const wa = window.Telegram && window.Telegram.WebApp;
-  const hasUser = wa && wa.initDataUnsafe && wa.initDataUnsafe.user && wa.initDataUnsafe.user.id;
-  if (!hasUser) {
+const isLocalhost =
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1';
+
+// Локальный Telegram mock.
+// В production этот блок никогда не выполняется.
+if (isLocalhost) {
+  const existingWebApp = window.Telegram?.WebApp;
+  const existingUserId = existingWebApp?.initDataUnsafe?.user?.id;
+
+  if (!existingUserId) {
     const noop = () => {};
-    const realMethods = {
+
+    const mockWebApp = {
       initData: '',
-      initDataUnsafe: { user: { id: 713156118, first_name: 'Test', language_code: 'ru' } },
+
+      initDataUnsafe: {
+        user: {
+          id: 999000001,
+          first_name: 'Local',
+          last_name: 'Tester',
+          username: 'local_tester',
+          language_code: 'ru',
+        },
+      },
+
       platform: 'web',
-      isFullscreen: false,
-      version: '6.0',
+      version: '9.0',
       colorScheme: 'light',
       themeParams: {},
+      isFullscreen: false,
+
+      ready: noop,
+      expand: noop,
+      close: noop,
+      disableVerticalSwipes: noop,
+      enableVerticalSwipes: noop,
+
       isVersionAtLeast: () => false,
-      HapticFeedback: { impactOccurred: noop, notificationOccurred: noop, selectionChanged: noop },
-      MainButton: { hide: noop, show: noop, setText: noop, onClick: noop },
-      SecondaryButton: { hide: noop, show: noop, setText: noop, onClick: noop },
-      BackButton: { hide: noop, show: noop, onClick: noop },
-      showAlert: (m) => alert(m),
+
+      requestFullscreen: noop,
+      exitFullscreen: noop,
+
+      setHeaderColor: noop,
+      setBackgroundColor: noop,
+      setBottomBarColor: noop,
+
+      onEvent: noop,
+      offEvent: noop,
+
+      openInvoice: noop,
+      openLink: noop,
+      openTelegramLink: noop,
+
+      showAlert: message => window.alert(message),
       showConfirm: noop,
+
+      HapticFeedback: {
+        impactOccurred: noop,
+        notificationOccurred: noop,
+        selectionChanged: noop,
+      },
+
+      MainButton: {
+        hide: noop,
+        show: noop,
+        setText: noop,
+        onClick: noop,
+        offClick: noop,
+      },
+
+      SecondaryButton: {
+        hide: noop,
+        show: noop,
+        setText: noop,
+        onClick: noop,
+        offClick: noop,
+      },
+
+      BackButton: {
+        hide: noop,
+        show: noop,
+        onClick: noop,
+        offClick: noop,
+      },
+
       CloudStorage: null,
       DeviceStorage: null,
+      SecureStorage: null,
     };
-    // Proxy: любой НЕ определённый выше метод возвращает пустую функцию,
-    // чтобы приложение не падало на вызове несуществующего метода SDK.
-    const mock = new Proxy(realMethods, {
-      get(target, prop) {
-        if (prop in target) return target[prop];
-        return noop;
-      },
-    });
+
     window.Telegram = window.Telegram || {};
-    window.Telegram.WebApp = mock;
+    window.Telegram.WebApp = mockWebApp;
   }
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error('Root element #root was not found');
+}
+
+ReactDOM.createRoot(rootElement).render(<App />);
