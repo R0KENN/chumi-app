@@ -22,28 +22,70 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
   };
 
   const handleCreate = async () => {
+    if (loading) return;
+
     setLoading(true);
     setError('');
+
     try {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const res = await fetch('/api/create', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ userId: String(userId), displayName, username, timezone }),
-      });
-      const data = await res.json();
-      if (data.error) { setError(data.error); return; }
-      if (data.code) { setCreatedCode(data.code); await refreshPairs(); return; }
-      setError('Unknown error');
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
+      const timezone =
+        Intl.DateTimeFormat()
+          .resolvedOptions()
+          .timeZone ||
+        'UTC';
+
+      const response = await fetch(
+        '/api/create',
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            userId: String(userId),
+            displayName,
+            username,
+            timezone,
+          }),
+        },
+      );
+
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+          `Create pair failed with HTTP ${response.status}`,
+        );
+      }
+
+      if (!data?.code) {
+        throw new Error(
+          'Server did not return a pair code',
+        );
+      }
+
+      setCreatedCode(data.code);
+      await refreshPairs();
+    } catch (requestError) {
+      setError(
+        requestError.message ||
+        'Не удалось создать пару',
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleInvite = async () => {
     try {
       const res = await fetch('/api/send-invite', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ pairCode: createdCode }),
       });
       const data = await res.json();

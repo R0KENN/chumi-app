@@ -142,13 +142,9 @@ async function notifyAdmins(env, text) {
 function validateInitData(
   initDataRaw,
   botToken,
-  maxAgeSec = 86400
+  maxAgeSec = 86400,
 ) {
-  if (
-    typeof initDataRaw !== 'string' ||
-    !initDataRaw ||
-    !botToken
-  ) {
+  if (!initDataRaw || !botToken) {
     return null;
   }
 
@@ -166,62 +162,63 @@ function validateInitData(
     params.delete('hash');
 
     const dataCheckString = [...params.entries()]
-      .sort(([firstKey], [secondKey]) =>
-        firstKey.localeCompare(secondKey)
-      )
+      .sort(([leftKey], [rightKey]) =>
+        leftKey.localeCompare(rightKey))
       .map(([key, value]) => `${key}=${value}`)
       .join('\n');
 
     const secretKey = createHmac(
       'sha256',
-      'WebAppData'
+      'WebAppData',
     )
       .update(botToken)
       .digest();
 
     const computedHash = createHmac(
       'sha256',
-      secretKey
+      secretKey,
     )
       .update(dataCheckString)
       .digest();
 
     const receivedHashBuffer = Buffer.from(
       receivedHash,
-      'hex'
+      'hex',
     );
 
     if (
-      computedHash.length !==
-      receivedHashBuffer.length
-    ) {
-      return null;
-    }
-
-    if (
+      receivedHashBuffer.length !== computedHash.length ||
       !timingSafeEqual(
+        receivedHashBuffer,
         computedHash,
-        receivedHashBuffer
       )
     ) {
       return null;
     }
 
     const authDate = Number(
-      params.get('auth_date')
+      params.get('auth_date'),
     );
 
-    if (!Number.isInteger(authDate)) {
+    if (!Number.isFinite(authDate)) {
       return null;
     }
 
     const currentTimestamp = Math.floor(
-      Date.now() / 1000
+      Date.now() / 1000,
     );
 
-    const age = currentTimestamp - authDate;
+    const ageSeconds =
+      currentTimestamp - authDate;
 
-    if (age < -30 || age > maxAgeSec) {
+    /*
+     * Допускаем не более 30 секунд расхождения часов
+     * в сторону будущего.
+     */
+    if (
+      ageSeconds < -30 ||
+      ageSeconds > maxAgeSec
+    ) {
       return null;
     }
 
@@ -232,23 +229,23 @@ function validateInitData(
     }
 
     const user = JSON.parse(rawUser);
+    const userId = user?.id;
 
     if (
-      !user ||
-      user.id === undefined ||
-      user.id === null
+      userId === undefined ||
+      userId === null
     ) {
       return null;
     }
 
     return {
-      userId: String(user.id),
+      userId: String(userId),
       user,
     };
   } catch (error) {
     console.warn(
       'Telegram initData validation failed:',
-      error
+      error,
     );
 
     return null;
@@ -973,27 +970,21 @@ export async function onRequest(context) {
       const pairCode = parts[3];
       const requestedUserId = parts[4];
 
-      const authedId = getAuthedUserId(
-        request,
-        env
-      );
+      const authedId = getAuthedUserId(request, env);
 
       if (!authedId) {
         return json(
           { error: 'Unauthorized' },
           401,
-          request
+          request,
         );
       }
 
-      if (
-        String(requestedUserId) !==
-        String(authedId)
-      ) {
+      if (String(authedId) !== String(requestedUserId)) {
         return json(
           { error: 'Forbidden' },
           403,
-          request
+          request,
         );
       }
 
@@ -1001,13 +992,13 @@ export async function onRequest(context) {
         !(await isPairMember(
           supabase,
           pairCode,
-          authedId
+          authedId,
         ))
       ) {
         return json(
           { error: 'Not a member' },
           403,
-          request
+          request,
         );
       }
 
@@ -1021,15 +1012,12 @@ export async function onRequest(context) {
         .maybeSingle();
 
       if (pairError) {
-        console.error(
-          'Pair query failed:',
-          pairError
-        );
+        console.error('Pair query failed:', pairError);
 
         return json(
           { error: 'Failed to load pair' },
           500,
-          request
+          request,
         );
       }
 
@@ -1037,12 +1025,12 @@ export async function onRequest(context) {
         return json(
           { error: 'Pair not found' },
           404,
-          request
+          request,
         );
       }
 
       const today = getTodayDate(
-        pair.timezone || 'UTC'
+        pair.timezone || 'UTC',
       );
 
       const {
@@ -1056,13 +1044,13 @@ export async function onRequest(context) {
       if (membersError) {
         console.error(
           'Pair members query failed:',
-          membersError
+          membersError,
         );
 
         return json(
-          { error: 'Failed to load members' },
+          { error: 'Failed to load pair members' },
           500,
-          request
+          request,
         );
       }
 
@@ -1079,13 +1067,13 @@ export async function onRequest(context) {
       if (tasksError) {
         console.error(
           'Daily tasks query failed:',
-          tasksError
+          tasksError,
         );
 
         return json(
-          { error: 'Failed to load tasks' },
+          { error: 'Failed to load daily tasks' },
           500,
-          request
+          request,
         );
       }
 
@@ -1094,10 +1082,10 @@ export async function onRequest(context) {
           pair,
           members || [],
           tasks || [],
-          authedId
+          authedId,
         ),
         200,
-        request
+        request,
       );
     }
 
@@ -1107,55 +1095,116 @@ export async function onRequest(context) {
       const BOT_TOKEN = env.BOT_TOKEN;
       const wantProxy = url.searchParams.get('proxy');
 
+      let avatarAuthedId = null;
+
       if (wantProxy === '1') {
-        // Бинарный прокси грузится тегом <img> без заголовков, поэтому
-        // авторизуем его подписанным токеном из query (?exp=&sig=),
-        // который выдаётся только авторизованному JSON-запросу ниже.
+        /*
+         * Тег <img> не может передать Telegram initData,
+         * поэтому бинарный запрос проверяется одноразовой
+         * ограниченной по времени подписью.
+         */
         const exp = url.searchParams.get('exp');
         const sig = url.searchParams.get('sig');
-        const okToken = await verifyAvatarToken(BOT_TOKEN, tgUserId, exp, sig);
-        if (!okToken) return json({ error: 'Forbidden' }, 403);
+
+        const tokenIsValid = await verifyAvatarToken(
+          BOT_TOKEN,
+          tgUserId,
+          exp,
+          sig,
+        );
+
+        if (!tokenIsValid) {
+          return json(
+            { error: 'Forbidden' },
+            403,
+            request,
+          );
+        }
       } else {
-        // JSON-ответ со ссылкой отдаём только авторизованным
-        const avatarAuthedId = getAuthedUserId(
+        avatarAuthedId = getAuthedUserId(
           request,
-          env
+          env,
         );
 
         if (!avatarAuthedId) {
           return json(
             { error: 'Unauthorized' },
             401,
-            request
+            request,
           );
         }
 
-        const canViewAvatar =
-          await usersSharePair(
-            supabase,
-            avatarAuthedId,
-            tgUserId
+        /*
+         * Сначала получаем пары вызывающего пользователя.
+         */
+        const {
+          data: callerPairs,
+          error: callerPairsError,
+        } = await supabase
+          .from('pair_users')
+          .select('pair_code')
+          .eq('user_id', avatarAuthedId);
+
+        if (callerPairsError) {
+          console.error(
+            'Avatar caller pairs query failed:',
+            callerPairsError,
           );
 
-        if (!canViewAvatar) {
           return json(
-            { error: 'Forbidden' },
-            403,
-            request
+            { error: 'Failed to verify avatar access' },
+            500,
+            request,
           );
         }
-      }
 
-            // Только аватары пользователей, которые состоят в паре, доступны.
-      // Это предотвращает утечку аватара любого Telegram-пользователя.
-      const { data: targetPairUser } = await supabase
-        .from('pair_users')
-        .select('user_id')
-        .eq('user_id', tgUserId)
-        .limit(1)
-        .maybeSingle();
-      if (!targetPairUser) {
-        return json({ avatar_url: null });
+        const callerPairCodes = (
+          callerPairs || []
+        ).map((row) => row.pair_code);
+
+        if (callerPairCodes.length === 0) {
+          return json(
+            { avatar_url: null },
+            200,
+            request,
+          );
+        }
+
+        /*
+         * Целевой пользователь должен состоять хотя бы
+         * в одной паре вместе с вызывающим.
+         */
+        const {
+          data: sharedMembership,
+          error: sharedMembershipError,
+        } = await supabase
+          .from('pair_users')
+          .select('pair_code')
+          .eq('user_id', tgUserId)
+          .in('pair_code', callerPairCodes)
+          .limit(1)
+          .maybeSingle();
+
+        if (sharedMembershipError) {
+          console.error(
+            'Shared avatar membership query failed:',
+            sharedMembershipError,
+          );
+
+          return json(
+            { error: 'Failed to verify avatar access' },
+            500,
+            request,
+          );
+        }
+
+        if (!sharedMembership) {
+          return json(
+            { avatar_url: null },
+            200,
+            request,
+          );
+        }
       }
 
 

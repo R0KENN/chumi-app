@@ -358,12 +358,31 @@ export async function onRequestPost(context) {
   const { env, request } = context;
   const BOT_TOKEN = env.BOT_TOKEN;
 
-  // Проверка секрета вебхука Telegram
-  if (env.TELEGRAM_WEBHOOK_SECRET) {
-    const got = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
-    if (got !== env.TELEGRAM_WEBHOOK_SECRET) {
-      return new Response('Forbidden', { status: 403 });
-    }
+  // Webhook всегда должен работать в fail-closed режиме.
+  if (!env.TELEGRAM_WEBHOOK_SECRET) {
+    console.error(
+      'TELEGRAM_WEBHOOK_SECRET is not configured',
+    );
+
+    return new Response(
+      'Webhook is not configured',
+      { status: 503 },
+    );
+  }
+
+  const receivedWebhookSecret =
+    request.headers.get(
+      'X-Telegram-Bot-Api-Secret-Token',
+    );
+
+  if (
+    receivedWebhookSecret !==
+    env.TELEGRAM_WEBHOOK_SECRET
+  ) {
+    return new Response(
+      'Forbidden',
+      { status: 403 },
+    );
   }
 
   try {
@@ -420,11 +439,120 @@ export async function onRequestPost(context) {
 
     // ═══ PRE CHECKOUT ═══
     if (update.pre_checkout_query) {
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pre_checkout_query_id: update.pre_checkout_query.id, ok: true }),
-      });
+      const query = update.pre_checkout_query;
+
+      let isValid = false;
+      let validationError =
+        'Invalid product or payment amount';
+
+      try {
+        const payload = JSON.parse(
+          query.invoice_payload,
+        );
+
+        const payloadType =
+          payload.type ||
+          payload.t ||
+          null;
+
+        const skinId =
+          payload.skinId ||
+          payload.s ||
+          null;
+
+        const payloadUserId =
+          payload.userId ||
+          payload.u ||
+          null;
+
+        const productId =
+          payload.productId ||
+          payload.p ||
+          null;
+
+        let productKey = null;
+
+        if (payloadType === 'skin') {
+          productKey = 'skin';
+        } else if (payloadType === 'skin_gift') {
+          productKey = 'skin_gift';
+        } else {
+          productKey = productId;
+        }
+
+        const expected =
+          expectedAmount(
+            productKey,
+            skinId,
+          );
+
+        const userMatches =
+          payloadUserId === null ||
+          String(payloadUserId) ===
+            String(query.from.id);
+
+        const currencyMatches =
+          query.currency === 'XTR';
+
+        const amountMatches =
+          Number.isFinite(expected) &&
+          query.total_amount === expected;
+
+        isValid =
+          userMatches &&
+          currencyMatches &&
+          amountMatches;
+
+        if (!userMatches) {
+          validationError =
+            'This invoice belongs to another user';
+        } else if (!currencyMatches) {
+          validationError =
+            'Only Telegram Stars are supported';
+        } else if (!Number.isFinite(expected)) {
+          validationError =
+            'Unknown product';
+        } else if (!amountMatches) {
+          validationError =
+            'The product price has changed. Please reopen the shop';
+        }
+      } catch (error) {
+        console.error(
+          'Pre-checkout validation failed:',
+          error,
+        );
+
+        validationError =
+          'Invalid payment payload';
+      }
+
+      const response = await fetch(
+        `https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            pre_checkout_query_id: query.id,
+            ok: isValid,
+            ...(isValid
+              ? {}
+              : {
+                  error_message:
+                    validationError,
+                }),
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        console.error(
+          'answerPreCheckoutQuery failed:',
+          response.status,
+        );
+      }
+
       return new Response('OK');
     }
 
@@ -755,29 +883,81 @@ if (startParam.startsWith('ref_')) {
       const { data: existing } = await supabase.from('pair_users').select('pair_code').eq('user_id', userId);
       if (!isAdmin && existing && existing.length >= maxPairs) { await sendMessage(env, chatId, T[lang].maxPairs(existing.length, maxPairs), webAppButton); return new Response('OK'); }
       const code = await generateUniqueCode(supabase);
-      await supabase.from('pairs').insert({
-        code,
-        pet_type: 'spark',
-        streak_days: 0,
-        growth_points: 0,
-        hatched: false,
-        bg_id: 'room',
-        pet_name: null,
-        streak_recoveries_used: 0,
-        is_dead: false,
-        // timezone не задаём (null) — забэкфиллится при первом заходе
-        // пользователя в мини-апп через /api/update-timezone
-        timezone: null,
-        last_streak_date: null,
-        last_pair_streak_date: null,
-      });
-      await supabase.from('pair_users').insert({
-        pair_code: code,
-        user_id: userId,
-        display_name: firstName,
-        username,
-        timezone: null,
-      });
+      const {
+        error: pairInsertError,
+      } = await supabase
+        .from('pairs')
+        .insert({
+          code,
+          pet_type: 'spark',
+          streak_days: 0,
+          growth_points: 0,
+          hatched: false,
+          bg_id: 'room',
+          pet_name: null,
+          streak_recoveries_used: 0,
+          last_recovery_month: null,
+          last_streak_date: null,
+          is_dead: false,
+          timezone: userTz,
+        });
+
+      if (pairInsertError) {
+        console.error(
+          'Pair insert failed:',
+          pairInsertError,
+        );
+
+        return json(
+          { error: 'Failed to create pair' },
+          500,
+          request,
+        );
+      }
+
+      const {
+        error: memberInsertError,
+      } = await supabase
+        .from('pair_users')
+        .insert({
+          pair_code: code,
+          user_id: userId,
+          display_name: displayName,
+          username,
+          timezone: userTz,
+        });
+
+      if (memberInsertError) {
+        console.error(
+          'Pair member insert failed:',
+          memberInsertError,
+        );
+
+        /*
+         * Компенсирующее удаление. Это не заменяет
+         * настоящую транзакцию, но не оставляет
+         * пустую пару при обычной ошибке.
+         */
+        const {
+          error: rollbackError,
+        } = await supabase
+          .from('pairs')
+          .delete()
+          .eq('code', code);
+
+        if (rollbackError) {
+          console.error(
+            'Pair rollback failed:',
+            rollbackError,
+          );
+        }
+
+        return json(
+          { error: 'Failed to add pair owner' },
+          500,
+          request,
+        );
+      }
 
       // ── Засчитываем pending-реферал, если он есть ──
       const { data: pending } = await supabase

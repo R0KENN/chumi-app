@@ -21,32 +21,85 @@ export default function JoinPairModal({ userId, onClose, onJoined }) {
   };
 
   const handleJoin = async () => {
-    const trimmed = code.trim().toUpperCase();
-    if (trimmed.length < 6) return;
+    const trimmedCode =
+      code.trim().toUpperCase();
+
+    if (
+      loading ||
+      trimmedCode.length !== 6
+    ) {
+      return;
+    }
+
     setLoading(true);
     setError('');
+
     try {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const res = await fetch('/api/join', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ userId: String(userId), code: trimmed, displayName, username, timezone }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        const map = {
-          'Pair not found': t('pairNotFound') || 'Pair not found',
-          'Already in pair': t('alreadyInPair') || 'Already in pair',
-          'Pair full': t('pairFull') || 'Pair is full',
-          'Unauthorized': t('unauthorized') || 'Unauthorized',
-        };
-        setError(map[data.error] || data.error);
-        return;
+      const timezone =
+        Intl.DateTimeFormat()
+          .resolvedOptions()
+          .timeZone ||
+        'UTC';
+
+      const response = await fetch(
+        '/api/join',
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            userId: String(userId),
+            code: trimmedCode,
+            displayName,
+            username,
+            timezone,
+          }),
+        },
+      );
+
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
       }
+
+      if (!response.ok) {
+        const serverError =
+          data?.error ||
+          `Join failed with HTTP ${response.status}`;
+
+        const errorTranslations = {
+          'Pair not found':
+            t('pairNotFound'),
+          'Already in pair':
+            t('alreadyInPair'),
+          'Pair full':
+            t('pairFull'),
+          Unauthorized:
+            t('unauthorized'),
+        };
+
+        throw new Error(
+          errorTranslations[serverError] ||
+          serverError,
+        );
+      }
+
       await refreshPairs();
-      if (onJoined) onJoined(data.code || trimmed);
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
+
+      onJoined?.(
+        data?.code ||
+        trimmedCode,
+      );
+    } catch (requestError) {
+      setError(
+        requestError.message ||
+        'Не удалось вступить в пару',
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

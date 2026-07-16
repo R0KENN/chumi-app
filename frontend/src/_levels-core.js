@@ -15,26 +15,75 @@ export const LEVEL_CORE = [
 // Общая функция расчёта уровня. Принимает массив уровней (чтобы фронт мог
 // передать свой расширенный массив с визуалом, а бэк — базовый LEVEL_CORE),
 // и всегда считает по полю maxPoints, которое одинаково в обоих.
-export function computeLevel(levels, totalPoints) {
-  let acc = 0;
-  for (let i = 0; i < levels.length; i++) {
-    if (totalPoints < acc + levels[i].maxPoints) {
+export function computeLevel(
+  levels,
+  totalPoints,
+) {
+  if (
+    !Array.isArray(levels) ||
+    levels.length === 0
+  ) {
+    throw new Error(
+      'computeLevel requires a non-empty levels array',
+    );
+  }
+
+  const parsedPoints = Number(totalPoints);
+
+  const safePoints =
+    Number.isFinite(parsedPoints)
+      ? Math.max(0, parsedPoints)
+      : 0;
+
+  let accumulatedPoints = 0;
+
+  for (
+    let index = 0;
+    index < levels.length;
+    index += 1
+  ) {
+    const level = levels[index];
+
+    const needed = Math.max(
+      0,
+      Number(level.maxPoints) || 0,
+    );
+
+    const levelEnd =
+      accumulatedPoints + needed;
+
+    if (safePoints < levelEnd) {
       return {
-        ...levels[i],
-        idx: i,
-        current: totalPoints - acc,
-        needed: levels[i].maxPoints,
-        remaining: acc + levels[i].maxPoints - totalPoints,
+        ...level,
+        idx: index,
+        current:
+          safePoints -
+          accumulatedPoints,
+        needed,
+        remaining:
+          levelEnd - safePoints,
       };
     }
-    acc += levels[i].maxPoints;
+
+    accumulatedPoints = levelEnd;
   }
-  const last = levels[levels.length - 1];
+
+  const lastIndex =
+    levels.length - 1;
+
+  const lastLevel =
+    levels[lastIndex];
+
+  const lastNeeded = Math.max(
+    0,
+    Number(lastLevel.maxPoints) || 0,
+  );
+
   return {
-    ...last,
-    idx: levels.length - 1,
-    current: last.maxPoints,
-    needed: last.maxPoints,
+    ...lastLevel,
+    idx: lastIndex,
+    current: lastNeeded,
+    needed: lastNeeded,
     remaining: 0,
   };
 }

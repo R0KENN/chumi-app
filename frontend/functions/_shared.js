@@ -22,14 +22,40 @@ export function generateCode() {
 }
 
 // attempts по умолчанию 10 (как в bot.js); api вызывал с 20 — передаём параметром.
-export async function generateUniqueCode(supabase, attempts = 10) {
-  for (let i = 0; i < attempts; i++) {
+export async function generateUniqueCode(
+  supabase,
+  attempts = 10,
+) {
+  for (
+    let attempt = 0;
+    attempt < attempts;
+    attempt += 1
+  ) {
     const code = generateCode();
-    const { data } = await supabase
-      .from('pairs').select('code').eq('code', code).maybeSingle();
-    if (!data) return code;
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('pairs')
+      .select('code')
+      .eq('code', code)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `Unique code check failed: ${error.message}`,
+      );
+    }
+
+    if (!data) {
+      return code;
+    }
   }
-  throw new Error('Could not generate unique pair code');
+
+  throw new Error(
+    `Could not generate a unique pair code after ${attempts} attempts`,
+  );
 }
 
 // ── Экранирование Markdown (legacy parse_mode: 'Markdown') ──

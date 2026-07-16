@@ -1,102 +1,95 @@
-async function readResponseBody(response) {
-  const contentType =
-    response.headers.get('content-type') || '';
-
-  if (contentType.includes('application/json')) {
-    return response.json().catch(() => ({}));
-  }
-
-  return response.text().catch(() => '');
-}
-
-async function runTask(
-  baseUrl,
-  headers,
-  label,
-  path
-) {
-  const controller = new AbortController();
-
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, 25000);
-
-  try {
-    const response = await fetch(
-      `${baseUrl}${path}`,
-      {
-        method: 'POST',
-        headers,
-        signal: controller.signal,
-      }
-    );
-
-    const body = await readResponseBody(
-      response
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `${label} failed with HTTP ${response.status}: ` +
-        JSON.stringify(body)
-      );
-    }
-
-    console.log(
-      `${label} completed:`,
-      JSON.stringify(body)
-    );
-
-    return {
-      label,
-      success: true,
-      status: response.status,
-      body,
-    };
-  } catch (error) {
-    console.error(
-      `${label} failed:`,
-      error
-    );
-
-    return {
-      label,
-      success: false,
-      error:
-        error.name === 'AbortError'
-          ? 'Request timeout'
-          : error.message,
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 async function runScheduledTasks(
-  cron,
-  env
+  controller,
+  env,
 ) {
-  if (!env.BASE_URL) {
-    throw new Error(
-      'BASE_URL is not configured'
-    );
-  }
-
-  if (!env.CRON_SECRET) {
-    throw new Error(
-      'CRON_SECRET is not configured'
-    );
-  }
-
-  const baseUrl = env.BASE_URL.replace(
-    /\/+$/,
-    ''
-  );
+  const baseUrl = (
+    env.BASE_URL ||
+    'https://chumi.space'
+  ).replace(/\/+$/, '');
 
   const headers = {
     'Content-Type': 'application/json',
-    Authorization:
-      `Bearer ${env.CRON_SECRET}`,
+  };
+
+  if (env.CRON_SECRET) {
+    headers.Authorization =
+      `Bearer ${env.CRON_SECRET}`;
+  }
+
+  const cron = controller?.cron || '';
+  const results = [];
+
+  const hit = async (label, path) => {
+    const startedAt = Date.now();
+
+    try {
+      const response = await fetch(
+        `${baseUrl}${path}`,
+        {
+          method: 'POST',
+          headers,
+        },
+      );
+
+      let body = null;
+
+      try {
+        body = await response.json();
+      } catch {
+        body = null;
+      }
+
+      const result = {
+        label,
+        path,
+        ok: response.ok,
+        status: response.status,
+        durationMs:
+          Date.now() - startedAt,
+        body,
+      };
+
+      results.push(result);
+
+      if (!response.ok) {
+        throw new Error(
+          `${label} failed with HTTP ${response.status}: ` +
+          JSON.stringify(body),
+        );
+      }
+
+      console.log(
+        `${label}:`,
+        JSON.stringify(result),
+      );
+
+      return result;
+    } catch (error) {
+      const existingResult = results.find(
+        (item) =>
+          item.label === label &&
+          item.path === path,
+      );
+
+      if (!existingResult) {
+        results.push({
+          label,
+          path,
+          ok: false,
+          status: 0,
+          durationMs:
+            Date.now() - startedAt,
+          error: String(error),
+        });
+      }
+
+      console.error(
+        `${label} error:`,
+        error,
+      );
+
+      throw error;
+    }
   };
 
   const tasks = [];
@@ -106,83 +99,105 @@ async function runScheduledTasks(
     !cron
   ) {
     tasks.push(
-      ['Streaks', '/api/update-streaks'],
-      ['Cleanup', '/api/cleanup-empty-pairs']
+      hit(
+        'Streaks',
+        '/api/update-streaks',
+      ),
+      hit(
+        'Cleanup',
+        '/api/cleanup-empty-pairs',
+      ),
     );
   }
 
   if (cron === '0 18 * * *') {
     tasks.push(
-      ['Reminders', '/api/send-reminders']
+      hit(
+        'Reminders',
+        '/api/send-reminders',
+      ),
     );
   }
 
   if (cron === '0 9 * * *') {
     tasks.push(
-      [
+      hit(
         'Daily summary',
         '/api/admin-daily-summary',
-      ]
+      ),
     );
   }
 
   if (cron === '0 4 * * *') {
     tasks.push(
-      [
-        'Postcard cleanup',
+      hit(
+        'Postcards cleanup',
         '/api/cleanup-postcards',
-      ]
+      ),
     );
   }
 
-  if (tasks.length === 0) {
-    throw new Error(
-      `Unknown cron schedule: ${cron}`
-    );
-  }
-
-  const results = [];
-
-  for (const [label, path] of tasks) {
-    const result = await runTask(
-      baseUrl,
-      headers,
-      label,
-      path
-    );
-
-    results.push(result);
-  }
-
-  const failedTasks = results.filter(
-    (result) => !result.success
+  const settled = await Promise.allSettled(
+    tasks,
   );
 
-  if (failedTasks.length > 0) {
-    throw new Error(
-      `${failedTasks.length} cron task(s) failed: ` +
-      failedTasks
-        .map((task) => task.label)
-        .join(', ')
-    );
-  }
+  const failed = settled.filter(
+    (result) =>
+      result.status === 'rejected',
+  );
 
-  return results;
+  return {
+    ok: failed.length === 0,
+    cron: cron || 'frequent',
+    results,
+    failedCount: failed.length,
+  };
 }
 
 export default {
-  async scheduled(event, env, context) {
-    context.waitUntil(
-      runScheduledTasks(
-        event?.cron || '',
-        env
-      )
+  async scheduled(controller, env) {
+    const result = await runScheduledTasks(
+      controller,
+      env,
     );
+
+    if (!result.ok) {
+      throw new Error(
+        `${result.failedCount} scheduled task(s) failed`,
+      );
+    }
   },
 
   async fetch(request, env) {
+    if (request.method === 'GET') {
+      return new Response(
+        'Chumi Cron Worker',
+        {
+          status: 200,
+          headers: {
+            'Content-Type':
+              'text/plain; charset=utf-8',
+          },
+        },
+      );
+    }
+
+    if (request.method !== 'POST') {
+      return new Response(
+        'Method Not Allowed',
+        {
+          status: 405,
+          headers: {
+            Allow: 'GET, POST',
+          },
+        },
+      );
+    }
+
     const authorization =
-      request.headers.get('Authorization') || '';
+      request.headers.get(
+        'Authorization',
+      ) || '';
 
     if (
       !env.CRON_SECRET ||
@@ -190,58 +205,29 @@ export default {
         `Bearer ${env.CRON_SECRET}`
     ) {
       return new Response(
-        JSON.stringify({
-          error: 'Unauthorized',
-        }),
-        {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
+        'Forbidden',
+        { status: 403 },
       );
     }
 
     const url = new URL(request.url);
-    const cron = url.searchParams.get('cron') || '';
+    const cron =
+      url.searchParams.get('cron') || '';
 
-    try {
-      const results = await runScheduledTasks(
-        cron,
-        env
-      );
+    const result = await runScheduledTasks(
+      { cron },
+      env,
+    );
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          cron: cron || 'frequent',
-          results,
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-    } catch (error) {
-      console.error(
-        'Manual cron run failed:',
-        error
-      );
-
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: error.message,
-        }),
-        {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-    }
+    return new Response(
+      JSON.stringify(result),
+      {
+        status: result.ok ? 200 : 502,
+        headers: {
+          'Content-Type':
+            'application/json; charset=utf-8',
+        },
+      },
+    );
   },
 };

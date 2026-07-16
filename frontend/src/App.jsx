@@ -67,181 +67,131 @@ function AppContent() {
 function App() {
   const [telegramUserId, setTelegramUserId] = useState(null);
   const [initData, setInitData] = useState('');
+  const [telegramSdkFailed, setTelegramSdkFailed] = useState(false);
   const [telegramError, setTelegramError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
-    const isLocalhost =
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1';
-
-    const wait = milliseconds =>
-      new Promise(resolve => {
-        window.setTimeout(resolve, milliseconds);
-      });
+    const sleep = (ms) => new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
 
     const initializeTelegram = async () => {
-      setTelegramError('');
-
-      /*
-       * После исправления index.html SDK должен существовать до запуска React.
-       * Небольшое ожидание оставлено как страховка для старых Telegram-клиентов.
-       */
       const startedAt = Date.now();
+      const timeoutMs = 10000;
 
-      while (!window.Telegram?.WebApp && Date.now() - startedAt < 5000) {
-        await wait(100);
+      while (
+        !cancelled &&
+        !window.Telegram?.WebApp &&
+        !window.__tgSdkFailed &&
+        Date.now() - startedAt < timeoutMs
+      ) {
+        await sleep(100);
       }
 
       if (cancelled) return;
 
+  if (telegramSdkFailed) {
+        setTelegramSdkFailed(true);
+        return;
+      }
+
       const tg = window.Telegram?.WebApp;
 
       if (!tg) {
-        console.error('Telegram WebApp SDK is not available');
-
-        setTelegramError(
-          'Не удалось загрузить Telegram Mini App SDK. Закрой приложение и открой его повторно.'
-        );
-
+        setTelegramSdkFailed(true);
         return;
       }
 
       try {
         tg.ready?.();
         tg.expand?.();
-      } catch (error) {
-        console.error('Telegram ready/expand failed:', error);
-      }
 
-      try {
-        const isMobileDevice =
+        if (tg.initData) {
+          setInitData(tg.initData);
+        }
+
+        const isMobileUserAgent =
           /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
         if (
-          isMobileDevice &&
+          isMobileUserAgent &&
           tg.isVersionAtLeast?.('8.0') &&
           !tg.isFullscreen
         ) {
           try {
             tg.requestFullscreen?.();
-          } catch (error) {
-            console.warn('Telegram fullscreen request failed:', error);
+          } catch {
+            // Fullscreen может быть запрещён конкретным клиентом Telegram.
           }
         }
+
+        try {
+          tg.disableVerticalSwipes?.();
+        } catch {
+          // Метод может отсутствовать в старом клиенте Telegram.
+        }
+
+        try {
+          const isMobilePlatform =
+            tg.platform === 'ios' ||
+            tg.platform === 'android';
+
+          document.documentElement.style.setProperty(
+            '--chumi-top-pad',
+            isMobilePlatform ? '96px' : '16px',
+          );
+        } catch {
+          // CSS-переменная не критична для запуска приложения.
+        }
+
+        try {
+          tg.setHeaderColor?.('#FFF8E1');
+        } catch {
+          // Клиент может не поддерживать произвольный цвет.
+        }
+
+        try {
+          tg.setBackgroundColor?.('#FFF8E1');
+        } catch {
+          // Клиент может не поддерживать произвольный цвет.
+        }
+
+        try {
+          tg.setBottomBarColor?.('#FFF8E1');
+        } catch {
+          // Клиент может не поддерживать Bottom Bar API.
+        }
+
+        const userId =
+          tg.initDataUnsafe?.user?.id?.toString();
+
+        if (userId) {
+          setTelegramUserId(userId);
+          return;
+        }
       } catch (error) {
-        console.warn('Telegram fullscreen initialization failed:', error);
+        console.error('Telegram initialization error:', error);
       }
-
-      try {
-        tg.disableVerticalSwipes?.();
-      } catch (error) {
-        console.warn('disableVerticalSwipes failed:', error);
-      }
-
-      try {
-        const platform = tg.platform || '';
-
-        const isMobilePlatform =
-          platform === 'ios' ||
-          platform === 'android';
-
-        const topPadding = isMobilePlatform ? '96px' : '16px';
-
-        document.documentElement.style.setProperty(
-          '--chumi-top-pad',
-          topPadding
-        );
-      } catch (error) {
-        console.warn('Unable to set Telegram top padding:', error);
-      }
-
-      try {
-        tg.setHeaderColor?.('#FFF8E1');
-      } catch (error) {
-        console.warn('setHeaderColor failed:', error);
-      }
-
-      try {
-        tg.setBackgroundColor?.('#FFF8E1');
-      } catch (error) {
-        console.warn('setBackgroundColor failed:', error);
-      }
-
-      try {
-        tg.setBottomBarColor?.('#FFF8E1');
-      } catch (error) {
-        console.warn('setBottomBarColor failed:', error);
-      }
-
-      const rawInitData =
-        typeof tg.initData === 'string'
-          ? tg.initData
-          : '';
-
-      const telegramUser = tg.initDataUnsafe?.user;
-      const rawUserId = telegramUser?.id;
 
       /*
-       * На localhost initData пустой, потому что используется локальный mock.
-       * В production настоящий пользователь обязан иметь:
-       * 1. user.id;
-       * 2. подписанный initData.
+       * Telegram SDK загрузился, но реального пользователя нет.
+       * Это обычный браузер или локальная разработка.
        */
-      if (isLocalhost && rawUserId) {
-        if (cancelled) return;
+      try {
+        const testId =
+          localStorage.getItem('chumi_test_uid') ||
+          'guest';
 
-        setInitData('');
-        setTelegramUserId(String(rawUserId));
-        return;
+        localStorage.setItem('chumi_test_uid', testId);
+        setTelegramUserId(testId);
+      } catch {
+        setTelegramUserId('guest');
       }
-
-      if (!rawUserId) {
-        console.error('Telegram did not provide user.id', {
-          platform: tg.platform,
-          version: tg.version,
-          initDataLength: rawInitData.length,
-          hashPresent: Boolean(window.location.hash),
-        });
-
-        setTelegramError(
-          'Telegram не передал данные пользователя. Запусти Chumi через кнопку бота.'
-        );
-
-        return;
-      }
-
-      if (!rawInitData) {
-        console.error('Telegram did not provide signed initData', {
-          userId: String(rawUserId),
-          platform: tg.platform,
-          version: tg.version,
-          hashPresent: Boolean(window.location.hash),
-        });
-
-        setTelegramError(
-          'Telegram не передал данные авторизации. Закрой Chumi, обнови Telegram и запусти приложение снова через бота.'
-        );
-
-        return;
-      }
-
-      if (cancelled) return;
-
-      setInitData(rawInitData);
-      setTelegramUserId(String(rawUserId));
     };
 
-    initializeTelegram().catch(error => {
-      console.error('Telegram initialization failed:', error);
-
-      if (!cancelled) {
-        setTelegramError(
-          'Произошла ошибка при запуске Telegram Mini App. Попробуй открыть приложение повторно.'
-        );
-      }
-    });
+    initializeTelegram();
 
     return () => {
       cancelled = true;
@@ -328,13 +278,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!telegramUserId) return undefined;
-
-    const isLocalhost =
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1';
-
-    const controller = new AbortController();
+    if (!telegramUserId) return;
 
     const updateTimezone = async () => {
       try {
@@ -352,12 +296,16 @@ function App() {
         const lastSent = Number(lastSentRaw);
         const now = Date.now();
 
-        const sentRecently =
-          lastTimezone === timezone &&
+        const wasSentRecently =
           Number.isFinite(lastSent) &&
-          now - lastSent < 86_400_000;
+          now - lastSent < 24 * 60 * 60 * 1000;
 
-        if (sentRecently) return;
+        if (
+          lastTimezone === timezone &&
+          wasSentRecently
+        ) {
+          return;
+        }
 
         const headers = {
           'Content-Type': 'application/json',
@@ -367,53 +315,36 @@ function App() {
           headers['X-Telegram-Init-Data'] = initData;
         }
 
-        if (isLocalhost) {
-          headers['X-Dev-User-Id'] = String(telegramUserId);
-        }
-
         const response = await fetch('/api/update-timezone', {
           method: 'POST',
           headers,
-          signal: controller.signal,
           body: JSON.stringify({
             userId: telegramUserId,
             timezone,
           }),
         });
 
-        const data = await response
-          .json()
-          .catch(() => ({}));
-
         if (!response.ok) {
           throw new Error(
-            data.error ||
-            data.message ||
-            `Timezone update failed: HTTP ${response.status}`
+            `Timezone update failed with HTTP ${response.status}`,
           );
         }
 
         localStorage.setItem(
           'chumi_tz_sent_at',
-          String(now)
+          String(now),
         );
 
         localStorage.setItem(
           'chumi_tz_value',
-          timezone
+          timezone,
         );
       } catch (error) {
-        if (error.name !== 'AbortError') {
-          console.error('Timezone update failed:', error);
-        }
+        console.warn('Timezone update failed:', error);
       }
     };
 
     updateTimezone();
-
-    return () => {
-      controller.abort();
-    };
   }, [telegramUserId, initData]);
 
 
