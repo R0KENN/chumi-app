@@ -38,20 +38,71 @@ async function dsGet(key) {
 
   if (storage) {
     try {
-      const value = await new Promise((resolve) => {
-        storage.getItem(key, (error, storedValue) => {
-          if (error || !storedValue) {
-            resolve(null);
-            return;
-          }
+      const value = await new Promise(
+        (resolve) => {
+          let completed = false;
+
+          const finish = result => {
+            if (completed) {
+              return;
+            }
+
+            completed = true;
+            window.clearTimeout(timeoutId);
+            resolve(result);
+          };
+
+          /*
+           * Некоторые версии Telegram WebView
+           * могут не вызвать callback DeviceStorage.
+           * Не позволяем загрузке приложения зависнуть.
+           */
+          const timeoutId =
+            window.setTimeout(() => {
+              console.warn(
+                'Telegram DeviceStorage get timed out:',
+                key,
+              );
+
+              finish(null);
+            }, 2000);
 
           try {
-            resolve(JSON.parse(storedValue));
-          } catch {
-            resolve(null);
+            storage.getItem(
+              key,
+              (
+                error,
+                storedValue,
+              ) => {
+                if (
+                  error ||
+                  !storedValue
+                ) {
+                  finish(null);
+                  return;
+                }
+
+                try {
+                  finish(
+                    JSON.parse(
+                      storedValue,
+                    ),
+                  );
+                } catch {
+                  finish(null);
+                }
+              },
+            );
+          } catch (error) {
+            console.warn(
+              'Telegram DeviceStorage get failed:',
+              error,
+            );
+
+            finish(null);
           }
-        });
-      });
+        },
+      );
 
       if (value !== null) {
         return value;
@@ -64,9 +115,15 @@ async function dsGet(key) {
     }
   }
 
+  /*
+   * Если Telegram DeviceStorage недоступен
+   * или завис, используем localStorage.
+   */
   try {
     const storedValue =
-      localStorage.getItem(`ds_${key}`);
+      localStorage.getItem(
+        `ds_${key}`,
+      );
 
     if (!storedValue) {
       return null;
@@ -495,20 +552,20 @@ export function PairsProvider({
       loading,
       refreshing,
       error,
+      refreshPairs,
+      clearPairsCache,
       addPair,
       updatePair,
-      refreshPairs: fetchPairs,
-      initData: initData || '',
     }),
     [
       pairs,
       loading,
       refreshing,
       error,
+      refreshPairs,
+      clearPairsCache,
       addPair,
       updatePair,
-      fetchPairs,
-      initData,
     ],
   );
 

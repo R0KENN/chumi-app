@@ -219,6 +219,12 @@ function App() {
     let handleFullscreenFailed = null;
 
     (async () => {
+      const isLocal =
+        window.location.hostname ===
+          'localhost' ||
+        window.location.hostname ===
+          '127.0.0.1';
+
       // Если SDK ещё не загрузился и не упал — ждём до 3 секунд
       // (нужно при медленном/проксированном соединении в Telegram)
       const start = Date.now();
@@ -385,13 +391,45 @@ function App() {
           const uid =
             tg.initDataUnsafe?.user?.id?.toString();
 
-          if (uid) {
+          const rawInitData =
+            typeof tg.initData === 'string'
+              ? tg.initData
+              : '';
+
+          /*
+           * В production обязательно нужны:
+           * 1. Telegram user ID;
+           * 2. подписанный initData.
+           *
+           * На localhost разрешён тестовый пользователь
+           * без настоящего initData.
+           */
+          if (
+            uid &&
+            (rawInitData || isLocal)
+          ) {
+            if (cancelled) {
+              return;
+            }
+
+            setInitData(rawInitData);
             setTelegramUserId(uid);
+            setTelegramStatus('ready');
+
             return;
           }
         }
       } catch (error) {
-        console.error('TG init error:', error);
+        console.error(
+          'Telegram initialization error:',
+          error,
+        );
+
+        if (!cancelled) {
+          setTelegramStatus('sdk-error');
+        }
+
+        return;
       }
 
       /*
@@ -399,6 +437,28 @@ function App() {
        * Ниже отобразится экран с инструкцией про прокси.
        */
       if (window.__tgSdkFailed) {
+        if (!cancelled) {
+          setTelegramStatus('sdk-error');
+        }
+
+        return;
+      }
+
+      /*
+       * SDK загрузился, но Telegram не передал
+       * подписанный initData или пользователя.
+       *
+       * В production не запускаем приложение
+       * с гостевым ID, потому что API всё равно
+       * вернёт 401.
+       */
+      if (!isLocal) {
+        if (!cancelled) {
+          setTelegramStatus(
+            'outside-telegram',
+          );
+        }
+
         return;
       }
 
@@ -415,9 +475,19 @@ function App() {
           testId,
         );
 
+        if (cancelled) {
+          return;
+        }
+
         setTelegramUserId(testId);
+        setTelegramStatus('ready');
       } catch {
+        if (cancelled) {
+          return;
+        }
+
         setTelegramUserId('guest');
+        setTelegramStatus('ready');
       }
     })();
 

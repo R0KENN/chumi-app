@@ -7,9 +7,11 @@ import CreatePairModal from './CreatePairModal';
 import JoinPairModal from './JoinPairModal';
 
 export default function PairSelector() {
-const {
-  loading,
-} = usePairs();
+  const {
+    loading,
+    error,
+    refreshPairs,
+  } = usePairs();
   const { t } = useLang();
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
@@ -25,16 +27,82 @@ const {
 
   if (loading) {
     return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        minHeight: '100vh', color: '#fff',
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          color: '#fff',
+        }}
+      >
         {t('loading') || 'Loading...'}
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          padding: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          textAlign: 'center',
+          color: '#332741',
+          background: '#FFF8E1',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 48,
+          }}
+        >
+          😿
+        </div>
+
+        <h3>
+          Не удалось загрузить данные
+        </h3>
+
+        <p
+          style={{
+            maxWidth: 340,
+            color: '#6f6578',
+            fontSize: 14,
+            lineHeight: 1.5,
+          }}
+        >
+          {error}
+        </p>
+
+        <button
+          type="button"
+          onClick={() => {
+            refreshPairs?.();
+          }}
+          style={{
+            padding: '12px 22px',
+            border: 0,
+            borderRadius: 14,
+            color: '#fff',
+            background: '#9B72CF',
+            fontSize: 15,
+            fontWeight: 700,
+          }}
+        >
+          Попробовать снова
+        </button>
+      </div>
+    );
+  }
+
   return (
+    
     <div>
       <NoPairs
         onCreate={() => setShowCreate(true)}
