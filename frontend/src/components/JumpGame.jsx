@@ -33,14 +33,14 @@ const PHYSICS = {
   rocketDuration: 1.25,
 
   /*
-   * Управление удержанием, настроенное на лёгкий отклик:
-   * высокий acceleration → питомец быстро реагирует на палец,
-   * пониженный friction → инерция после отпускания гасится быстрее
-   * (не ощущается «тяжёлым»/«плывущим»).
+   * Параметры под управление «следование за пальцем»:
+   * высокое ускорение — мгновенный подхват движения пальца;
+   * высокий maxSpeed — питомец успевает за быстрым свайпом
+   * через весь экран; friction гасит скорость после отпускания.
    */
-  acceleration: 2600,
-  maxSpeed: 300,
-  friction: 0.70,
+  acceleration: 4000,
+  maxSpeed: 520,
+  friction: 0.60,
   step: 1 / 60,
 };
 
@@ -309,18 +309,14 @@ function makeGame(width, height) {
       pointerId: null,
 
       /*
-       * -1 — палец движется влево;
-       * 1 — палец движется вправо;
-       * 0 — направление ещё не выбрано.
+       * Целевая горизонтальная позиция питомца
+       * в координатах игры (0..width). Питомец плавно
+       * тянется к пальцу: держишь палец слева — питомец
+       * едет и останавливается слева, ведёшь палец —
+       * питомец следует за ним пропорционально.
+       * null — палец не касается экрана.
        */
-      direction: 0,
-
-      /*
-       * Последняя горизонтальная координата пальца.
-       * Используется для определения направления
-       * относительно предыдущего pointer-события.
-       */
-      lastX: null,
+      targetX: null,
     },
 
     player: {
@@ -831,7 +827,6 @@ export default function JumpGame() {
   const canvasRef = useRef(null);
   const gameRef = useRef(null);
   const petImageRef = useRef(null);
-  const bestRef = useRef(0);
   const gameSessionRef = useRef(null);
   const gameSessionLoadingRef = useRef(false);
   const renderedScoreRef = useRef(-1);
@@ -873,16 +868,6 @@ export default function JumpGame() {
 
   const [personalRank, setPersonalRank] =
     useState(null);
-
-  const [bestScore, setBestScore] = useState(() => {
-    try {
-      return Number(
-        localStorage.getItem(`jump_best_${pairId}`) || 0,
-      );
-    } catch {
-      return 0;
-    }
-  });
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
@@ -1020,7 +1005,6 @@ export default function JumpGame() {
         resume: 'Продолжить',
         gameOver: 'Игра окончена',
         score: 'Очки',
-        best: 'Рекорд пары',
         record: 'Новый рекорд!',
         again: 'Ещё раз',
         back: 'К питомцу',
@@ -1046,7 +1030,6 @@ export default function JumpGame() {
         resume: 'Continue',
         gameOver: 'Game over',
         score: 'Score',
-        best: 'Pair best',
         record: 'New record!',
         again: 'Play again',
         back: 'Back to pet',
@@ -1060,10 +1043,6 @@ export default function JumpGame() {
         close: 'Close',
         player: 'Player',
       };
-
-  useEffect(() => {
-    bestRef.current = bestScore;
-  }, [bestScore]);
 
   const authHeaders = useCallback(() => {
     const headers = {
@@ -1265,20 +1244,6 @@ export default function JumpGame() {
     }
   }, []);
 
-  const saveBest = useCallback((value) => {
-    bestRef.current = value;
-    setBestScore(value);
-
-    try {
-      localStorage.setItem(
-        `jump_best_${pairId}`,
-        String(value),
-      );
-    } catch {
-      // localStorage недоступен.
-    }
-  }, [pairId]);
-
   const finishGame = useCallback((finalScore) => {
     const game = gameRef.current;
 
@@ -1308,8 +1273,7 @@ export default function JumpGame() {
      */
       game.pointer.active = false;
       game.pointer.pointerId = null;
-      game.pointer.direction = 0;
-      game.pointer.lastX = null;
+      game.pointer.targetX = null;
       game.player.vx = 0;
 
     setScreen(STATE.OVER);
@@ -1406,7 +1370,6 @@ export default function JumpGame() {
     authHeaders,
     haptic,
     pairId,
-    saveBest,
     userId,
   ]);
 
@@ -1480,7 +1443,7 @@ export default function JumpGame() {
     return () => {
       cancelled = true;
     };
-  }, [authHeaders, pairId, saveBest]);
+  }, [authHeaders, pairId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1662,8 +1625,7 @@ export default function JumpGame() {
 
         game.pointer.active = false;
         game.pointer.pointerId = null;
-        game.pointer.direction = 0;
-        game.pointer.lastX = null;
+        game.pointer.targetX = null;
         game.player.vx = 0;
 
         setScreen(STATE.PAUSED);
@@ -1736,23 +1698,35 @@ export default function JumpGame() {
       }
 
       /*
-       * Горизонтальное управление удержанием.
+       * Горизонтальное управление: питомец следует за пальцем.
        *
-       * Движение пальца влево:
-       * direction === -1.
+       * Желаемая скорость пропорциональна расстоянию до целевой
+       * позиции пальца (targetX), но не больше maxSpeed. Чем ближе
+       * питомец к пальцу, тем медленнее он едет — поэтому он мягко
+       * и точно останавливается у нужной платформы.
        *
-       * Движение пальца вправо:
-       * direction === 1.
-       *
-       * Направление меняется без отпускания пальца.
+       * Затем текущая скорость плавно подтягивается к желаемой
+       * через ускорение, что убирает рывки.
        */
       if (
         game.pointer.active &&
-        game.pointer.direction !== 0
+        game.pointer.targetX !== null
       ) {
-        const desiredVelocity =
-          game.pointer.direction *
-          PHYSICS.maxSpeed;
+        const distanceToTarget =
+          game.pointer.targetX - player.x;
+
+        /*
+         * followStrength переводит расстояние в желаемую
+         * скорость. Больше значение — резче питомец догоняет
+         * палец. Ограничиваем скорость PHYSICS.maxSpeed.
+         */
+        const followStrength = 9;
+
+        const desiredVelocity = clamp(
+          distanceToTarget * followStrength,
+          -PHYSICS.maxSpeed,
+          PHYSICS.maxSpeed,
+        );
 
         const difference =
           desiredVelocity - player.vx;
@@ -1765,6 +1739,16 @@ export default function JumpGame() {
           -maximumChange,
           maximumChange,
         );
+
+        /*
+         * У самой цели гасим микро-дрожание.
+         */
+        if (
+          Math.abs(distanceToTarget) < 1 &&
+          Math.abs(player.vx) < 6
+        ) {
+          player.vx = 0;
+        }
       } else {
         /*
          * После отпускания пальца питомец
@@ -2504,7 +2488,7 @@ export default function JumpGame() {
      */
     game.pointer.active = false;
     game.pointer.pointerId = null;
-    game.pointer.direction = 0;
+    game.pointer.targetX = null;
     game.player.vx = 0;
 
     setScreen(STATE.PAUSED);
@@ -2529,10 +2513,9 @@ export default function JumpGame() {
   /*
    * Управление начинается при касании canvas.
    *
-   * Начальное направление определяется
-   * по месту касания. Затем пользователь
-   * может менять его, двигая палец между
-   * половинами canvas без отпускания.
+   * Точка касания задаёт целевую позицию питомца,
+   * к которой он плавно тянется. Ведя палец,
+   * пользователь перемещает эту цель без отпускания.
    */
   const pointerDown = event => {
     const game = gameRef.current;
@@ -2559,12 +2542,29 @@ export default function JumpGame() {
 
     event.preventDefault();
 
+    const rect =
+      canvas.getBoundingClientRect();
+
+    /*
+     * Переводим координату касания из пикселей экрана
+     * в координаты игры (0..game.width).
+     */
+    const scaleX =
+      rect.width > 0
+        ? game.width / rect.width
+        : 1;
+
+    const localX =
+      (event.clientX - rect.left) * scaleX;
+
     game.pointer.active = true;
     game.pointer.pointerId =
       event.pointerId;
-    game.pointer.direction = 0;
-    game.pointer.lastX =
-      event.clientX;
+    game.pointer.targetX = clamp(
+      localX,
+      0,
+      game.width,
+    );
 
     try {
       canvas.setPointerCapture(
@@ -2579,18 +2579,19 @@ export default function JumpGame() {
   };
 
   /*
-   * Пока палец удерживается, направление
-   * меняется по его текущему положению.
+   * Пока палец удерживается, целевая позиция питомца
+   * следует за его текущим положением.
    *
-   * Палец можно непрерывно вести между
-   * левой и правой половинами canvas,
-   * не отпуская его.
+   * Палец можно непрерывно вести по всей ширине canvas,
+   * не отпуская его — питомец плавно тянется за ним.
    */
   const pointerMove = event => {
     const game = gameRef.current;
+    const canvas = canvasRef.current;
 
     if (
       !game?.pointer.active ||
+      !canvas ||
       game.pointer.pointerId !==
         event.pointerId
     ) {
@@ -2599,38 +2600,27 @@ export default function JumpGame() {
 
     event.preventDefault();
 
-    const previousX =
-      game.pointer.lastX;
-
-    if (!Number.isFinite(previousX)) {
-      game.pointer.lastX =
-        event.clientX;
-
-      return;
-    }
-
-    const movementX =
-      event.clientX - previousX;
+    const rect =
+      canvas.getBoundingClientRect();
 
     /*
-     * Мёртвая зона убирает случайные рывки
-     * из-за микродвижений удерживаемого пальца.
-     * Координату обновляем только после выхода
-     * из мёртвой зоны, поэтому движение накапливается.
-     * Уменьшена, чтобы питомец реагировал сразу и управление
-     * не ощущалось «тяжёлым».
+     * Целевая позиция питомца всегда равна текущей
+     * позиции пальца (в координатах игры). Питомец
+     * плавно тянется к ней в игровом цикле.
      */
-    if (Math.abs(movementX) < 6) {
-      return;
-    }
-
-    game.pointer.direction =
-      movementX < 0
-        ? -1
+    const scaleX =
+      rect.width > 0
+        ? game.width / rect.width
         : 1;
 
-    game.pointer.lastX =
-      event.clientX;
+    const localX =
+      (event.clientX - rect.left) * scaleX;
+
+    game.pointer.targetX = clamp(
+      localX,
+      0,
+      game.width,
+    );
   };
 
   const pointerUp = event => {
@@ -2655,8 +2645,7 @@ export default function JumpGame() {
 
     game.pointer.active = false;
     game.pointer.pointerId = null;
-    game.pointer.direction = 0;
-    game.pointer.lastX = null;
+    game.pointer.targetX = null;
 
     try {
       if (
