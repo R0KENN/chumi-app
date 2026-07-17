@@ -42,6 +42,14 @@ const PHYSICS = {
   maxSpeed: 520,
   friction: 0.60,
   step: 1 / 60,
+
+  /*
+   * Чувствительность управления: во сколько раз перемещение
+   * питомца больше перемещения пальца. 1 = «палец к пальцу»
+   * (абсолютный режим), 2 = питомец проезжает вдвое больше,
+   * чем сдвинут палец — не нужно водить пальцем по всему экрану.
+   */
+  controlSensitivity: 2,
 };
 
 const clamp = (value, min, max) =>
@@ -311,12 +319,20 @@ function makeGame(width, height) {
       /*
        * Целевая горизонтальная позиция питомца
        * в координатах игры (0..width). Питомец плавно
-       * тянется к пальцу: держишь палец слева — питомец
-       * едет и останавливается слева, ведёшь палец —
-       * питомец следует за ним пропорционально.
+       * тянется к ней в игровом цикле.
        * null — палец не касается экрана.
        */
       targetX: null,
+
+      /*
+       * Опорные точки для относительного управления
+       * с усилением: позиция питомца и позиция пальца
+       * в момент касания. Цель считается как сдвиг пальца
+       * относительно anchorPointerX, умноженный на
+       * чувствительность, прибавленный к anchorPetX.
+       */
+      anchorPetX: 0,
+      anchorPointerX: 0,
     },
 
     player: {
@@ -2560,11 +2576,15 @@ export default function JumpGame() {
     game.pointer.active = true;
     game.pointer.pointerId =
       event.pointerId;
-    game.pointer.targetX = clamp(
-      localX,
-      0,
-      game.width,
-    );
+
+    /*
+     * Относительный режим: цель не прыгает в точку касания,
+     * а начинает двигаться от текущей позиции питомца.
+     * Запоминаем, где стоял питомец и где коснулся палец.
+     */
+    game.pointer.anchorPetX = game.player.x;
+    game.pointer.anchorPointerX = localX;
+    game.pointer.targetX = game.player.x;
 
     try {
       canvas.setPointerCapture(
@@ -2616,8 +2636,18 @@ export default function JumpGame() {
     const localX =
       (event.clientX - rect.left) * scaleX;
 
+    /*
+     * Относительное управление с усилением: сдвиг пальца
+     * от точки касания умножается на чувствительность.
+     * Небольшое движение пальца перемещает питомца дальше,
+     * поэтому не нужно водить пальцем по всему экрану.
+     */
+    const pointerDelta =
+      localX - game.pointer.anchorPointerX;
+
     game.pointer.targetX = clamp(
-      localX,
+      game.pointer.anchorPetX +
+        pointerDelta * PHYSICS.controlSensitivity,
       0,
       game.width,
     );
