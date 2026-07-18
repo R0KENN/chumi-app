@@ -1465,7 +1465,7 @@ export default function JumpGame() {
 
     const image = new Image();
     image.decoding = 'async';
-    image.src = `/pets/${petName}_frame.png`;
+    image.src = `/pets/${petName}_game.png`;
 
     petImageRef.current = image;
 
