@@ -813,8 +813,7 @@ html, body {
  *
  * data-атрибуты устанавливаются в App.jsx.
  */
-html[data-chumi-platform="iphone"]
-[data-chumi-fullscreen="true"] {
+html[data-chumi-platform="iphone"][data-chumi-fullscreen="true"] {
   --chumi-safe-top: max(
     112px,
     var(--tg-content-safe-area-inset-top, 0px)
@@ -831,8 +830,7 @@ html[data-chumi-platform="iphone"]
   );
 }
 
-html[data-chumi-platform="ipad"]
-[data-chumi-fullscreen="true"] {
+html[data-chumi-platform="ipad"][data-chumi-fullscreen="true"] {
   --chumi-safe-top: max(
     92px,
     var(--tg-content-safe-area-inset-top, 0px)
@@ -849,20 +847,19 @@ html[data-chumi-platform="ipad"]
   );
 }
 
-html[data-chumi-platform="android"]
-[data-chumi-fullscreen="true"] {
+html[data-chumi-platform="android"][data-chumi-fullscreen="true"] {
   --chumi-safe-top: max(
-    60px,
+    84px,
     var(--tg-content-safe-area-inset-top, 0px)
   );
 
   --chumi-top-pad: max(
-    72px,
+    96px,
     var(--tg-content-safe-area-inset-top, 0px)
   );
 
   --chumi-content-top: max(
-    72px,
+    96px,
     var(--tg-content-safe-area-inset-top, 0px)
   );
 }

@@ -102,7 +102,6 @@ export default function PairSelector() {
   }
 
   return (
-    
     <div>
       <NoPairs
         onCreate={() => setShowCreate(true)}

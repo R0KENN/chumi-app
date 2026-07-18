@@ -199,7 +199,7 @@ function csSet(key, value) {
 
 function detectLanguageLocal() {
   const saved = localStorage.getItem('chumi_lang');
-  if (saved) return saved;
+  if (saved === 'ru' || saved === 'en') return saved;
   try {
     const tg = window.Telegram?.WebApp;
     const tgLang = tg?.initDataUnsafe?.user?.language_code;
@@ -247,9 +247,10 @@ export function LangProvider({ children }) {
 
   // FIX #1: добавлен X-Telegram-Init-Data заголовок
   const setLang = (l) => {
-    setLangState(l);
-    localStorage.setItem('chumi_lang', l);
-    csSet('chumi_lang', l);
+    const nextLang = l === 'en' ? 'en' : 'ru';
+    setLangState(nextLang);
+    localStorage.setItem('chumi_lang', nextLang);
+    csSet('chumi_lang', nextLang);
 
     const uid = getUserId();
     const headers = { 'Content-Type': 'application/json' };
@@ -259,7 +260,7 @@ export function LangProvider({ children }) {
     fetch('/api/set-lang', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ userId: uid, lang: l }),
+      body: JSON.stringify({ userId: uid, lang: nextLang }),
     }).catch(() => {});
   };
 
@@ -273,5 +274,13 @@ export function LangProvider({ children }) {
 }
 
 export function useLang() {
-  return useContext(LangContext);
+  const context = useContext(LangContext);
+
+  if (!context) {
+    throw new Error(
+      'useLang must be used inside LangProvider',
+    );
+  }
+
+  return context;
 }

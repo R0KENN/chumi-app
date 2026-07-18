@@ -112,7 +112,7 @@ export default function JoinPairModal({ userId, onClose, onJoined }) {
         {error && <p style={{ color:'#e53e3e',fontSize:13,marginBottom:12 }}>{error}</p>}
         <div style={{ display:'flex',gap:10 }}>
           <button onClick={onClose} disabled={loading} style={{ flex:1,padding:12,borderRadius:14,border:'none',background:'rgba(0,0,0,0.05)',fontSize:14,cursor:'pointer',color:'#333' }}>{t('cancel')}</button>
-          <button onClick={handleJoin} disabled={loading||code.trim().length<6} style={{ flex:1,padding:12,borderRadius:14,border:'none',background:(loading||code.length<6)?'rgba(255,140,50,0.1)':'rgba(255,140,50,0.2)',fontSize:14,cursor:'pointer',color:'#e67e00',fontWeight:600 }}>{loading?'...':t('join')}</button>
+          <button onClick={handleJoin} disabled={loading||code.trim().length<6} style={{ flex:1,padding:12,borderRadius:14,border:'none',background:(loading||code.trim().length<6)?'rgba(255,140,50,0.1)':'rgba(255,140,50,0.2)',fontSize:14,cursor:'pointer',color:'#e67e00',fontWeight:600 }}>{loading?'...':t('join')}</button>
         </div>
       </div>
     </div>

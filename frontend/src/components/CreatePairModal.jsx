@@ -86,7 +86,7 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
       const res = await fetch('/api/send-invite', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ pairCode: createdCode }),
+        body: JSON.stringify({ userId: String(userId), pairCode: createdCode }),
       });
       const data = await res.json();
       const inviteLink = data.inviteLink || `https://t.me/ChumiPetBot?start=join_${createdCode}`;
@@ -120,7 +120,7 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
             </button>
             <div style={{ display:'flex', gap:10 }}>
               <button onClick={() => {
-                navigator.clipboard.writeText(createdCode);
+                navigator.clipboard?.writeText(createdCode);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               }} style={{ flex:1,padding:12,borderRadius:14,border:'none',background:'rgba(0,0,0,0.05)',fontSize:14,cursor:'pointer',color:'#333' }}>

@@ -104,8 +104,18 @@ function createPlatform(game, options) {
 function choosePlatformType(score) {
   const roll = Math.random();
 
-  if (score >= 35 && roll < 0.12) return TYPE.MOVING;
-  if (score >= 15 && roll < 0.29) return TYPE.FRAGILE;
+  const difficulty = clamp(score / 120, 0, 1);
+
+  /*
+   * Движущихся платформ становится больше с ростом счёта:
+   * с 12% на score=35 до ~24% ближе к максимуму. Порог
+   * появления снижаем с 35 до 28, чтобы разгон начинался
+   * чуть раньше.
+   */
+  const movingChance = 0.12 + difficulty * 0.12;
+
+  if (score >= 28 && roll < movingChance) return TYPE.MOVING;
+  if (score >= 15 && roll < 0.29 + movingChance) return TYPE.FRAGILE;
   if (score >= 10 && roll > 0.93) return TYPE.SPRING;
 
   return TYPE.NORMAL;
@@ -178,9 +188,19 @@ function addPlatform(game) {
     width,
     type,
     moveRange,
+    /*
+     * Скорость движущихся платформ растёт со сложностью,
+     * но с потолком: базовый диапазон 1.1–1.7 плавно
+     * поднимается до 2.0–2.9 к difficulty=1. Даже на
+     * максимуме платформа остаётся ловимой, потому что
+     * амплитуда moveRange невелика (16–32px).
+     */
     moveSpeed:
       type === TYPE.MOVING
-        ? random(1.1, 1.7)
+        ? random(
+            1.1 + difficulty * 0.9,
+            1.7 + difficulty * 1.2,
+          )
         : 0,
   });
 
@@ -191,7 +211,7 @@ function addPlatform(game) {
    * Шипы — только дополнительное препятствие.
    * Они не становятся частью обязательного маршрута.
    */
-  if (score >= 30 && Math.random() < 0.13) {
+  if (score >= 30 && Math.random() < 0.13 + difficulty * 0.06) {
     const hazardWidth = random(65, 85);
     const placeRight = x < game.width / 2;
 
@@ -243,7 +263,7 @@ function addPlatform(game) {
     score >= 12 &&
     type !== TYPE.FRAGILE &&
     canSpawnRocket &&
-    Math.random() < 0.07
+    Math.random() < 0.07 - difficulty * 0.03
   ) {
     game.rockets.push({
       id: game.nextRocketId++,

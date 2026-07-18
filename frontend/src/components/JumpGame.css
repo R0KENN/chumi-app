@@ -1268,10 +1268,12 @@
   z-index: var(--jump-layer-hud);
 
   padding:
-    max(
-      env(safe-area-inset-top, 0px),
-      var(--tg-content-safe-area-inset-top, 0px),
-      var(--chumi-content-top, 16px)
+    calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--tg-content-safe-area-inset-top, 0px),
+        var(--chumi-content-top, 16px)
+      ) + 8px
     )
     calc(
       max(
@@ -1390,10 +1392,12 @@
  */
 @media (max-height: 700px) {
   .jump-game-hud {
-    padding-top: max(
-      env(safe-area-inset-top, 0px),
-      var(--tg-content-safe-area-inset-top, 0px),
-      var(--chumi-content-top, 16px)
+    padding-top: calc(
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--tg-content-safe-area-inset-top, 0px),
+        var(--chumi-content-top, 16px)
+      ) + 8px
     );
   }
 

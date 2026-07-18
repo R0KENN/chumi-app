@@ -337,10 +337,11 @@ function App() {
                 fullscreenTopFallback = 92;
               } else if (isAndroid) {
                 /*
-                 * На большинстве Android-устройств
-                 * достаточно 60px.
+                 * На части Android-устройств Telegram рисует
+                 * панель управления выше — берём 84px, чтобы
+                 * верхняя строка приложения не уезжала под неё.
                  */
-                fullscreenTopFallback = 60;
+                fullscreenTopFallback = 84;
               } else {
                 fullscreenTopFallback = 60;
               }
@@ -806,10 +807,7 @@ function App() {
     );
   }
 
-  if (
-    telegramStatus === 'sdk-error' ||
-    telegramStatus === 'local-error'
-  ) {
+  if (telegramStatus === 'sdk-error') {
     return (
       <FullScreenMessage
         icon="🌐"

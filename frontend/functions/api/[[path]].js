@@ -1074,7 +1074,7 @@ export async function onRequest(context) {
         .select('pair_code')
         .eq('user_id', userId);
 
-      if (!userPairs || userPairs.length === 0) return json({ pairs: [] });
+      if (!userPairs || userPairs.length === 0) return json({ pairs: [] }, 200, request);
 
       const pairs = [];
       for (const up of userPairs) {
@@ -1096,7 +1096,7 @@ export async function onRequest(context) {
         pairs.push(formatPair(pair, members, tasks, userId));
       }
 
-      return json({ pairs });
+      return json({ pairs }, 200, request);
     }
 
     // ── GET /api/pair/:pairCode/:userId ──
@@ -1459,10 +1459,10 @@ export async function onRequest(context) {
       // ── Авторизация: смотреть задачи может только участник пары,
       // и только свои собственные (userId должен совпадать с авторизованным) ──
       const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403, request);
       if (!(await isPairMember(supabase, pairCode, authedId))) {
-        return json({ error: 'Not a member' }, 403);
+        return json({ error: 'Not a member' }, 403, request);
       }
 
       const { data: pairTz } = await supabase
@@ -1475,7 +1475,7 @@ export async function onRequest(context) {
         .eq('user_id', userId)
         .eq('task_date', today);
 
-      return json({ tasks: tasks || [] });
+      return json({ tasks: tasks || [] }, 200, request);
     }
 
     // ── GET /api/streak-calendar/:pairCode ──
@@ -1485,14 +1485,14 @@ if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
   const monthParam = url.searchParams.get('month'); // YYYY-MM, опционально
 
   const authedId = getAuthedUserId(request, env);
-  if (!authedId) return json({ error: 'Unauthorized' }, 401);
+  if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
   if (!(await isPairMember(supabase, pairCode, authedId))) {
-    return json({ error: 'Not a member' }, 403);
+    return json({ error: 'Not a member' }, 403, request);
   }
 
   const { data: pair } = await supabase
     .from('pairs').select('timezone, created_at').eq('code', pairCode).maybeSingle();
-  if (!pair) return json({ error: 'Pair not found' }, 404);
+  if (!pair) return json({ error: 'Pair not found' }, 404, request);
 
   const tz = pair.timezone || 'UTC';
   const month = monthParam || getTodayDate(tz).slice(0, 7); // YYYY-MM
@@ -1503,7 +1503,7 @@ if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
 
   const { data: members } = await supabase
     .from('pair_users').select('user_id').eq('pair_code', pairCode);
-  if (!members || members.length === 0) return json({ days: [] });
+  if (!members || members.length === 0) return json({ days: [] }, 200, request);
 
   const memberIds = members.map(m => m.user_id);
 
@@ -1534,7 +1534,7 @@ if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
   }
 
   const bothCount = days.filter(d => d.status === 'both').length;
-  return json({ month, days, bothCount, totalDays: lastDay });
+  return json({ month, days, bothCount, totalDays: lastDay }, 200, request);
 }
 
 // ── GET /api/diary/:pairCode ──
@@ -1542,9 +1542,9 @@ if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
 if (request.method === 'GET' && path.match(/^\/api\/diary\/[^/]+$/)) {
   const pairCode = path.split('/')[3];
   const authedId = getAuthedUserId(request, env);
-  if (!authedId) return json({ error: 'Unauthorized' }, 401);
+  if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
   if (!(await isPairMember(supabase, pairCode, authedId))) {
-    return json({ error: 'Not a member' }, 403);
+    return json({ error: 'Not a member' }, 403, request);
   }
   const { data: entries } = await supabase
     .from('pair_diary')
@@ -1553,7 +1553,7 @@ if (request.method === 'GET' && path.match(/^\/api\/diary\/[^/]+$/)) {
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(200);
-  return json({ entries: entries || [] });
+  return json({ entries: entries || [] }, 200, request);
 }
 
 // ── POST /api/diary ──
@@ -1561,20 +1561,20 @@ if (request.method === 'GET' && path.match(/^\/api\/diary\/[^/]+$/)) {
 if (request.method === 'POST' && path === '/api/diary') {
   const body = await request.json();
   const userId = extractUserId(request, env, body.userId);
-  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
   const pairCode = body.pairCode;
   const emoji = (body.emoji || '').toString().slice(0, 8);
   const text = (body.text || '').toString().trim().slice(0, 100);
   if (!pairCode || !emoji || !text) {
-    return json({ error: 'pairCode, emoji and text required' }, 400);
+    return json({ error: 'pairCode, emoji and text required' }, 400, request);
   }
 
   const { data: membership, error: memErr } = await supabase
     .from('pair_users').select('user_id, display_name')
     .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-  if (memErr) return json({ error: 'Membership query failed: ' + memErr.message }, 500);
-  if (!membership) return json({ error: 'Not a member' }, 403);
+  if (memErr) return json({ error: 'Membership query failed: ' + memErr.message }, 500, request);
+  if (!membership) return json({ error: 'Not a member' }, 403, request);
 
   const { data: pairTz } = await supabase
     .from('pairs').select('timezone, pet_name').eq('code', pairCode).maybeSingle();
@@ -1594,7 +1594,7 @@ if (request.method === 'POST' && path === '/api/diary') {
       { pair_code: pairCode, user_id: userId, emoji, text, entry_date: today },
       { onConflict: 'pair_code,user_id,entry_date' }
     );
-  if (upErr) return json({ error: upErr.message }, 500);
+  if (upErr) return json({ error: upErr.message }, 500, request);
 
   // Уведомляем партнёра только если это новая запись (а не редактирование существующей)
   if (isFirstEntryToday) {
@@ -1630,7 +1630,7 @@ if (request.method === 'POST' && path === '/api/diary') {
     }
   }
 
-  return json({ success: true, entry_date: today });
+  return json({ success: true, entry_date: today }, 200, request);
 }
 
 // ── DELETE /api/diary/:id ──
@@ -1638,20 +1638,20 @@ if (request.method === 'POST' && path === '/api/diary') {
 if (request.method === 'POST' && path === '/api/diary-delete') {
   const body = await request.json();
   const userId = extractUserId(request, env, body.userId);
-  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
   const entryId = body.entryId;
-  if (!entryId) return json({ error: 'entryId required' }, 400);
+  if (!entryId) return json({ error: 'entryId required' }, 400, request);
 
   // Проверяем, что запись принадлежит вызывающему
   const { data: entry } = await supabase
     .from('pair_diary').select('user_id')
     .eq('id', entryId).maybeSingle();
-  if (!entry) return json({ error: 'Entry not found' }, 404);
-  if (String(entry.user_id) !== String(userId)) return json({ error: 'Not yours' }, 403);
+  if (!entry) return json({ error: 'Entry not found' }, 404, request);
+  if (String(entry.user_id) !== String(userId)) return json({ error: 'Not yours' }, 403, request);
 
   await supabase.from('pair_diary').delete().eq('id', entryId);
-  return json({ success: true });
+  return json({ success: true }, 200, request);
 }
 
     // ── GET /api/user-slots/:userId ──
@@ -1676,7 +1676,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
     if (request.method === 'POST' && path === '/api/create') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const displayName = body.displayName || null;
       const username = body.username || null;
@@ -1687,7 +1687,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       const { data: existing } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);
       if (existing && existing.length >= maxPairs) {
-        return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
+        return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400, request);
       }
 
       const code = await generateUniqueCode(supabase, 20);
@@ -1732,7 +1732,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
           .eq('invited_user_id', userId);
       }
 
-      return json({ code });
+      return json({ code }, 200, request);
     }
 
 
@@ -1740,7 +1740,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
     if (request.method === 'POST' && path === '/api/join') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = (body.code || '').trim().toUpperCase();
       const displayName = body.displayName || null;
@@ -1752,18 +1752,18 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       const { data: existing } = await supabase
         .from('pair_users').select('pair_code').eq('user_id', userId);
       if (existing && existing.length >= maxPairs) {
-        return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400);
+        return json({ error: `Max ${maxPairs} pairs`, maxReached: true }, 400, request);
       }
 
       const { data: pair } = await supabase
         .from('pairs').select('*').eq('code', code).maybeSingle();
-      if (!pair) return json({ error: 'Pair not found' }, 404);
+      if (!pair) return json({ error: 'Pair not found' }, 404, request);
 
       const { data: members } = await supabase
         .from('pair_users').select('user_id').eq('pair_code', code);
 
-      if (members?.some(m => m.user_id === userId)) return json({ error: 'Already in pair' }, 400);
-      if (members && members.length >= 2) return json({ error: 'Pair full' }, 400);
+      if (members?.some(m => m.user_id === userId)) return json({ error: 'Already in pair' }, 400, request);
+      if (members && members.length >= 2) return json({ error: 'Pair full' }, 400, request);
 
       await supabase.from('pair_users').insert({
         pair_code: code,
@@ -1808,24 +1808,24 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         }
       }
 
-      return json({ code });
+      return json({ code }, 200, request);
     }
 
     // ── POST /api/complete-task ──
     if (request.method === 'POST' && path === '/api/complete-task') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = body.code;
       const taskKey = body.taskKey;
 
       const points = TASK_POINTS[taskKey];
-      if (points === undefined) return json({ error: 'Invalid task' }, 400);
+      if (points === undefined) return json({ error: 'Invalid task' }, 400, request);
 
       const { data: pairCheck } = await supabase
         .from('pairs').select('is_dead, timezone, last_streak_date, streak_days, growth_points').eq('code', code).maybeSingle();
-      if (!pairCheck) return json({ error: 'Pair not found' }, 404);
+      if (!pairCheck) return json({ error: 'Pair not found' }, 404, request);
 
       // Если питомец мёртв больше 3 дней без воскрешения — серия и XP обнуляются
       // и питомец «начинается с нуля». Это срабатывает при первой попытке что-то сделать.
@@ -1848,11 +1848,11 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
           await supabase.from('one_time_tasks').delete().eq('pair_code', code);
           await supabase.from('daily_tasks').delete().eq('pair_code', code);
           await supabase.from('feedings').delete().eq('pair_code', code);
-          return json({ error: 'Pet was reset due to long inactivity', reset: true }, 400);
+          return json({ error: 'Pet was reset due to long inactivity', reset: true }, 400, request);
         }
       }
 
-      if (pairCheck.is_dead) return json({ error: 'Pet is dead' }, 400);
+      if (pairCheck.is_dead) return json({ error: 'Pet is dead' }, 400, request);
 
       const today = getTodayDate(pairCheck.timezone || 'UTC');
 
@@ -1861,7 +1861,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         .eq('pair_code', code)
         .eq('user_id', userId)
         .maybeSingle();
-      if (!membership) return json({ error: 'Not a member of this pair' }, 403);
+      if (!membership) return json({ error: 'Not a member of this pair' }, 403, request);
 
       // Daily tasks — полагаемся на UNIQUE-индекс daily_tasks_unique.
       // Если insert упал с конфликтом, задача уже выполнена сегодня → не начисляем.
@@ -1874,7 +1874,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         completed_at: new Date().toISOString(),
       });
       if (dtErr) {
-        return json({ error: 'Already completed' }, 400);
+        return json({ error: 'Already completed' }, 400, request);
       }
 
       const { data: members } = await supabase
@@ -1986,7 +1986,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         }
       }
 
-      return json({ success: true, points_added: pointsAdded });
+      return json({ success: true, points_added: pointsAdded }, 200, request);
     }
 
 
@@ -1994,33 +1994,33 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
     if (request.method === 'POST' && path === '/api/rename') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = body.code || body.pairCode;
       const name = (body.pet_name || body.name || '').trim().slice(0, 20);
-      if (!name) return json({ error: 'Name required' }, 400);
+      if (!name) return json({ error: 'Name required' }, 400, request);
 
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       await supabase.from('pairs').update({ pet_name: name }).eq('code', code);
-      return json({ success: true, pet_name: name });
+      return json({ success: true, pet_name: name }, 200, request);
     }
 
     // ── POST /api/delete ──
     if (request.method === 'POST' && path === '/api/delete') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = body.pairCode || body.code;
 
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       const { data: members } = await supabase
         .from('pair_users').select('user_id, display_name').eq('pair_code', code);
@@ -2043,36 +2043,36 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       await supabase.from('pair_users').delete().eq('pair_code', code);
       await supabase.from('pairs').delete().eq('code', code);
 
-      return json({ success: true });
+      return json({ success: true }, 200, request);
     }
 
     // ── POST /api/setbg ──
     if (request.method === 'POST' && path === '/api/setbg') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = body.pairCode || body.code;
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       // bgId может быть null (= авто/сброс) или id из списка фонов
       const bgId = body.bgId ?? null;
       await supabase.from('pairs').update({ active_bg: bgId }).eq('code', code);
-      return json({ success: true });
+      return json({ success: true }, 200, request);
     }
 
     // ── POST /api/notify ──
     if (request.method === 'POST' && path === '/api/notify') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const targetUserId = String(body.targetUserId || '');
       if (!targetUserId || targetUserId === userId) {
-        return json({ error: 'Invalid target' }, 400);
+        return json({ error: 'Invalid target' }, 400, request);
       }
 
       const { data: callerPairs } = await supabase
@@ -2082,7 +2082,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
 
       const callerCodes = new Set((callerPairs || []).map(p => p.pair_code));
       const isPartner = (targetPairs || []).some(p => callerCodes.has(p.pair_code));
-      if (!isPartner) return json({ error: 'Can only notify your partner' }, 403);
+      if (!isPartner) return json({ error: 'Can only notify your partner' }, 403, request);
 
       // Rate-limit: не чаще 1 уведомления в час одному партнёру
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -2094,7 +2094,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         .gte('sent_at', oneHourAgo)
         .limit(1);
       if (recent && recent.length > 0) {
-        return json({ error: 'Too many notifications', retryAfter: 3600 }, 429);
+        return json({ error: 'Too many notifications', retryAfter: 3600 }, 429, request);
       }
 
       const { data: ps } = await supabase
@@ -2105,14 +2105,14 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
 
       const sendRes = await sendTelegramMessage(env, targetUserId, defaultMsg);
       if (!sendRes.ok) {
-        return json({ error: 'Delivery failed', blocked: !!sendRes.blocked }, 502);
+        return json({ error: 'Delivery failed', blocked: !!sendRes.blocked }, 502, request);
       }
       await supabase.from('notification_log').insert({
         sender_user_id: userId,
         target_user_id: targetUserId,
         sent_at: new Date().toISOString(),
       });
-      return json({ success: true });
+      return json({ success: true }, 200, request);
     }
 
     // ── POST /api/recover-streak ──
@@ -2121,18 +2121,18 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
     if (request.method === 'POST' && path === '/api/recover-streak') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = body.pairCode || body.code;
 
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).maybeSingle();
-      if (!pair) return json({ error: 'Pair not found' }, 404);
-      if (!pair.is_dead) return json({ error: 'Pet is not dead' }, 400);
+      if (!pair) return json({ error: 'Pair not found' }, 404, request);
+      if (!pair.is_dead) return json({ error: 'Pet is not dead' }, 400, request);
 
       const tz = pair.timezone || 'UTC';
       const currentMonth = getCurrentMonth(tz);
@@ -2142,7 +2142,7 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
 
       let used = pair.streak_recoveries_used || 0;
       if (pair.last_recovery_month !== currentMonth) used = 0;
-      if (used >= MAX_RECOVERIES) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400);
+      if (used >= MAX_RECOVERIES) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400, request);
 
       const remainingAfter = MAX_RECOVERIES - (used + 1);
 
@@ -2207,14 +2207,14 @@ try {
         last_streak_date: today,
         streak_recoveries_used: used + 1,
         last_recovery_month: currentMonth,
-      });
+      }, 200, request);
     }
 
     // ── POST /api/create-invoice ──
     if (request.method === 'POST' && path === '/api/create-invoice') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const productId = body.productId;
 
@@ -2233,44 +2233,44 @@ try {
           }),
         });
         const data = await res.json();
-        if (!data.ok) return json({ error: 'Invoice creation failed' }, 500);
-        return json({ invoiceUrl: data.result });
+        if (!data.ok) return json({ error: 'Invoice creation failed' }, 500, request);
+        return json({ invoiceUrl: data.result }, 200, request);
       }
 
-      return json({ error: 'Invalid product' }, 400);
+      return json({ error: 'Invalid product' }, 400, request);
     }
 
     // ── POST /api/send-invite ──
     if (request.method === 'POST' && path === '/api/send-invite') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const pairCode = (body.pairCode || '').toUpperCase();
-      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+      if (!pairCode) return json({ error: 'pairCode required' }, 400, request);
 
       // Ссылку на приглашение отдаём только участнику этой пары
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
       const inviteLink = `https://t.me/${botUsername}?start=join_${pairCode}`;
-      return json({ inviteLink, pairCode });
+      return json({ inviteLink, pairCode }, 200, request);
     }
 
     // ── POST /api/create-egg ──
     if (request.method === 'POST' && path === '/api/create-egg') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = body.pairCode || body.code;
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       await supabase.from('pairs').update({
         pet_type: 'spark',
@@ -2287,7 +2287,7 @@ try {
       await supabase.from('daily_tasks').delete().eq('pair_code', code);
       await supabase.from('one_time_tasks').delete().eq('pair_code', code);
 
-      return json({ success: true });
+      return json({ success: true }, 200, request);
     }
 
     // ── GET /api/ranking ──
@@ -2300,7 +2300,7 @@ try {
         .limit(100);
 
       const codes = (allPairs || []).map(p => p.code);
-      if (codes.length === 0) return json({ ranking: [] });
+      if (codes.length === 0) return json({ ranking: [] }, 200, request);
 
       const { data: allMembers } = await supabase
         .from('pair_users')
@@ -2333,7 +2333,7 @@ try {
         members: membersByPair.get(p.code) || [],
       }));
 
-      return json({ ranking });
+      return json({ ranking }, 200, request);
     }
 
     // ── GET /api/ranking-random ──
@@ -2353,7 +2353,7 @@ try {
         .gte('last_streak_date', twoDaysAgoUtc);
 
       const named = (allPairs || []).filter(p => p.pet_name && p.pet_name.trim() !== '');
-      if (named.length === 0) return json({ ranking: [] });
+      if (named.length === 0) return json({ ranking: [] }, 200, request);
 
       const today = getTodayDate().replace(/-/g, '');
       const seed = parseInt(today, 10);
@@ -2389,7 +2389,7 @@ try {
         members: membersByPair.get(p.code) || [],
       }));
 
-      return json({ ranking });
+      return json({ ranking }, 200, request);
     }
 
     // ── POST /api/prepare-share ──
@@ -2398,7 +2398,7 @@ try {
     if (request.method === 'POST' && path === '/api/prepare-share') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
       const botLink = `https://t.me/${botUsername}`;
@@ -2461,7 +2461,7 @@ try {
           });
           const tgData = await tgRes.json();
           if (tgData.ok && tgData.result?.id) {
-            return json({ prepared_message_id: tgData.result.id });
+            return json({ prepared_message_id: tgData.result.id }, 200, request);
           }
           // если Telegram не принял photo — падаем в text-fallback ниже
         }
@@ -2488,8 +2488,8 @@ try {
         }),
       });
       const data = await res.json();
-      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id });
-      return json({ error: 'Failed to prepare message', details: data }, 500);
+      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id }, 200, request);
+      return json({ error: 'Failed to prepare message', details: data }, 500, request);
     }
 
         // ── POST /api/prepare-invite ──
@@ -2497,16 +2497,16 @@ try {
     if (request.method === 'POST' && path === '/api/prepare-invite') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const pairCode = (body.pairCode || '').toUpperCase();
-      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+      if (!pairCode) return json({ error: 'pairCode required' }, 400, request);
 
       // Проверяем, что вызывающий — участник этой пары
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       // Получаем язык пользователя
       const { data: ps } = await supabase
@@ -2552,8 +2552,8 @@ try {
         }),
       });
       const data = await res.json();
-      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id });
-      return json({ error: 'Failed to prepare message', details: data }, 500);
+      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id }, 200, request);
+      return json({ error: 'Failed to prepare message', details: data }, 500, request);
     }
 
         // ── POST /api/upload-postcard ──
@@ -2561,12 +2561,12 @@ try {
     if (request.method === 'POST' && path === '/api/upload-postcard') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const imageDataUrl = body.imageDataUrl || '';
       const m = imageDataUrl.match(/^data:image\/(png|jpeg);base64,/);
       if (!m) {
-        return json({ error: 'Invalid image' }, 400);
+        return json({ error: 'Invalid image' }, 400, request);
       }
       const ext = m[1] === 'jpeg' ? 'jpg' : 'png';
       const contentType = `image/${m[1]}`;
@@ -2588,10 +2588,10 @@ try {
       );
       if (!uploadRes.ok) {
         const err = await uploadRes.text();
-        return json({ error: 'Upload failed: ' + err.slice(0, 200) }, 500);
+        return json({ error: 'Upload failed: ' + err.slice(0, 200) }, 500, request);
       }
       const publicUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
-      return json({ url: publicUrl });
+      return json({ url: publicUrl }, 200, request);
     }
 
     // ── POST /api/prepare-postcard ──
@@ -2599,13 +2599,13 @@ try {
     if (request.method === 'POST' && path === '/api/prepare-postcard') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const imageDataUrl = body.imageDataUrl || '';
       const text = (body.text || '').toString().slice(0, 800);
       const m = imageDataUrl.match(/^data:image\/(png|jpeg);base64,/);
       if (!m) {
-        return json({ error: 'Invalid image' }, 400);
+        return json({ error: 'Invalid image' }, 400, request);
       }
       const ext = m[1] === 'jpeg' ? 'jpg' : 'png';
       const contentType = `image/${m[1]}`;
@@ -2625,7 +2625,7 @@ try {
           body: binary,
         }
       );
-      if (!uploadRes.ok) return json({ error: 'Upload failed' }, 500);
+      if (!uploadRes.ok) return json({ error: 'Upload failed' }, 500, request);
       const photoUrl = `${env.SUPABASE_URL}/storage/v1/object/public/postcards/${fileName}`;
 
       const botUsername = env.BOT_USERNAME || 'ChumiPetBot';
@@ -2657,8 +2657,8 @@ try {
         }),
       });
       const tgData = await tgRes.json();
-      if (!tgData.ok) return json({ error: tgData.description || 'TG error' }, 500);
-      return json({ prepared_message_id: tgData.result.id });
+      if (!tgData.ok) return json({ error: tgData.description || 'TG error' }, 500, request);
+      return json({ prepared_message_id: tgData.result.id }, 200, request);
     }
 
 // ── POST /api/prepare-sticker ──
@@ -2668,14 +2668,14 @@ try {
 if (request.method === 'POST' && path === '/api/prepare-sticker') {
   const body = await request.json();
   const userId = extractUserId(request, env, body.userId);
-  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
   const stickerFileId = (body.sticker_file_id || '').toString();
-  if (!stickerFileId) return json({ error: 'sticker_file_id required' }, 400);
+  if (!stickerFileId) return json({ error: 'sticker_file_id required' }, 400, request);
 
   // Защита: принимаем только стикеры из нашего пакета @ChumiPetBot
   if (!stickerFileId.startsWith('CAACAgIAAxUAAWoD')) {
-    return json({ error: 'Invalid sticker' }, 400);
+    return json({ error: 'Invalid sticker' }, 400, request);
   }
 
   const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/savePreparedInlineMessage`, {
@@ -2695,8 +2695,8 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
     }),
   });
   const data = await res.json();
-  if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id });
-  return json({ error: 'Failed to prepare sticker', details: data }, 500);
+  if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id }, 200, request);
+  return json({ error: 'Failed to prepare sticker', details: data }, 500, request);
 }
 
         // ── POST /api/prepare-task-message ──
@@ -2706,22 +2706,22 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
     if (request.method === 'POST' && path === '/api/prepare-task-message') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const pairCode = (body.pairCode || '').toUpperCase();
       const taskKey = body.taskKey || 'send_msg';
       const text = (body.text || '').toString().slice(0, 800);
-      if (!pairCode) return json({ error: 'pairCode required' }, 400);
-      if (!text) return json({ error: 'text required' }, 400);
+      if (!pairCode) return json({ error: 'pairCode required' }, 400, request);
+      if (!text) return json({ error: 'text required' }, 400, request);
       if (!['send_msg', 'send_sticker', 'send_media'].includes(taskKey)) {
-        return json({ error: 'invalid taskKey' }, 400);
+        return json({ error: 'invalid taskKey' }, 400, request);
       }
 
       // Проверяем участие в паре
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       // Получаем язык отправителя для подписи кнопки
       const { data: ps } = await supabase
@@ -2761,8 +2761,8 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         }),
       });
       const data = await res.json();
-      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id });
-      return json({ error: 'Failed to prepare message', details: data }, 500);
+      if (data.ok && data.result?.id) return json({ prepared_message_id: data.result.id }, 200, request);
+      return json({ error: 'Failed to prepare message', details: data }, 500, request);
     }
 
     // ── GET /api/user-lang/:userId ──
@@ -2775,31 +2775,31 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       // кто запрашивает (а не произвольного userId из пути), чтобы не было
       // утечки чужих настроек.
       const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ lang: 'ru' });
+      if (!authedId) return json({ lang: 'ru' }, 200, request);
 
       const { data } = await supabase
         .from('user_settings').select('lang')
         .eq('telegram_user_id', authedId).maybeSingle();
-      return json({ lang: data?.lang || 'ru' });
+      return json({ lang: data?.lang || 'ru' }, 200, request);
     }
 
     // ── POST /api/set-lang ──
     if (request.method === 'POST' && path === '/api/set-lang') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const lang = body.lang === 'en' ? 'en' : 'ru';
       await supabase.from('user_settings').upsert(
         { telegram_user_id: userId, lang, updated_at: new Date().toISOString() },
         { onConflict: 'telegram_user_id' }
       );
-      return json({ success: true, lang });
+      return json({ success: true, lang }, 200, request);
     }
 
     // ── POST /api/send-reminders (cron) ──
     if (request.method === 'POST' && path === '/api/send-reminders') {
-      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403, request);
 
       const { data: allPairs } = await supabase
         .from('pairs')
@@ -2808,7 +2808,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         .gte('streak_days', 1);
 
       const pairs = allPairs || [];
-      if (pairs.length === 0) return json({ success: true, sent: 0 });
+      if (pairs.length === 0) return json({ success: true, sent: 0 }, 200, request);
 
       const pairCodes = pairs.map(p => p.code);
 
@@ -2845,7 +2845,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
           candidates.push(m);
         }
       }
-      if (candidates.length === 0) return json({ success: true, sent: 0 });
+      if (candidates.length === 0) return json({ success: true, sent: 0 }, 200, request);
 
       const candidateIds = [...new Set(candidates.map(c => String(c.user_id)))];
 
@@ -2906,12 +2906,12 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         }
       }
 
-      return json({ success: true, sent });
+      return json({ success: true, sent }, 200, request);
     }
 
     // ── POST /api/update-streaks (cron) ──
     if (request.method === 'POST' && path === '/api/update-streaks') {
-      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403, request);
 
       // ── Батч: тянем живые и мёртвые пары одним запросом каждую ──
       const { data: alivePairsRaw } = await supabase
@@ -3047,20 +3047,20 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         }
       }
 
-      return json({ success: true, killed, reset });
+      return json({ success: true, killed, reset }, 200, request);
     }
 
     // ── POST /api/cleanup-empty-pairs (cron) ──
     // Удаляет: 1) пустые пары (< 2 участников) старше 5 дней;
     //          2) активные пары, в которые никто не заходил 5+ дней
     if (request.method === 'POST' && path === '/api/cleanup-empty-pairs') {
-      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403, request);
 
       const { data: allPairsRaw } = await supabase
         .from('pairs').select('code, created_at, last_streak_date, timezone');
       const allPairs = allPairsRaw || [];
       if (allPairs.length === 0) {
-        return json({ success: true, cleaned: 0, cleanedInactive: 0 });
+        return json({ success: true, cleaned: 0, cleanedInactive: 0 }, 200, request);
       }
 
       const allCodes = allPairs.map(p => p.code);
@@ -3154,7 +3154,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         cleanedInactive++;
       }
 
-      return json({ success: true, cleaned, cleanedInactive });
+      return json({ success: true, cleaned, cleanedInactive }, 200, request);
     }
 
         // ── POST /api/cleanup-postcards (cron) ──
@@ -3162,7 +3162,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
     // Порог 48 часов: картинки нужны только в момент «поделиться» / на время
     // показа в Stories (24 ч). После этого файл в бакете больше не нужен.
     if (request.method === 'POST' && path === '/api/cleanup-postcards') {
-      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403, request);
 
       const MAX_AGE_HOURS = 48;
       const cutoff = new Date(Date.now() - MAX_AGE_HOURS * 60 * 60 * 1000).toISOString();
@@ -3198,13 +3198,13 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         if (oldNames.length < 100) break;
       }
 
-      return json({ success: true, deleted, errors });
+      return json({ success: true, deleted, errors }, 200, request);
     }
 
         // ── POST /api/admin-daily-summary (cron) ──
     // Ежедневная сводка для админа
     if (request.method === 'POST' && path === '/api/admin-daily-summary') {
-      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403);
+      if (!isCronAuthorized(request, env)) return json({ error: 'Forbidden' }, 403, request);
 
       const now = new Date();
       const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -3284,20 +3284,20 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         } catch (e) {}
       }
 
-      return json({ success: true, sent });
+      return json({ success: true, sent }, 200, request);
     }
 
     // ── POST /api/send-partner-message ──
     if (request.method === 'POST' && path === '/api/send-partner-message') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const code = body.code;
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       // ── Rate-limit: не чаще 1 сообщения партнёру в час ──
       // Находим партнёра заранее, чтобы залогировать отправку именно ему.
@@ -3314,7 +3314,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
           .gte('sent_at', oneHourAgo)
           .limit(1);
         if (recent && recent.length > 0) {
-          return json({ error: 'Too many messages', retryAfter: 3600 }, 429);
+          return json({ error: 'Too many messages', retryAfter: 3600 }, 429, request);
         }
       }
 
@@ -3381,9 +3381,9 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       // Если ни одному партнёру не доставлено (например, бот заблокирован) —
       // возвращаем ошибку, чтобы фронт НЕ засчитывал задание.
       if (deliveredCount === 0) {
-        return json({ error: 'Delivery failed' }, 502);
+        return json({ error: 'Delivery failed' }, 502, request);
       }
-      return json({ success: true });
+      return json({ success: true }, 200, request);
     }
 
     // ── GET /api/skins/:userId ──
@@ -3391,8 +3391,8 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       const userId = path.split('/')[3];
 
       const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403, request);
 
       const { data: owned } = await supabase
         .from('user_skins').select('skin_id').eq('user_id', userId);
@@ -3403,25 +3403,25 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         owned: (owned || []).map(s => s.skin_id),
         referral_count: referrals?.length || 0,
         premium,
-      });
+      }, 200, request);
     }
 
     // ── POST /api/buy-skin ──
     if (request.method === 'POST' && path === '/api/buy-skin') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const skinId = body.skinId;
-      if (!skinId) return json({ error: 'skinId required' }, 400);
+      if (!skinId) return json({ error: 'skinId required' }, 400, request);
 
       const price = SKIN_PRICES[skinId];
-      if (price === undefined) return json({ error: 'Invalid skin' }, 400);
+      if (price === undefined) return json({ error: 'Invalid skin' }, 400, request);
 
       const { data: alreadyOwned } = await supabase
         .from('user_skins').select('id')
         .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
-      if (alreadyOwned) return json({ error: 'Already owned' }, 400);
+      if (alreadyOwned) return json({ error: 'Already owned' }, 400, request);
 
       const invoiceUrl = await createStarsInvoice(env.BOT_TOKEN, {
         title: `Наряд: ${skinId}`,
@@ -3432,8 +3432,8 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         prices: [{ amount: price, label: `Skin ${skinId}` }],
       });
 
-      if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
-      return json({ invoiceUrl });
+      if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500, request);
+      return json({ invoiceUrl }, 200, request);
     }
 
         // ── POST /api/buy-skin-gift ──
@@ -3441,37 +3441,37 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
     if (request.method === 'POST' && path === '/api/buy-skin-gift') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId, { maxAgeSec: 3600 });
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const skinId = body.skinId;
       const pairCode = body.pairCode;
-      if (!skinId) return json({ error: 'skinId required' }, 400);
-      if (!pairCode) return json({ error: 'pairCode required' }, 400);
+      if (!skinId) return json({ error: 'skinId required' }, 400, request);
+      if (!pairCode) return json({ error: 'pairCode required' }, 400, request);
 
       const price = SKIN_PRICES[skinId];
-      if (price === undefined) return json({ error: 'Invalid skin' }, 400);
+      if (price === undefined) return json({ error: 'Invalid skin' }, 400, request);
 
       // Проверяем, что отправитель — участник пары
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       // Находим партнёра
       const { data: members } = await supabase
         .from('pair_users').select('user_id').eq('pair_code', pairCode);
       const partner = (members || []).find(m => String(m.user_id) !== String(userId));
-      if (!partner) return json({ error: 'No partner in pair' }, 400);
+      if (!partner) return json({ error: 'No partner in pair' }, 400, request);
 
       // Проверяем, что у партнёра ещё нет такого скина
       const { data: alreadyOwned } = await supabase
         .from('user_skins').select('id')
         .eq('user_id', partner.user_id).eq('skin_id', skinId).maybeSingle();
-      if (alreadyOwned) return json({ error: 'Partner already owns this skin' }, 400);
+      if (alreadyOwned) return json({ error: 'Partner already owns this skin' }, 400, request);
 
       // Если у партнёра активный Premium — все скины ему и так доступны
       const recipientPremium = await isPremium(supabase, partner.user_id);
-      if (recipientPremium) return json({ error: 'Partner already owns this skin' }, 400);
+      if (recipientPremium) return json({ error: 'Partner already owns this skin' }, 400, request);
 
       // Создаём инвойс с типом "gift" и id получателя
       // ВАЖНО: payload в Telegram имеет лимит 128 байт, поэтому используем короткие ключи
@@ -3490,37 +3490,37 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       });
 
 
-      if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500);
-      return json({ invoiceUrl });
+      if (!invoiceUrl) return json({ error: 'Invoice creation failed' }, 500, request);
+      return json({ invoiceUrl }, 200, request);
     }
 
     // ── POST /api/claim-bee-skin ──
     if (request.method === 'POST' && path === '/api/claim-bee-skin') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const { data: referrals } = await supabase
         .from('user_referrals').select('invited_user_id').eq('inviter_user_id', userId);
       const count = referrals?.length || 0;
-      if (count < 2) return json({ error: 'Need at least 2 referrals' }, 400);
+      if (count < 2) return json({ error: 'Need at least 2 referrals' }, 400, request);
 
       const { data: alreadyOwned } = await supabase
         .from('user_skins').select('id')
         .eq('user_id', userId).eq('skin_id', 'bee').maybeSingle();
-      if (alreadyOwned) return json({ error: 'Already claimed' }, 400);
+      if (alreadyOwned) return json({ error: 'Already claimed' }, 400, request);
 
       const { error: beeErr } = await supabase
         .from('user_skins').insert({ user_id: userId, skin_id: 'bee' });
-      if (beeErr) return json({ error: 'Already claimed' }, 400);
-      return json({ success: true });
+      if (beeErr) return json({ error: 'Already claimed' }, 400, request);
+      return json({ success: true }, 200, request);
     }
 
     // ── POST /api/set-skin ──
     if (request.method === 'POST' && path === '/api/set-skin') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const pairCode = body.pairCode;
       const skinId = body.skinId;
@@ -3528,7 +3528,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       const { data: membership } = await supabase
         .from('pair_users').select('user_id')
         .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-      if (!membership) return json({ error: 'Not a member' }, 403);
+      if (!membership) return json({ error: 'Not a member' }, 403, request);
 
       if (skinId) {
         const levelMatch = skinId.match(/^level_(\d+)$/);
@@ -3537,9 +3537,9 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
           const requiredLevel = parseInt(levelMatch[1]);
           const { data: pairData } = await supabase
             .from('pairs').select('growth_points').eq('code', pairCode).single();
-          if (!pairData) return json({ error: 'Pair not found' }, 404);
+          if (!pairData) return json({ error: 'Pair not found' }, 404, request);
           const currentLevel = getLevel(pairData.growth_points || 0).level;
-          if (currentLevel < requiredLevel) return json({ error: 'Level not reached' }, 403);
+          if (currentLevel < requiredLevel) return json({ error: 'Level not reached' }, 403, request);
         } else {
           // Обычный скин — проверяем владение или премиум
           const premium = await isPremium(supabase, userId);
@@ -3547,23 +3547,23 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
             const { data: owned } = await supabase
               .from('user_skins').select('id')
               .eq('user_id', userId).eq('skin_id', skinId).maybeSingle();
-            if (!owned) return json({ error: 'Skin not owned' }, 403);
+            if (!owned) return json({ error: 'Skin not owned' }, 403, request);
           }
         }
       }
 
       await supabase.from('pairs').update({ active_skin: skinId }).eq('code', pairCode);
-      return json({ success: true });
+      return json({ success: true }, 200, request);
     }
 
     // ── GET /api/premium/:userId ──
     if (request.method === 'GET' && path.match(/^\/api\/premium\/[^/]+$/)) {
       const userId = path.split('/')[3];
       const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
-      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
+      if (authedId !== String(userId)) return json({ error: 'Forbidden' }, 403, request);
       const premium = ADMIN_IDS.includes(String(userId));
-      return json({ premium, expires_at: premium ? '2099-12-31T23:59:59Z' : null });
+      return json({ premium, expires_at: premium ? '2099-12-31T23:59:59Z' : null }, 200, request);
     }
 
     // ── GET /api/recoveries-left/:pairCode ──
@@ -3571,30 +3571,30 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       const pairCode = path.split('/')[3];
 
       const authedId = getAuthedUserId(request, env);
-      if (!authedId) return json({ error: 'Unauthorized' }, 401);
+      if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
       if (!(await isPairMember(supabase, pairCode, authedId))) {
-        return json({ error: 'Not a member' }, 403);
+        return json({ error: 'Not a member' }, 403, request);
       }
 
       const { data: pair } = await supabase
         .from('pairs')
         .select('streak_recoveries_used, last_recovery_month, timezone')
         .eq('code', pairCode).maybeSingle();
-      if (!pair) return json({ error: 'Pair not found' }, 404);
+      if (!pair) return json({ error: 'Pair not found' }, 404, request);
       const currentMonth = getCurrentMonth(pair.timezone || 'UTC');
       const used = pair.last_recovery_month === currentMonth ? (pair.streak_recoveries_used || 0) : 0;
-      return json({ used, remaining: Math.max(0, 5 - used), max: 5 });
+      return json({ used, remaining: Math.max(0, 5 - used), max: 5 }, 200, request);
     }
 
     // ── POST /api/update-timezone ──
     if (request.method === 'POST' && path === '/api/update-timezone') {
       const body = await request.json();
       const userId = extractUserId(request, env, body.userId);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (!userId) return json({ error: 'Unauthorized' }, 401, request);
 
       const tz = (typeof body.timezone === 'string' && body.timezone.length < 64)
         ? body.timezone : null;
-      if (!tz) return json({ error: 'Invalid timezone' }, 400);
+      if (!tz) return json({ error: 'Invalid timezone' }, 400, request);
 
       // Обновляем личную таймзону пользователя
       await supabase.from('pair_users')
@@ -3622,15 +3622,15 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         }
       }
 
-      return json({ success: true, timezone: tz });
+      return json({ success: true, timezone: tz }, 200, request);
     }
 
     // ── Fallback 404 ──
-    return json({ error: 'Not found' }, 404);
+    return json({ error: 'Not found' }, 404, request);
 
   } catch (err) {
     console.error('API Error:', err);
     await notifyAdmins(env, `*API Error:*\n\`\`\`\n${(err?.stack || err?.message || String(err)).slice(0, 1500)}\n\`\`\``);
-    return json({ error: 'Internal server error' }, 500);
+    return json({ error: 'Internal server error' }, 500, request);
   }
 }
