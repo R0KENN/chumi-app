@@ -104,26 +104,71 @@ function createPlatform(game, options) {
 function choosePlatformType(score) {
   const roll = Math.random();
 
-  const difficulty = clamp(score / 120, 0, 1);
+  /*
+   * Сложность растёт линейно от 0 до 200 очков.
+   * После 200 очков параметры остаются на максимальном,
+   * но всё ещё проходимом уровне.
+   */
+  const difficulty = clamp(score / 200, 0, 1);
 
   /*
-   * Движущихся платформ становится больше с ростом счёта:
-   * с 12% на score=35 до ~24% ближе к максимуму. Порог
-   * появления снижаем с 35 до 28, чтобы разгон начинался
-   * чуть раньше.
+   * Движущиеся платформы:
+   *   28 очков  — начинают появляться;
+   *   200 очков — вероятность достигает 25%.
    */
-  const movingChance = 0.12 + difficulty * 0.12;
+  const movingChance =
+    0.08 + difficulty * 0.17;
 
-  if (score >= 28 && roll < movingChance) return TYPE.MOVING;
-  if (score >= 15 && roll < 0.29 + movingChance) return TYPE.FRAGILE;
-  if (score >= 10 && roll > 0.93) return TYPE.SPRING;
+  /*
+   * Ломающиеся платформы:
+   *   15 очков  — начинают появляться;
+   *   200 очков — вероятность достигает 38%.
+   *
+   * В старом коде вероятность фактически оставалась
+   * примерно одинаковой, потому что movingChance
+   * прибавлялся одновременно к обеим границам.
+   */
+  const fragileChance =
+    0.12 + difficulty * 0.26;
+
+  /*
+   * Пружины остаются редкими полезными платформами.
+   */
+  const springChance =
+    0.05 + difficulty * 0.02;
+
+  let chanceCursor = 0;
+
+  if (score >= 28) {
+    chanceCursor += movingChance;
+
+    if (roll < chanceCursor) {
+      return TYPE.MOVING;
+    }
+  }
+
+  if (score >= 15) {
+    chanceCursor += fragileChance;
+
+    if (roll < chanceCursor) {
+      return TYPE.FRAGILE;
+    }
+  }
+
+  if (score >= 10) {
+    chanceCursor += springChance;
+
+    if (roll < chanceCursor) {
+      return TYPE.SPRING;
+    }
+  }
 
   return TYPE.NORMAL;
 }
 
 function addPlatform(game) {
   const score = Math.floor(game.distance / 10);
-  const difficulty = clamp(score / 120, 0, 1);
+  const difficulty = clamp(score / 200, 0, 1);
   const previous = game.lastRoutePlatform;
 
   const width = random(
@@ -189,17 +234,20 @@ function addPlatform(game) {
     type,
     moveRange,
     /*
-     * Скорость движущихся платформ растёт со сложностью,
-     * но с потолком: базовый диапазон 1.1–1.7 плавно
-     * поднимается до 2.0–2.9 к difficulty=1. Даже на
-     * максимуме платформа остаётся ловимой, потому что
-     * амплитуда moveRange невелика (16–32px).
+     * Скорость движущихся платформ плавно увеличивается:
+     *
+     *   начало игры — 1.0–1.5;
+     *   100 очков   — примерно 2.1–2.8;
+     *   200 очков   — 3.2–4.1.
+     *
+     * Амплитуда движения остаётся ограниченной, поэтому
+     * платформа не становится физически недостижимой.
      */
     moveSpeed:
       type === TYPE.MOVING
         ? random(
-            1.1 + difficulty * 0.9,
-            1.7 + difficulty * 1.2,
+            1.0 + difficulty * 2.2,
+            1.5 + difficulty * 2.6,
           )
         : 0,
   });
@@ -1044,8 +1092,8 @@ export default function JumpGame() {
         record: 'Новый рекорд!',
         again: 'Ещё раз',
         back: 'К питомцу',
-        leaderboard: 'Рейтинг игроков',
-        leaderboardTitle: 'Лучшие игроки',
+        leaderboard: 'Недельный рейтинг',
+        leaderboardTitle: 'Лучшие игроки недели',
         personalBest: 'Личный рекорд',
         yourPlace: 'Твоё место',
         loading: 'Загрузка...',
@@ -1069,8 +1117,8 @@ export default function JumpGame() {
         record: 'New record!',
         again: 'Play again',
         back: 'Back to pet',
-        leaderboard: 'Player ranking',
-        leaderboardTitle: 'Top players',
+        leaderboard: 'Weekly ranking',
+        leaderboardTitle: 'Top players of the week',
         personalBest: 'Personal best',
         yourPlace: 'Your place',
         loading: 'Loading...',

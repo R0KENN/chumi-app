@@ -137,6 +137,15 @@ async function runScheduledTasks(
     );
   }
 
+  if (cron === '5 0 * * 1') {
+    tasks.push(
+      hit(
+        'Weekly game report',
+        '/api/admin-weekly-game-report',
+      ),
+    );
+  }
+
   const settled = await Promise.allSettled(
     tasks,
   );

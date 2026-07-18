@@ -203,7 +203,6 @@ export default function PairScreen() {
   const lastLevelUpShownRef = useRef(null);
   const tapVideoRef = useRef(null);
   const eggVideoRef = useRef(null);
-  const rankingAvatarsRef = useRef({});
   const [previewSkin, setPreviewSkin] = useState(undefined);
   const [levelUpData, setLevelUpData] = useState(null); // { level, name, skinName, petPreview }
   const [outfitTab, setOutfitTab] = useState('levels');
@@ -219,16 +218,47 @@ export default function PairScreen() {
   };
 
   const chooseBg = async (id) => {
+    const previousBg = pair?.active_bg ?? null;
+
     haptic('light');
-    // оптимистично обновим локально, чтобы фон сменился сразу
+
+    // Оптимистично обновляем локально, чтобы фон сменился сразу.
     setPair(p => p ? { ...p, active_bg: id } : p);
+
     try {
-      await fetch(`${API}/setbg`, {
+      const res = await fetch(`${API}/setbg`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ code: pairId, userId, bgId: id }),
       });
-    } catch (e) {}
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `Failed to set background: ${res.status}`);
+      }
+    } catch (error) {
+      console.error('Failed to set background:', error);
+
+      // Не откатываем более новый выбор, если пользователь успел выбрать другой фон.
+      setPair(p => (
+        p?.active_bg === id
+          ? { ...p, active_bg: previousBg }
+          : p
+      ));
+
+      haptic('error');
+
+      const message = lang === 'ru'
+        ? 'Не удалось сохранить фон. Попробуйте ещё раз.'
+        : 'Failed to save the background. Please try again.';
+
+      if (tg?.showAlert) {
+        tg.showAlert(message);
+      } else {
+        alert(message);
+      }
+    }
   };
 
     // Порядок вкладок шторки нарядов для свайпа
@@ -594,17 +624,45 @@ useEffect(() => {
   };
 
   const handleDeletePair = async () => {
+    if (deleting) return;
+
     setDeleting(true);
+
     try {
-      await fetch(`${API}/delete`, {
+      const res = await fetch(`${API}/delete`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ code: pairId, userId }),
       });
-      if (refreshPairs) refreshPairs();
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `Failed to delete pair: ${res.status}`);
+      }
+
+      if (refreshPairs) {
+        await refreshPairs();
+      }
+
+      haptic('success');
       navigate('/?newpair=1');
-    } catch (e) {}
-    finally { setDeleting(false); }
+    } catch (error) {
+      console.error('Failed to delete pair:', error);
+      haptic('error');
+
+      const message = lang === 'ru'
+        ? 'Не удалось удалить пару. Попробуйте ещё раз.'
+        : 'Failed to delete the pair. Please try again.';
+
+      if (tg?.showAlert) {
+        tg.showAlert(message);
+      } else {
+        alert(message);
+      }
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Recoveries left

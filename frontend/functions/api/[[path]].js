@@ -55,6 +55,34 @@ function getCurrentMonth(tz) {
   return getTodayDate(tz).slice(0, 7);
 }
 
+function getUtcWeekStart(date = new Date()) {
+  const utcDate = new Date(date);
+
+  const day =
+    utcDate.getUTCDay();
+
+  const daysSinceMonday =
+    day === 0
+      ? 6
+      : day - 1;
+
+  utcDate.setUTCHours(
+    0,
+    0,
+    0,
+    0,
+  );
+
+  utcDate.setUTCDate(
+    utcDate.getUTCDate() -
+    daysSinceMonday,
+  );
+
+  return utcDate
+    .toISOString()
+    .slice(0, 10);
+}
+
 const ALLOWED_ORIGINS = [
   'https://chumi.space',
   'https://www.chumi.space',
@@ -135,6 +163,284 @@ async function notifyAdmins(env, text) {
       });
     } catch (e) {}
   }
+}
+
+async function sendAdminPlainMessage(
+  env,
+  adminId,
+  text,
+) {
+  const response = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type':
+          'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: adminId,
+        text,
+        disable_web_page_preview: true,
+      }),
+    },
+  );
+
+  const data = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(
+      data.description ||
+      `Telegram sendMessage failed: ${response.status}`,
+    );
+  }
+}
+
+async function createWeeklyRankingImage(
+  rows,
+  weekStart,
+  weekEnd,
+) {
+  const imageRows =
+    rows.slice(0, 20);
+
+  const labels = imageRows.map(
+    row => {
+      const username =
+        row.username
+          ? `@${row.username}`
+          : String(row.user_id);
+
+      return `${row.rank}. ${row.display_name || 'Игрок'} (${username})`;
+    },
+  );
+
+  const scores = imageRows.map(
+    row =>
+      Number(row.best_score) || 0,
+  );
+
+  const chart = {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Очки',
+          data: scores,
+          backgroundColor:
+            '#9B72CF',
+          borderColor:
+            '#7652A8',
+          borderWidth: 2,
+          borderRadius: 8,
+        },
+      ],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: false,
+      animation: false,
+      layout: {
+        padding: {
+          top: 25,
+          right: 45,
+          bottom: 25,
+          left: 25,
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            color: '#443355',
+            font: {
+              size: 18,
+            },
+          },
+          grid: {
+            color:
+              'rgba(100, 75, 125, 0.12)',
+          },
+        },
+        y: {
+          ticks: {
+            color: '#30243D',
+            font: {
+              size: 17,
+              weight: 'bold',
+            },
+          },
+          grid: {
+            display: false,
+          },
+        },
+      },
+      plugins: {
+        legend: {
+          display: false,
+        },
+        title: {
+          display: true,
+          text:
+            `Chumi Jump — недельный рейтинг\n${weekStart} — ${weekEnd}`,
+          color: '#30243D',
+          font: {
+            size: 30,
+            weight: 'bold',
+          },
+          padding: {
+            bottom: 30,
+          },
+        },
+      },
+    },
+  };
+
+  const response = await fetch(
+    'https://quickchart.io/chart',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type':
+          'application/json',
+      },
+      body: JSON.stringify({
+        width: 1200,
+        height: Math.max(
+          720,
+          250 +
+          imageRows.length * 55,
+        ),
+        format: 'png',
+        backgroundColor: '#F8F4FC',
+        devicePixelRatio: 1,
+        version: '4',
+        chart,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Ranking image generation failed: ${response.status}`,
+    );
+  }
+
+  return response.blob();
+}
+
+async function sendAdminRankingPhoto(
+  env,
+  adminId,
+  photo,
+  caption,
+) {
+  const form = new FormData();
+
+  form.append(
+    'chat_id',
+    String(adminId),
+  );
+
+  form.append(
+    'caption',
+    caption,
+  );
+
+  form.append(
+    'photo',
+    photo,
+    'weekly-chumi-ranking.png',
+  );
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendPhoto`,
+    {
+      method: 'POST',
+      body: form,
+    },
+  );
+
+  const data = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(
+      data.description ||
+      `Telegram sendPhoto failed: ${response.status}`,
+    );
+  }
+}
+
+function buildWeeklyRankingChunks(
+  rows,
+  weekStart,
+  weekEnd,
+) {
+  const header =
+    `🏆 Chumi Jump — итоги недели\n` +
+    `${weekStart} — ${weekEnd}\n\n`;
+
+  if (rows.length === 0) {
+    return [
+      header +
+      'На этой неделе никто не установил результат.',
+    ];
+  }
+
+  const lines = rows.map(
+    row => {
+      const name =
+        row.display_name ||
+        'Игрок';
+
+      const username =
+        row.username
+          ? `@${row.username}`
+          : 'без username';
+
+      return (
+        `${row.rank}. ${name}\n` +
+        `   ${username} · ID ${row.user_id}\n` +
+        `   ${row.best_score} очков`
+      );
+    },
+  );
+
+  const chunks = [];
+  let currentChunk = header;
+
+  for (const line of lines) {
+    const nextLine =
+      `${line}\n\n`;
+
+    if (
+      currentChunk.length +
+      nextLine.length >
+      3800
+    ) {
+      chunks.push(
+        currentChunk.trimEnd(),
+      );
+
+      currentChunk =
+        `🏆 Продолжение рейтинга\n\n`;
+    }
+
+    currentChunk += nextLine;
+  }
+
+  if (currentChunk.trim()) {
+    chunks.push(
+      currentChunk.trimEnd(),
+    );
+  }
+
+  return chunks;
 }
 
 
@@ -523,7 +829,359 @@ export async function onRequest(context) {
     const path = url.pathname;
     const supabase = getSupabase(env);
 
-        // ── POST /api/game-session ──
+    // ── POST /api/admin-weekly-game-report ──
+    if (
+      request.method === 'POST' &&
+      path === '/api/admin-weekly-game-report'
+    ) {
+      if (
+        !isCronAuthorized(
+          request,
+          env,
+        )
+      ) {
+        return json(
+          { error: 'Forbidden' },
+          403,
+          request,
+        );
+      }
+
+      const currentWeekStart =
+        getUtcWeekStart();
+
+      const previousWeekDate =
+        new Date(
+          `${currentWeekStart}T00:00:00.000Z`,
+        );
+
+      previousWeekDate.setUTCDate(
+        previousWeekDate.getUTCDate() - 7,
+      );
+
+      const previousWeekStart =
+        previousWeekDate
+          .toISOString()
+          .slice(0, 10);
+
+      const previousWeekEndDate =
+        new Date(
+          `${currentWeekStart}T00:00:00.000Z`,
+        );
+
+      previousWeekEndDate.setUTCDate(
+        previousWeekEndDate.getUTCDate() - 1,
+      );
+
+      const previousWeekEnd =
+        previousWeekEndDate
+          .toISOString()
+          .slice(0, 10);
+
+      const {
+        data: existingReport,
+        error: existingReportError,
+      } = await supabase
+        .from('weekly_game_reports')
+        .select(
+          'status, updated_at, sent_at'
+        )
+        .eq(
+          'week_start',
+          previousWeekStart,
+        )
+        .maybeSingle();
+
+      if (existingReportError) {
+        console.error(
+          'Weekly report status query failed:',
+          existingReportError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to check weekly report status',
+          },
+          500,
+          request,
+        );
+      }
+
+      if (
+        existingReport?.status === 'sent'
+      ) {
+        return json(
+          {
+            success: true,
+            alreadySent: true,
+            weekStart:
+              previousWeekStart,
+            sentAt:
+              existingReport.sent_at,
+          },
+          200,
+          request,
+        );
+      }
+
+      if (
+        existingReport?.status ===
+        'processing'
+      ) {
+        const updatedAt =
+          new Date(
+            existingReport.updated_at,
+          ).getTime();
+
+        const isRecent =
+          Number.isFinite(updatedAt) &&
+          Date.now() - updatedAt <
+            15 * 60 * 1000;
+
+        if (isRecent) {
+          return json(
+            {
+              success: true,
+              processing: true,
+              weekStart:
+                previousWeekStart,
+            },
+            202,
+            request,
+          );
+        }
+      }
+
+      const {
+        error: claimError,
+      } = await supabase
+        .from('weekly_game_reports')
+        .upsert(
+          {
+            week_start:
+              previousWeekStart,
+            status: 'processing',
+            player_count: 0,
+            started_at:
+              new Date().toISOString(),
+            updated_at:
+              new Date().toISOString(),
+            sent_at: null,
+          },
+          {
+            onConflict: 'week_start',
+          },
+        );
+
+      if (claimError) {
+        console.error(
+          'Weekly report claim failed:',
+          claimError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to claim weekly report',
+          },
+          500,
+          request,
+        );
+      }
+
+      try {
+        const {
+          data: scoreRows,
+          error: scoreRowsError,
+        } = await supabase
+          .from('jump_game_scores')
+          .select(
+            'user_id, display_name, username, best_score, updated_at'
+          )
+          .eq(
+            'week_start',
+            previousWeekStart,
+          )
+          .gt(
+            'best_score',
+            0,
+          )
+          .order(
+            'best_score',
+            {
+              ascending: false,
+            },
+          )
+          .order(
+            'updated_at',
+            {
+              ascending: true,
+            },
+          )
+          .order(
+            'user_id',
+            {
+              ascending: true,
+            },
+          )
+          .limit(1000);
+
+        if (scoreRowsError) {
+          throw new Error(
+            scoreRowsError.message ||
+            'Failed to load weekly scores',
+          );
+        }
+
+        let previousScore = null;
+        let previousRank = 0;
+
+        const rankedRows =
+          (scoreRows || []).map(
+            (row, index) => {
+              const rowScore =
+                Number(
+                  row.best_score,
+                ) || 0;
+
+              const rank =
+                rowScore === previousScore
+                  ? previousRank
+                  : index + 1;
+
+              previousScore =
+                rowScore;
+
+              previousRank =
+                rank;
+
+              return {
+                ...row,
+                rank,
+                best_score:
+                  rowScore,
+              };
+            },
+          );
+
+        const chunks =
+          buildWeeklyRankingChunks(
+            rankedRows,
+            previousWeekStart,
+            previousWeekEnd,
+          );
+
+        let rankingImage = null;
+
+        if (rankedRows.length > 0) {
+          rankingImage =
+            await createWeeklyRankingImage(
+              rankedRows,
+              previousWeekStart,
+              previousWeekEnd,
+            );
+        }
+
+        for (
+          const adminId of ADMIN_IDS
+        ) {
+          for (
+            const chunk of chunks
+          ) {
+            await sendAdminPlainMessage(
+              env,
+              adminId,
+              chunk,
+            );
+          }
+
+          if (rankingImage) {
+            await sendAdminRankingPhoto(
+              env,
+              adminId,
+              rankingImage,
+              `🏆 Chumi Jump: ${previousWeekStart} — ${previousWeekEnd}`,
+            );
+          }
+        }
+
+        const sentAt =
+          new Date().toISOString();
+
+        const {
+          error: completeError,
+        } = await supabase
+          .from('weekly_game_reports')
+          .update({
+            status: 'sent',
+            player_count:
+              rankedRows.length,
+            sent_at: sentAt,
+            updated_at: sentAt,
+          })
+          .eq(
+            'week_start',
+            previousWeekStart,
+          );
+
+        if (completeError) {
+          throw new Error(
+            completeError.message ||
+            'Failed to complete weekly report',
+          );
+        }
+
+        return json(
+          {
+            success: true,
+            alreadySent: false,
+            weekStart:
+              previousWeekStart,
+            weekEnd:
+              previousWeekEnd,
+            playerCount:
+              rankedRows.length,
+            sentAt,
+          },
+          200,
+          request,
+        );
+      } catch (error) {
+        console.error(
+          'Weekly game report failed:',
+          error,
+        );
+
+        await supabase
+          .from('weekly_game_reports')
+          .update({
+            status: 'failed',
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            'week_start',
+            previousWeekStart,
+          );
+
+        return json(
+          {
+            error:
+              'Weekly game report failed',
+            details:
+              String(
+                error?.message ||
+                error,
+              ),
+          },
+          500,
+          request,
+        );
+      }
+    }
+
+    // ── POST /api/game-session ──
     if (
       request.method === 'POST' &&
       path === '/api/game-session'
@@ -649,6 +1307,9 @@ export async function onRequest(context) {
         );
       }
 
+      const currentWeekStart =
+        getUtcWeekStart();
+
       const {
         data: personal,
         error: personalError,
@@ -656,6 +1317,10 @@ export async function onRequest(context) {
         .from('jump_game_scores')
         .select('best_score')
         .eq('user_id', userId)
+        .eq(
+          'week_start',
+          currentWeekStart,
+        )
         .maybeSingle();
 
       if (personalError) {
@@ -686,7 +1351,14 @@ export async function onRequest(context) {
             count: 'exact',
             head: true,
           })
-          .gt('best_score', personalBest);
+          .eq(
+            'week_start',
+            currentWeekStart,
+          )
+          .gt(
+            'best_score',
+            personalBest,
+          );
 
         if (rankError) {
           console.error(
@@ -726,6 +1398,9 @@ export async function onRequest(context) {
         );
       }
 
+      const currentWeekStart =
+        getUtcWeekStart();
+
       const {
         data: rows,
         error: leadersError,
@@ -733,6 +1408,10 @@ export async function onRequest(context) {
         .from('jump_game_scores')
         .select(
           'user_id, display_name, username, best_score, updated_at'
+        )
+        .eq(
+          'week_start',
+          currentWeekStart,
         )
         .gt('best_score', 0)
         .order('best_score', {
@@ -840,6 +1519,10 @@ export async function onRequest(context) {
         .from('jump_game_scores')
         .select('best_score')
         .eq('user_id', userId)
+        .eq(
+          'week_start',
+          currentWeekStart,
+        )
         .maybeSingle();
 
       if (personalError) {
@@ -864,7 +1547,14 @@ export async function onRequest(context) {
             count: 'exact',
             head: true,
           })
-          .gt('best_score', personalBest);
+          .eq(
+            'week_start',
+            currentWeekStart,
+          )
+          .gt(
+            'best_score',
+            personalBest,
+          );
 
         if (rankError) {
           console.error(
