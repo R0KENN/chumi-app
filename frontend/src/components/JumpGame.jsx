@@ -791,8 +791,21 @@ function drawPlayer(ctx, game, image) {
   const scaleX = 1 + squash * 0.18;
   const scaleY = 1 - squash * 0.14;
 
+  const movementDirection = clamp(
+    player.vx / PHYSICS.maxSpeed,
+    -1,
+    1,
+  );
+
+  const jumpAmount = clamp(
+    Math.abs(player.vy) / Math.abs(PHYSICS.jump),
+    0,
+    1,
+  );
+
   const targetRotation =
-    (player.vx / PHYSICS.maxSpeed) * 0.16;
+    movementDirection *
+    (0.08 + jumpAmount * 0.16);
 
   player.rotation +=
     (targetRotation - player.rotation) * 0.14;
@@ -825,7 +838,7 @@ function drawPlayer(ctx, game, image) {
     image?.complete &&
     image.naturalWidth > 0
   ) {
-    ctx.drawImage(image, -39, -48, 78, 96);
+    ctx.drawImage(image, -52, -52, 104, 104);
   } else {
     drawFallbackPet(ctx, player);
   }
