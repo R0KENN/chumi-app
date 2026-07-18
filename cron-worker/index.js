@@ -126,6 +126,40 @@ async function runScheduledTasks(
         '/api/admin-daily-summary',
       ),
     );
+
+    /*
+     * Используем существующий ежедневный Cron Trigger,
+     * чтобы не расходовать дополнительный лимит Cloudflare.
+     *
+     * controller.scheduledTime — плановое время запуска
+     * Cloudflare в миллисекундах. getUTCDay() === 1
+     * соответствует понедельнику.
+     */
+    const scheduledTimestamp =
+      Number(
+        controller?.scheduledTime,
+      );
+
+    const scheduledDate =
+      Number.isFinite(
+        scheduledTimestamp,
+      )
+        ? new Date(
+            scheduledTimestamp,
+          )
+        : new Date();
+
+    const isMonday =
+      scheduledDate.getUTCDay() === 1;
+
+    if (isMonday) {
+      tasks.push(
+        hit(
+          'Weekly game report',
+          '/api/admin-weekly-game-report',
+        ),
+      );
+    }
   }
 
   if (cron === '0 4 * * *') {
@@ -133,15 +167,6 @@ async function runScheduledTasks(
       hit(
         'Postcards cleanup',
         '/api/cleanup-postcards',
-      ),
-    );
-  }
-
-  if (cron === '5 0 * * 1') {
-    tasks.push(
-      hit(
-        'Weekly game report',
-        '/api/admin-weekly-game-report',
       ),
     );
   }
