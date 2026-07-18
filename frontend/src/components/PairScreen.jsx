@@ -198,6 +198,9 @@ export default function PairScreen() {
   const [reviving, setReviving] = useState(false);
   const [reviveError, setReviveError] = useState('');
   const [recoveriesLeft, setRecoveriesLeft] = useState(5);
+  const [showRevivePrompt, setShowRevivePrompt] = useState(false);
+  const revivePromptCountRef = useRef(0);
+  const revivePromptTimerRef = useRef(null);
   const idleVideoRef = useRef(null);
   const imageCacheRef = useRef({});
   const lastLevelUpShownRef = useRef(null);
@@ -532,7 +535,21 @@ useEffect(() => {
       if (data.error) { navigate('/'); return; }
       setPair(data);
       setNewName(data.pet_name || '');
-      if (data.member_count >= 2) {
+
+      if (
+        typeof data.recoveries_remaining ===
+        'number'
+      ) {
+        setRecoveriesLeft(
+          data.recoveries_remaining,
+        );
+      }
+
+      if (
+        data.member_count >= 2 &&
+        !data.can_revive &&
+        !data.is_dead
+      ) {
         const alreadyOpened = data.daily_tasks?.some(t => t.task_key === 'daily_open');
         if (!alreadyOpened) {
           const res2 = await completeTask('daily_open');
@@ -561,6 +578,89 @@ useEffect(() => {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    clearTimeout(
+      revivePromptTimerRef.current,
+    );
+
+    revivePromptCountRef.current = 0;
+    setShowRevivePrompt(false);
+
+    return () => {
+      clearTimeout(
+        revivePromptTimerRef.current,
+      );
+    };
+  }, [pairId]);
+
+  useEffect(() => {
+    clearTimeout(
+      revivePromptTimerRef.current,
+    );
+
+    if (!pair?.can_revive) {
+      revivePromptCountRef.current = 0;
+      setShowRevivePrompt(false);
+      return undefined;
+    }
+
+    /*
+     * Первый показ выполняется сразу.
+     * После закрытия окно появится ещё два раза
+     * с интервалом в пять минут.
+     */
+    if (
+      revivePromptCountRef.current === 0
+    ) {
+      revivePromptCountRef.current = 1;
+      setShowRevivePrompt(true);
+      return undefined;
+    }
+
+    if (
+      !showRevivePrompt &&
+      revivePromptCountRef.current < 3
+    ) {
+      revivePromptTimerRef.current =
+        setTimeout(() => {
+          revivePromptCountRef.current += 1;
+          setShowRevivePrompt(true);
+        }, 5 * 60 * 1000);
+    }
+
+    return () => {
+      clearTimeout(
+        revivePromptTimerRef.current,
+      );
+    };
+  }, [
+    pair?.can_revive,
+    showRevivePrompt,
+  ]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState ===
+        'visible'
+      ) {
+        load();
+      }
+    };
+
+    document.addEventListener(
+      'visibilitychange',
+      handleVisibilityChange,
+    );
+
+    return () => {
+      document.removeEventListener(
+        'visibilitychange',
+        handleVisibilityChange,
+      );
+    };
   }, [load]);
 
   useEffect(() => {
@@ -1451,7 +1551,12 @@ const wrapPostcardForStory = () => new Promise((resolve) => {
 
   const mergedTasks = TASKS.map(t => ({ ...t, completed: pair.daily_tasks?.some(dt => dt.task_key === t.key) || false }));
   const allTasks = [...mergedTasks];
-  const isDeadBlocked = pair.is_dead && hasPartner;
+  const isDeadBlocked =
+    (
+      pair.is_dead ||
+      pair.can_revive
+    ) &&
+    hasPartner;
   const doneCount = allTasks.filter(t => t.completed).length;
   const totalCount = allTasks.length;
 
@@ -1661,6 +1766,14 @@ const handleShareInvite = () => {
         );
       } else {
         haptic('heavy');
+
+        clearTimeout(
+          revivePromptTimerRef.current,
+        );
+
+        revivePromptCountRef.current = 0;
+        setShowRevivePrompt(false);
+
         if (typeof data.remaining === 'number') setRecoveriesLeft(data.remaining);
         await load();
         // Питомец ожил. Если это было последнее воскрешение в месяце —
@@ -2027,7 +2140,7 @@ if (tab.key === 'game') {
   </>
 )}
 
-      {pair.is_dead && hasPartner && (
+      {pair.can_revive && hasPartner && showRevivePrompt && (
         <div className="sk-overlay" style={{ zIndex: 200 }}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 64, textAlign: 'center', marginBottom: 12 }}>💀</div>
@@ -2052,16 +2165,29 @@ if (tab.key === 'game') {
             )}
 
             {recoveriesLeft > 0 ? (
-              <button
-                onClick={handleRevive}
-                disabled={reviving}
-                className="sk-btn-primary"
-                style={{ background: '#9B72CF', marginBottom: 8 }}
-              >
-                {reviving
-                  ? (lang === 'ru' ? 'Воскрешаем...' : 'Reviving...')
-                  : `✨ ${lang === 'ru' ? 'Воскресить' : 'Revive'} (${recoveriesLeft})`}
-              </button>
+              <>
+                <button
+                  onClick={handleRevive}
+                  disabled={reviving}
+                  className="sk-btn-primary"
+                  style={{ background: '#9B72CF', marginBottom: 8 }}
+                >
+                  {reviving
+                    ? (lang === 'ru' ? 'Воскрешаем...' : 'Reviving...')
+                    : `✨ ${lang === 'ru' ? 'Воскресить' : 'Revive'} (${recoveriesLeft})`}
+                </button>
+
+                <button
+                  className="sk-popup-close"
+                  disabled={reviving}
+                  onClick={() => {
+                    setReviveError('');
+                    setShowRevivePrompt(false);
+                  }}
+                >
+                  {lang === 'ru' ? 'Позже' : 'Later'}
+                </button>
+              </>
             ) : (
               <>
                 <p style={{ fontSize: 13, color: '#888', textAlign: 'center', marginBottom: 12 }}>
@@ -2078,6 +2204,29 @@ if (tab.key === 'game') {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {pair.is_dead && hasPartner && !pair.can_revive && (
+        <div className="sk-overlay" style={{ zIndex: 200 }}>
+          <div className="sk-popup" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 64, textAlign: 'center', marginBottom: 12 }}>🥚</div>
+            <h3 style={{ textAlign: 'center', color: '#e53e3e' }}>
+              {lang === 'ru' ? 'Срок воскрешения истёк' : 'Revival period expired'}
+            </h3>
+            <p style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
+              {lang === 'ru'
+                ? 'Воскресить питомца можно было только на следующий день после пропущенного дня. Начните заново с нового яйца.'
+                : 'The pet could only be revived on the day after the missed day. Start again with a new egg.'}
+            </p>
+            <button
+              onClick={handleCreateNewEgg}
+              className="sk-btn-primary"
+              style={{ background: '#F5A623' }}
+            >
+              🥚 {lang === 'ru' ? 'Создать новое яйцо' : 'Create new egg'}
+            </button>
           </div>
         </div>
       )}

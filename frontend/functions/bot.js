@@ -207,6 +207,84 @@ async function setUserLang(supabase, userId, lang) {
   );
 }
 
+async function syncTelegramProfile(
+  supabase,
+  telegramUser,
+) {
+  if (!telegramUser?.id) {
+    return;
+  }
+
+  const userId =
+    String(telegramUser.id);
+
+  const displayName =
+    [
+      telegramUser.first_name,
+      telegramUser.last_name,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100) ||
+    'User';
+
+  /*
+   * Если пользователь удалил username,
+   * записываем null, чтобы старый username
+   * не оставался в базе.
+   */
+  const username =
+    telegramUser.username
+      ? String(
+          telegramUser.username,
+        ).slice(0, 100)
+      : null;
+
+  const {
+    error: pairUsersError,
+  } = await supabase
+    .from('pair_users')
+    .update({
+      display_name:
+        displayName,
+      username,
+    })
+    .eq('user_id', userId);
+
+  if (pairUsersError) {
+    console.error(
+      'Failed to update pair user profile:',
+      pairUsersError,
+    );
+  }
+
+  /*
+   * Обновляем имя в игровом рейтинге.
+   * updated_at намеренно не изменяем,
+   * поскольку он участвует в сортировке
+   * пользователей с одинаковым счётом.
+   */
+  const {
+    error: gameScoresError,
+  } = await supabase
+    .from('jump_game_scores')
+    .update({
+      display_name:
+        displayName,
+      username,
+    })
+    .eq('user_id', userId);
+
+  if (gameScoresError) {
+    console.error(
+      'Failed to update game profile:',
+      gameScoresError,
+    );
+  }
+}
+
 
 // ─── Определить язык из Telegram при первом запуске ───
 function detectLangFromTelegram(from) {
@@ -388,6 +466,23 @@ export async function onRequestPost(context) {
   try {
     const update = await request.json();
     const supabase = getSupabase(env);
+
+    const telegramUser =
+      update.message?.from ||
+      update.edited_message?.from ||
+      update.callback_query?.from ||
+      update.inline_query?.from ||
+      update.chosen_inline_result?.from ||
+      update.pre_checkout_query?.from ||
+      update.shipping_query?.from ||
+      null;
+
+    if (telegramUser) {
+      await syncTelegramProfile(
+        supabase,
+        telegramUser,
+      );
+    }
 
     // ═══ CALLBACK QUERY (кнопки смены языка) ═══
     if (update.callback_query) {

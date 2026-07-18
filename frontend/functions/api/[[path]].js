@@ -55,6 +55,102 @@ function getCurrentMonth(tz) {
   return getTodayDate(tz).slice(0, 7);
 }
 
+function getDateDifferenceInDays(
+  earlierDateString,
+  laterDateString,
+) {
+  if (
+    !earlierDateString ||
+    !laterDateString
+  ) {
+    return null;
+  }
+
+  const earlierDate = new Date(
+    `${earlierDateString}T00:00:00Z`,
+  );
+
+  const laterDate = new Date(
+    `${laterDateString}T00:00:00Z`,
+  );
+
+  const difference =
+    laterDate.getTime() -
+    earlierDate.getTime();
+
+  if (!Number.isFinite(difference)) {
+    return null;
+  }
+
+  return Math.round(
+    difference /
+    (1000 * 60 * 60 * 24),
+  );
+}
+
+function getRecoveryState(pair) {
+  const timezone =
+    pair?.timezone ||
+    'UTC';
+
+  const today =
+    getTodayDate(timezone);
+
+  const currentMonth =
+    getCurrentMonth(timezone);
+
+  const used =
+    pair?.last_recovery_month ===
+    currentMonth
+      ? Number(
+          pair?.streak_recoveries_used,
+        ) || 0
+      : 0;
+
+  const maximum = 5;
+
+  const remaining =
+    Math.max(
+      0,
+      maximum - used,
+    );
+
+  const lastPairStreakDate =
+    pair?.last_pair_streak_date ||
+    null;
+
+  const daysSincePairStreak =
+    getDateDifferenceInDays(
+      lastPairStreakDate,
+      today,
+    );
+
+  /*
+   * Например:
+   * понедельник — последний совместный день;
+   * вторник — пропущенный день;
+   * среда — единственный день для воскрешения.
+   *
+   * Поэтому разница должна быть строго равна 2.
+   */
+  const canRevive =
+    Number(pair?.streak_days || 0) > 0 &&
+    Boolean(lastPairStreakDate) &&
+    daysSincePairStreak === 2 &&
+    remaining > 0;
+
+  return {
+    canRevive,
+    today,
+    currentMonth,
+    used,
+    remaining,
+    maximum,
+    daysSincePairStreak,
+    lastPairStreakDate,
+  };
+}
+
 function getUtcWeekStart(date = new Date()) {
   const utcDate = new Date(date);
 
@@ -198,134 +294,685 @@ async function sendAdminPlainMessage(
   }
 }
 
+async function loadWeeklyRankingAvatar(
+  env,
+  userId,
+) {
+  try {
+    const expiresAt =
+      Date.now() +
+      30 * 60 * 1000;
+
+    const signature =
+      await makeAvatarToken(
+        env.BOT_TOKEN,
+        String(userId),
+        expiresAt,
+      );
+
+    const avatarUrl =
+      `${WEBAPP_URL}` +
+      `/api/avatar/${encodeURIComponent(
+        String(userId),
+      )}` +
+      `?proxy=1` +
+      `&exp=${expiresAt}` +
+      `&sig=${signature}`;
+
+    const response =
+      await fetch(
+        avatarUrl,
+        {
+          headers: {
+            Accept:
+              'image/png,image/jpeg,image/webp',
+          },
+        },
+      );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType =
+      response.headers.get(
+        'Content-Type',
+      ) || '';
+
+    if (
+      !contentType.startsWith(
+        'image/',
+      )
+    ) {
+      return null;
+    }
+
+    const imageBuffer =
+      await response.arrayBuffer();
+
+    /*
+     * Ограничиваем размер одной аватарки.
+     * Telegram-аватары обычно значительно меньше,
+     * но слишком большое изображение не отправляем
+     * в сервис генерации карточки.
+     */
+    if (
+      imageBuffer.byteLength === 0 ||
+      imageBuffer.byteLength >
+        2 * 1024 * 1024
+    ) {
+      return null;
+    }
+
+    const base64 =
+      Buffer
+        .from(imageBuffer)
+        .toString('base64');
+
+    return (
+      `data:${contentType};base64,` +
+      base64
+    );
+  } catch (error) {
+    console.warn(
+      'Weekly ranking avatar load failed:',
+      {
+        userId:
+          String(userId),
+        error:
+          String(
+            error?.message ||
+            error,
+          ),
+      },
+    );
+
+    return null;
+  }
+}
+
 async function createWeeklyRankingImage(
+  env,
   rows,
   weekStart,
   weekEnd,
 ) {
+  /*
+   * На PNG показываем первые 10 мест.
+   * Username и Telegram ID остаются только
+   * в текстовом сообщении администратору.
+   */
   const imageRows =
-    rows.slice(0, 20);
+    rows.slice(0, 10);
 
-  const labels = imageRows.map(
-    row => {
-      const username =
-        row.username
-          ? `@${row.username}`
-          : String(row.user_id);
+  const cardRows =
+    imageRows.map(
+      row => {
+        const normalizedName =
+          String(
+            row.display_name ||
+            'Игрок',
+          )
+            .replace(
+              /\s+/g,
+              ' ',
+            )
+            .trim()
+            .slice(
+              0,
+              28,
+            );
 
-      return `${row.rank}. ${row.display_name || 'Игрок'} (${username})`;
-    },
-  );
+        return {
+          rank:
+            Number(row.rank) || 0,
 
-  const scores = imageRows.map(
-    row =>
-      Number(row.best_score) || 0,
-  );
+          name:
+            normalizedName ||
+            'Игрок',
 
-  const chart = {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Очки',
-          data: scores,
-          backgroundColor:
-            '#9B72CF',
-          borderColor:
-            '#7652A8',
-          borderWidth: 2,
-          borderRadius: 8,
-        },
-      ],
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: false,
-      animation: false,
-      layout: {
-        padding: {
-          top: 25,
-          right: 45,
-          bottom: 25,
-          left: 25,
-        },
+          score:
+            Number(
+              row.best_score,
+            ) || 0,
+
+          userId:
+            String(row.user_id),
+        };
       },
-      scales: {
-        x: {
-          beginAtZero: true,
-          ticks: {
-            color: '#443355',
-            font: {
-              size: 18,
-            },
-          },
-          grid: {
-            color:
-              'rgba(100, 75, 125, 0.12)',
-          },
-        },
-        y: {
-          ticks: {
-            color: '#30243D',
-            font: {
-              size: 17,
-              weight: 'bold',
-            },
-          },
-          grid: {
-            display: false,
-          },
-        },
+    );
+
+  /*
+   * Загружаем последовательно, а не через Promise.all.
+   * Это не превышает ограничение Cloudflare
+   * на одновременные внешние соединения.
+   */
+  const avatarDataUrls = [];
+
+  for (const row of cardRows) {
+    const avatarDataUrl =
+      await loadWeeklyRankingAvatar(
+        env,
+        row.userId,
+      );
+
+    avatarDataUrls.push(
+      avatarDataUrl,
+    );
+  }
+
+  const scores =
+    cardRows.map(
+      row => row.score,
+    );
+
+  const barColors =
+    cardRows.map(
+      row => {
+        if (row.rank === 1) {
+          return '#F6C453';
+        }
+
+        if (row.rank === 2) {
+          return '#BCC5D3';
+        }
+
+        if (row.rank === 3) {
+          return '#D99A66';
+        }
+
+        return '#A77BD8';
       },
-      plugins: {
-        legend: {
+    );
+
+  const borderColors =
+    cardRows.map(
+      row => {
+        if (row.rank === 1) {
+          return '#D99A27';
+        }
+
+        if (row.rank === 2) {
+          return '#8E99AA';
+        }
+
+        if (row.rank === 3) {
+          return '#B66E39';
+        }
+
+        return '#7E55AE';
+      },
+    );
+
+  const chartData = {
+    labels:
+      cardRows.map(
+        () => '',
+      ),
+
+    datasets: [
+      {
+        data: scores,
+
+        backgroundColor:
+          barColors,
+
+        borderColor:
+          borderColors,
+
+        borderWidth: 2,
+
+        borderRadius: 16,
+
+        borderSkipped: false,
+
+        barThickness: 36,
+
+        maxBarThickness: 36,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    indexAxis: 'y',
+
+    responsive: false,
+
+    animation: false,
+
+    maintainAspectRatio: false,
+
+    layout: {
+      padding: {
+        top: 35,
+        right: 100,
+        bottom: 45,
+        left: 370,
+      },
+    },
+
+    scales: {
+      x: {
+        beginAtZero: true,
+
+        grace: '18%',
+
+        border: {
           display: false,
         },
-        title: {
-          display: true,
-          text:
-            `Chumi Jump — недельный рейтинг\n${weekStart} — ${weekEnd}`,
-          color: '#30243D',
-          font: {
-            size: 30,
-            weight: 'bold',
-          },
-          padding: {
-            bottom: 30,
-          },
+
+        grid: {
+          color:
+            'rgba(126, 85, 174, 0.10)',
+
+          lineWidth: 1,
+        },
+
+        ticks: {
+          display: false,
+        },
+      },
+
+      y: {
+        border: {
+          display: false,
+        },
+
+        grid: {
+          display: false,
+        },
+
+        ticks: {
+          display: false,
+        },
+      },
+    },
+
+    plugins: {
+      legend: {
+        display: false,
+      },
+
+      title: {
+        display: true,
+
+        text: [
+          'CHUMI JUMP',
+          'Недельный рейтинг',
+        ],
+
+        color: '#352743',
+
+        font: {
+          size: 34,
+          weight: 'bold',
+          family:
+            'Arial, sans-serif',
+        },
+
+        padding: {
+          top: 5,
+          bottom: 8,
+        },
+      },
+
+      subtitle: {
+        display: true,
+
+        text:
+          `${weekStart} — ${weekEnd}`,
+
+        color: '#806C91',
+
+        font: {
+          size: 21,
+          weight: 'normal',
+          family:
+            'Arial, sans-serif',
+        },
+
+        padding: {
+          bottom: 32,
+        },
+      },
+
+      datalabels: {
+        display: true,
+
+        anchor: 'end',
+
+        align: 'right',
+
+        offset: 10,
+
+        clamp: true,
+
+        clip: false,
+
+        color: '#352743',
+
+        font: {
+          size: 23,
+          weight: 'bold',
+          family:
+            'Arial, sans-serif',
         },
       },
     },
   };
 
+  /*
+   * QuickChart принимает конфигурацию Chart.js
+   * не только как JSON, но и как JavaScript-строку.
+   *
+   * JavaScript-строка нужна для inline-плагина,
+   * который рисует круглые аватары и имена.
+   */
+  const chartSource =
+    `{
+      type: 'bar',
+
+      data: ${JSON.stringify(
+        chartData,
+      )},
+
+      options: ${JSON.stringify(
+        chartOptions,
+      )},
+
+      plugins: [
+        {
+          id: 'chumiRankingCard',
+
+          afterDraw: function(chart) {
+            var ctx = chart.ctx;
+
+            var rows = ${JSON.stringify(
+              cardRows.map(
+                row => ({
+                  rank:
+                    row.rank,
+
+                  name:
+                    row.name,
+
+                  score:
+                    row.score,
+                }),
+              ),
+            )};
+
+            var avatars = ${JSON.stringify(
+              avatarDataUrls,
+            )};
+
+            var yScale =
+              chart.scales.y;
+
+            function getPlaceColor(rank) {
+              if (rank === 1) {
+                return '#D99A27';
+              }
+
+              if (rank === 2) {
+                return '#8E99AA';
+              }
+
+              if (rank === 3) {
+                return '#B66E39';
+              }
+
+              return '#7E55AE';
+            }
+
+            function getAvatarColor(rank) {
+              if (rank === 1) {
+                return '#FBE4A1';
+              }
+
+              if (rank === 2) {
+                return '#E2E6ED';
+              }
+
+              if (rank === 3) {
+                return '#EBC09F';
+              }
+
+              return '#DCC6F3';
+            }
+
+            rows.forEach(
+              function(row, index) {
+                var centerY =
+                  yScale.getPixelForValue(
+                    index,
+                  );
+
+                var rankX = 42;
+                var avatarX = 100;
+                var nameX = 148;
+                var avatarRadius = 29;
+
+                ctx.save();
+
+                ctx.textAlign =
+                  'center';
+
+                ctx.textBaseline =
+                  'middle';
+
+                ctx.fillStyle =
+                  getPlaceColor(
+                    row.rank,
+                  );
+
+                ctx.font =
+                  'bold 25px Arial';
+
+                ctx.fillText(
+                  String(row.rank),
+                  rankX,
+                  centerY,
+                );
+
+                ctx.beginPath();
+
+                ctx.arc(
+                  avatarX,
+                  centerY,
+                  avatarRadius + 4,
+                  0,
+                  Math.PI * 2,
+                );
+
+                ctx.fillStyle =
+                  getPlaceColor(
+                    row.rank,
+                  );
+
+                ctx.fill();
+
+                ctx.beginPath();
+
+                ctx.arc(
+                  avatarX,
+                  centerY,
+                  avatarRadius,
+                  0,
+                  Math.PI * 2,
+                );
+
+                ctx.fillStyle =
+                  getAvatarColor(
+                    row.rank,
+                  );
+
+                ctx.fill();
+
+                var avatarDrawn =
+                  false;
+
+                if (avatars[index]) {
+                  try {
+                    var avatarImage =
+                      new Image();
+
+                    avatarImage.src =
+                      avatars[index];
+
+                    ctx.save();
+
+                    ctx.beginPath();
+
+                    ctx.arc(
+                      avatarX,
+                      centerY,
+                      avatarRadius,
+                      0,
+                      Math.PI * 2,
+                    );
+
+                    ctx.clip();
+
+                    ctx.drawImage(
+                      avatarImage,
+                      avatarX -
+                        avatarRadius,
+                      centerY -
+                        avatarRadius,
+                      avatarRadius * 2,
+                      avatarRadius * 2,
+                    );
+
+                    ctx.restore();
+
+                    avatarDrawn =
+                      true;
+                  } catch (
+                    avatarError
+                  ) {
+                    avatarDrawn =
+                      false;
+                  }
+                }
+
+                if (!avatarDrawn) {
+                  var firstLetter =
+                    String(
+                      row.name ||
+                      '?',
+                    )
+                      .trim()
+                      .charAt(0)
+                      .toUpperCase() ||
+                    '?';
+
+                  ctx.fillStyle =
+                    '#5D3E7C';
+
+                  ctx.font =
+                    'bold 25px Arial';
+
+                  ctx.textAlign =
+                    'center';
+
+                  ctx.fillText(
+                    firstLetter,
+                    avatarX,
+                    centerY + 1,
+                  );
+                }
+
+                ctx.textAlign =
+                  'left';
+
+                ctx.textBaseline =
+                  'middle';
+
+                ctx.fillStyle =
+                  '#352743';
+
+                ctx.font =
+                  'bold 24px Arial';
+
+                ctx.fillText(
+                  row.name,
+                  nameX,
+                  centerY,
+                );
+
+                ctx.restore();
+              },
+            );
+          },
+        },
+      ],
+    }`;
+
   const response = await fetch(
     'https://quickchart.io/chart',
     {
       method: 'POST',
+
       headers: {
         'Content-Type':
           'application/json',
       },
+
       body: JSON.stringify({
         width: 1200,
+
         height: Math.max(
-          720,
-          250 +
-          imageRows.length * 55,
+          800,
+          310 +
+          cardRows.length * 72,
         ),
+
         format: 'png',
-        backgroundColor: '#F8F4FC',
+
+        backgroundColor:
+          '#F8F4FC',
+
         devicePixelRatio: 1,
+
         version: '4',
-        chart,
+
+        chart: chartSource,
       }),
     },
   );
 
   if (!response.ok) {
+    const responseText =
+      await response
+        .text()
+        .catch(() => '');
+
     throw new Error(
-      `Ranking image generation failed: ${response.status}`,
+      `Ranking image generation failed: ` +
+      `${response.status}` +
+      (
+        responseText
+          ? ` — ${responseText.slice(0, 300)}`
+          : ''
+      ),
+    );
+  }
+
+  const contentType =
+    response.headers.get(
+      'Content-Type',
+    ) || '';
+
+  if (
+    !contentType.includes(
+      'image/',
+    )
+  ) {
+    throw new Error(
+      `Ranking image generation returned ` +
+      `unexpected content type: ` +
+      `${contentType || 'unknown'}`,
     );
   }
 
@@ -687,6 +1334,7 @@ function formatPair(pair, members, tasksToday, userId) {
   const lv = getLevel(pair.growth_points || 0);
   const partner = members?.find(m => m.user_id !== userId);
   const me = members?.find(m => m.user_id === userId);
+  const recoveryState = getRecoveryState(pair);
 
   return {
     code: pair.code,
@@ -699,9 +1347,15 @@ function formatPair(pair, members, tasksToday, userId) {
     bg_id: pair.bg_id || 'room',
     is_dead: pair.is_dead || false,
     hatched: pair.hatched || false,
-    streak_recoveries_used: pair.streak_recoveries_used || 0,
+    streak_recoveries_used: recoveryState.used,
     last_recovery_month: pair.last_recovery_month,
     last_streak_date: pair.last_streak_date,
+    last_pair_streak_date: pair.last_pair_streak_date,
+    can_revive: recoveryState.canRevive,
+    recoveries_remaining: recoveryState.remaining,
+    recoveries_max: recoveryState.maximum,
+    server_today: recoveryState.today,
+    days_since_pair_streak: recoveryState.daysSincePairStreak,
     members: members?.map(m => ({
       user_id: m.user_id,
       display_name: m.display_name || null,
@@ -1077,6 +1731,7 @@ export async function onRequest(context) {
         if (rankedRows.length > 0) {
           rankingImage =
             await createWeeklyRankingImage(
+              env,
               rankedRows,
               previousWeekStart,
               previousWeekEnd,
@@ -1656,7 +2311,15 @@ export async function onRequest(context) {
       }
 
       const displayName =
-        telegramData?.user?.first_name ||
+        [
+          telegramData?.user?.first_name,
+          telegramData?.user?.last_name,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 100) ||
         telegramData?.user?.username ||
         null;
 
@@ -2514,35 +3177,97 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
       if (points === undefined) return json({ error: 'Invalid task' }, 400, request);
 
       const { data: pairCheck } = await supabase
-        .from('pairs').select('is_dead, timezone, last_streak_date, streak_days, growth_points').eq('code', code).maybeSingle();
-      if (!pairCheck) return json({ error: 'Pair not found' }, 404, request);
+        .from('pairs')
+        .select(
+          'is_dead, timezone, last_streak_date, last_pair_streak_date, streak_days, growth_points, streak_recoveries_used, last_recovery_month'
+        )
+        .eq('code', code)
+        .maybeSingle();
 
-      // Если питомец мёртв больше 3 дней без воскрешения — серия и XP обнуляются
-      // и питомец «начинается с нуля». Это срабатывает при первой попытке что-то сделать.
-      if (pairCheck.is_dead && pairCheck.last_streak_date) {
-        const tzCheck = pairCheck.timezone || 'UTC';
-        const todayCheck = getTodayDate(tzCheck);
-        const lastDate = new Date(pairCheck.last_streak_date + 'T00:00:00Z');
-        const todayDate = new Date(todayCheck + 'T00:00:00Z');
-        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
-        if (diffDays >= 3) {
-          await supabase.from('pairs').update({
-            is_dead: false,
-            streak_days: 0,
-            growth_points: 0,
-            hatched: false,
-            active_skin: null,
-            last_streak_date: todayCheck,
-            last_pair_streak_date: todayCheck,
-          }).eq('code', code);
-          await supabase.from('one_time_tasks').delete().eq('pair_code', code);
-          await supabase.from('daily_tasks').delete().eq('pair_code', code);
-          await supabase.from('feedings').delete().eq('pair_code', code);
-          return json({ error: 'Pet was reset due to long inactivity', reset: true }, 400, request);
-        }
+      if (!pairCheck) {
+        return json(
+          { error: 'Pair not found' },
+          404,
+          request,
+        );
       }
 
-      if (pairCheck.is_dead) return json({ error: 'Pet is dead' }, 400, request);
+      const recoveryState =
+        getRecoveryState(pairCheck);
+
+      /*
+       * В день воскрешения запрещаем выполнять задания
+       * до нажатия «Воскресить». Это не позволяет
+       * complete-task сбросить старую серию на 1.
+       */
+      if (recoveryState.canRevive) {
+        return json(
+          {
+            error: 'Revival required',
+            reviveRequired: true,
+            remaining:
+              recoveryState.remaining,
+          },
+          409,
+          request,
+        );
+      }
+
+      /*
+       * Если единственный день воскрешения уже закончился,
+       * сбрасываем прогресс при первой попытке выполнить
+       * задание, даже если cron ещё не успел отработать.
+       */
+      if (
+        Number(pairCheck.streak_days || 0) > 0 &&
+        recoveryState.daysSincePairStreak !== null &&
+        recoveryState.daysSincePairStreak >= 3
+      ) {
+        await supabase.from('pairs').update({
+          is_dead: false,
+          streak_days: 0,
+          growth_points: 0,
+          hatched: false,
+          active_skin: null,
+          last_streak_date:
+            recoveryState.today,
+          last_pair_streak_date:
+            recoveryState.today,
+        }).eq('code', code);
+
+        await supabase
+          .from('one_time_tasks')
+          .delete()
+          .eq('pair_code', code);
+
+        await supabase
+          .from('daily_tasks')
+          .delete()
+          .eq('pair_code', code);
+
+        await supabase
+          .from('feedings')
+          .delete()
+          .eq('pair_code', code);
+
+        return json(
+          {
+            error:
+              'Pet was reset due to long inactivity',
+            reset: true,
+          },
+          400,
+          request,
+        );
+      }
+
+      if (pairCheck.is_dead) {
+        return json(
+          { error: 'Pet is dead' },
+          400,
+          request,
+        );
+      }
 
       const today = getTodayDate(pairCheck.timezone || 'UTC');
 
@@ -2576,7 +3301,6 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         .filter(id => id !== String(userId));
 
       // ── Обновляем last_streak_date ВСЕГДА, когда кто-то открыл приложение ──
-      // Это «отметка жизни» — питомец не умирает, пока хоть кто-то заходит.
       // streak_days растёт, только когда оба зашли в один день (см. ниже).
       if (taskKey === 'daily_open') {
         const { data: pairForLife } = await supabase
@@ -2820,36 +3544,152 @@ if (request.method === 'POST' && path === '/api/diary-delete') {
         .eq('pair_code', code).eq('user_id', userId).maybeSingle();
       if (!membership) return json({ error: 'Not a member' }, 403, request);
 
-      const { data: pair } = await supabase.from('pairs').select('*').eq('code', code).maybeSingle();
-      if (!pair) return json({ error: 'Pair not found' }, 404, request);
-      if (!pair.is_dead) return json({ error: 'Pet is not dead' }, 400, request);
+      const { data: pair } = await supabase
+        .from('pairs')
+        .select('*')
+        .eq('code', code)
+        .maybeSingle();
 
-      const tz = pair.timezone || 'UTC';
-      const currentMonth = getCurrentMonth(tz);
-      const today = getTodayDate(tz);
+      if (!pair) {
+        return json(
+          { error: 'Pair not found' },
+          404,
+          request,
+        );
+      }
 
-      const MAX_RECOVERIES = 5;
+      const recoveryState =
+        getRecoveryState(pair);
 
-      let used = pair.streak_recoveries_used || 0;
-      if (pair.last_recovery_month !== currentMonth) used = 0;
-      if (used >= MAX_RECOVERIES) return json({ error: 'Max 5 recoveries per month', remaining: 0 }, 400, request);
+      if (
+        recoveryState.remaining <= 0
+      ) {
+        return json(
+          {
+            error:
+              'Max 5 recoveries per month',
+            remaining: 0,
+          },
+          400,
+          request,
+        );
+      }
 
-      const remainingAfter = MAX_RECOVERIES - (used + 1);
+      /*
+       * Воскрешение доступно только при разнице
+       * ровно в два дня:
+       *
+       * день 0 — последний совместный день;
+       * день 1 — пропущенный день;
+       * день 2 — день воскрешения.
+       *
+       * is_dead намеренно не является обязательным:
+       * пользователь может открыть приложение раньше,
+       * чем Cloudflare cron пометит питомца мёртвым.
+       */
+      if (!recoveryState.canRevive) {
+        return json(
+          {
+            error:
+              'Revival is not available today',
+            code:
+              'REVIVE_NOT_AVAILABLE',
+            remaining:
+              recoveryState.remaining,
+            server_today:
+              recoveryState.today,
+            days_since_pair_streak:
+              recoveryState.daysSincePairStreak,
+          },
+          409,
+          request,
+        );
+      }
 
-      // При воскрешении серия и XP полностью сохраняются.
-      // last_streak_date = сегодня — питомец оживает «сегодня», cron его не убьёт.
-      // last_pair_streak_date = ВЧЕРА — это ключевой момент: когда оба партнёра
-      // сделают daily_open сегодня, в /api/complete-task разница дат будет ровно
-      // 1 день → серия продолжится (+1), а не сбросится. Если же сегодня зайдёт
-      // только один — день не засчитается (нужны оба), как ты и хотел.
-      const yesterday = getYesterdayDate(tz);
-      const { data: updated } = await supabase.from('pairs').update({
-        is_dead: false,
-        streak_recoveries_used: used + 1,
-        last_recovery_month: currentMonth,
-        last_streak_date: today,
-        last_pair_streak_date: yesterday,
-      }).eq('code', code).select().single();
+      const tz =
+        pair.timezone ||
+        'UTC';
+
+      const currentMonth =
+        recoveryState.currentMonth;
+
+      const today =
+        recoveryState.today;
+
+      const MAX_RECOVERIES =
+        recoveryState.maximum;
+
+      const used =
+        recoveryState.used;
+
+      const remainingAfter =
+        MAX_RECOVERIES -
+        (used + 1);
+
+      /*
+       * Ставим last_pair_streak_date на вчера.
+       * Когда оба участника выполнят daily_open сегодня,
+       * complete-task увидит разницу ровно в один день
+       * и увеличит сохранённую серию на 1.
+       */
+      const yesterday =
+        getYesterdayDate(tz);
+
+      const previousPairStreakDate =
+        pair.last_pair_streak_date;
+
+      const {
+        data: updated,
+        error: updateError,
+      } = await supabase
+        .from('pairs')
+        .update({
+          is_dead: false,
+          streak_recoveries_used:
+            used + 1,
+          last_recovery_month:
+            currentMonth,
+          last_streak_date:
+            today,
+          last_pair_streak_date:
+            yesterday,
+        })
+        .eq('code', code)
+        .eq(
+          'last_pair_streak_date',
+          previousPairStreakDate,
+        )
+        .select()
+        .maybeSingle();
+
+      if (updateError) {
+        console.error(
+          'Streak recovery update failed:',
+          updateError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to recover streak',
+          },
+          500,
+          request,
+        );
+      }
+
+      if (!updated) {
+        return json(
+          {
+            error:
+              'Streak was already recovered',
+            code:
+              'ALREADY_RECOVERED',
+          },
+          409,
+          request,
+        );
+      }
 
       // Уведомляем партнёра о воскрешении
 try {
@@ -2970,7 +3810,9 @@ try {
         is_dead: false,
         pet_name: null,
         streak_recoveries_used: 0,
+        last_recovery_month: null,
         last_streak_date: null,
+        last_pair_streak_date: null,
       }).eq('code', code);
 
       await supabase.from('feedings').delete().eq('pair_code', code);
@@ -3606,11 +4448,11 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       // ── Батч: тянем живые и мёртвые пары одним запросом каждую ──
       const { data: alivePairsRaw } = await supabase
         .from('pairs')
-        .select('code, last_streak_date, streak_days, is_dead, pet_name, timezone')
+        .select('code, last_streak_date, last_pair_streak_date, streak_days, is_dead, pet_name, timezone')
         .eq('is_dead', false);
       const { data: deadPairsRaw } = await supabase
         .from('pairs')
-        .select('code, last_streak_date, streak_days, pet_name, timezone')
+        .select('code, last_streak_date, last_pair_streak_date, streak_days, pet_name, timezone')
         .eq('is_dead', true);
 
       const alivePairs = alivePairsRaw || [];
@@ -3647,21 +4489,43 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
         if (memberIds.length < 2) continue;
 
         const yesterday = getYesterdayDate(tz);
-        // Умирает, только если пропущен ПОЛНЫЙ день (last_streak_date < вчера).
-        if (pair.last_streak_date && pair.last_streak_date < yesterday) {
+
+        /*
+         * Смерть зависит от последнего совместно
+         * засчитанного дня, а не от входа одного
+         * из участников.
+         */
+        if (
+          pair.last_pair_streak_date &&
+          pair.last_pair_streak_date < yesterday
+        ) {
           toKill.push(pair);
         }
       }
 
       // ── 2) Определяем, кого сбросить (мёртв 3+ дня) ──
       for (const pair of deadPairs) {
-        if (!pair.last_streak_date) continue;
-        const tz = pair.timezone || 'UTC';
-        const today = getTodayDate(tz);
-        const lastDate = new Date(pair.last_streak_date + 'T00:00:00Z');
-        const todayDate = new Date(today + 'T00:00:00Z');
-        const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
-        if (diffDays >= 3) toReset.push(pair);
+        if (!pair.last_pair_streak_date) continue;
+
+        const tz =
+          pair.timezone ||
+          'UTC';
+
+        const today =
+          getTodayDate(tz);
+
+        const diffDays =
+          getDateDifferenceInDays(
+            pair.last_pair_streak_date,
+            today,
+          );
+
+        if (
+          diffDays !== null &&
+          diffDays >= 3
+        ) {
+          toReset.push(pair);
+        }
       }
 
       // ── Батч: языки всех затронутых пользователей ──
@@ -4268,12 +5132,41 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
 
       const { data: pair } = await supabase
         .from('pairs')
-        .select('streak_recoveries_used, last_recovery_month, timezone')
-        .eq('code', pairCode).maybeSingle();
-      if (!pair) return json({ error: 'Pair not found' }, 404, request);
-      const currentMonth = getCurrentMonth(pair.timezone || 'UTC');
-      const used = pair.last_recovery_month === currentMonth ? (pair.streak_recoveries_used || 0) : 0;
-      return json({ used, remaining: Math.max(0, 5 - used), max: 5 }, 200, request);
+        .select(
+          'streak_recoveries_used, last_recovery_month, timezone, last_pair_streak_date, streak_days'
+        )
+        .eq('code', pairCode)
+        .maybeSingle();
+
+      if (!pair) {
+        return json(
+          { error: 'Pair not found' },
+          404,
+          request,
+        );
+      }
+
+      const recoveryState =
+        getRecoveryState(pair);
+
+      return json(
+        {
+          used:
+            recoveryState.used,
+          remaining:
+            recoveryState.remaining,
+          max:
+            recoveryState.maximum,
+          can_revive:
+            recoveryState.canRevive,
+          server_today:
+            recoveryState.today,
+          days_since_pair_streak:
+            recoveryState.daysSincePairStreak,
+        },
+        200,
+        request,
+      );
     }
 
     // ── POST /api/update-timezone ──
