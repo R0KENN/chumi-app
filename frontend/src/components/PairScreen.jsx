@@ -2144,14 +2144,19 @@ if (tab.key === 'game') {
         <div className="sk-overlay" style={{ zIndex: 200 }}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
             <img
-              src={`/pets/${petSrc?.idle || 'axolotl_idle'}_dead.png`}
+              src={
+                isEgg
+                  ? '/pets/egg_dead.png'
+                  : `/pets/${petSrc?.idle || 'axolotl_idle'}_dead.png`
+              }
               alt={lang === 'ru' ? 'Питомец умер' : 'Pet has died'}
               style={{
-                width: 180,
-                height: 180,
+                width: 260,
+                height: 260,
+                maxWidth: '100%',
                 objectFit: 'contain',
                 display: 'block',
-                margin: '0 auto 12px',
+                margin: '-20px auto 4px',
               }}
             />
             <h3 style={{ textAlign: 'center', color: '#e53e3e' }}>

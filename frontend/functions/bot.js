@@ -1847,21 +1847,11 @@ if (startParam.startsWith('ref_')) {
       }
 
       /*
-       * Перед формированием списка запрашиваем
-       * актуальные имена и username через Telegram.
-       * Одновременно обновляются pair_users
-       * и jump_game_scores.
+       * Имена и username уже синхронизируются
+       * при событиях бота и запросах Mini App.
+       * Здесь читаем готовые данные из базы,
+       * не выполняя отдельный getChat для каждого пользователя.
        */
-      const freshProfiles =
-        await refreshTelegramProfiles(
-          env,
-          supabase,
-          list.map(
-            item =>
-              item.telegram_user_id,
-          ),
-        );
-
       // Подтягиваем сохранённые имена/username из pair_users.
       const { data: named } = await supabase
         .from('pair_users')
@@ -1893,9 +1883,6 @@ if (startParam.startsWith('ref_')) {
           );
 
         const info =
-          freshProfiles.get(
-            normalizedUserId,
-          ) ||
           nameMap.get(
             normalizedUserId,
           ) ||
@@ -2077,19 +2064,11 @@ if (startParam.startsWith('ref_')) {
       }
 
       /*
-       * Обновляем имена и username через Telegram.
-       * Эти же данные записываются в pair_users
-       * и jump_game_scores.
+       * Имена и username уже синхронизируются
+       * при событиях бота и запросах Mini App.
+       * Здесь используем сохранённые данные,
+       * чтобы список формировался без задержки.
        */
-      const freshProfiles =
-        await refreshTelegramProfiles(
-          env,
-          supabase,
-          activeUsers.map(
-            item => item.userId,
-          ),
-        );
-
       const {
         data: savedProfiles,
       } = await supabase
@@ -2155,9 +2134,6 @@ if (startParam.startsWith('ref_')) {
             index,
           ) => {
             const profile =
-              freshProfiles.get(
-                activeUser.userId,
-              ) ||
               savedProfileMap.get(
                 activeUser.userId,
               ) ||

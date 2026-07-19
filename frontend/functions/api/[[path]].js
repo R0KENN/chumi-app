@@ -20,6 +20,7 @@ const TASK_POINTS = {
 };
 
 const DEATH_STICKER_FILE_IDS = {
+  egg: 'CAACAgIAAxkBAAERkSNqXF8oMQdvSDAzuH40k4Zhv9jNtgACVpsAAu8b6EpIcX6Y4NlIwD0E',
   idle: 'CAACAgIAAxkBAAERkPlqXE_irAT4BXXq4Od5dNXT7vvrjQAC-qgAAikz4Uo70-N11x_ALT0E',
   level_1: 'CAACAgIAAxkBAAERkPlqXE_irAT4BXXq4Od5dNXT7vvrjQAC-qgAAikz4Uo70-N11x_ALT0E',
   level_2: 'CAACAgIAAxkBAAERkPtqXFAYESsW08t9K3hYxsj2caUBkgACu60AAhTA4Eo8GaDhcTINjz0E',
@@ -52,7 +53,13 @@ function getDeathStickerFileId(pair) {
       getLevel(
         pair?.growth_points || 0,
       )?.level,
-    ) || 1;
+    );
+
+  if (currentLevel === 0) {
+    return (
+      DEATH_STICKER_FILE_IDS.egg
+    );
+  }
 
   return (
     DEATH_STICKER_FILE_IDS[
