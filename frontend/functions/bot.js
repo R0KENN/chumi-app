@@ -146,6 +146,123 @@ async function notifyAdmins(env, text) {
   }
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function broadcastToAllUsers(
+  env,
+  supabase,
+  text,
+  adminChatId,
+) {
+  const pageSize = 1000;
+  let offset = 0;
+  const userIds = [];
+
+  while (true) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('user_settings')
+      .select('telegram_user_id')
+      .order('telegram_user_id', {
+        ascending: true,
+      })
+      .range(
+        offset,
+        offset + pageSize - 1,
+      );
+
+    if (error) {
+      throw new Error(
+        `Failed to load broadcast users: ${error.message}`,
+      );
+    }
+
+    const page = data || [];
+
+    for (const user of page) {
+      if (user.telegram_user_id) {
+        userIds.push(
+          String(user.telegram_user_id),
+        );
+      }
+    }
+
+    if (page.length < pageSize) {
+      break;
+    }
+
+    offset += pageSize;
+  }
+
+  const uniqueUserIds = [
+    ...new Set(userIds),
+  ];
+
+  let sent = 0;
+  let failed = 0;
+  let blocked = 0;
+  const batchSize = 20;
+
+  for (
+    let index = 0;
+    index < uniqueUserIds.length;
+    index += batchSize
+  ) {
+    const batch =
+      uniqueUserIds.slice(
+        index,
+        index + batchSize,
+      );
+
+    const results =
+      await Promise.all(
+        batch.map(targetId =>
+          sendMessage(
+            env,
+            targetId,
+            text,
+            {
+              parse_mode: undefined,
+            },
+          ),
+        ),
+      );
+
+    for (const result of results) {
+      if (result?.ok) {
+        sent += 1;
+      } else {
+        failed += 1;
+
+        if (result?.blocked) {
+          blocked += 1;
+        }
+      }
+    }
+
+    if (
+      index + batchSize <
+      uniqueUserIds.length
+    ) {
+      await sleep(1100);
+    }
+  }
+
+  await sendMessage(
+    env,
+    adminChatId,
+    `✅ *Рассылка завершена*\n\n` +
+      `👥 Всего получателей: *${uniqueUserIds.length}*\n` +
+      `📨 Отправлено: *${sent}*\n` +
+      `🚫 Заблокировали бота: *${blocked}*\n` +
+      `❌ Другие ошибки: *${failed - blocked}*`,
+  );
+}
+
 // Команды для обычных пользователей
 const PUBLIC_COMMANDS = [
   { command: 'start', description: 'Начать работу с ботом' },
@@ -166,6 +283,7 @@ const ADMIN_COMMANDS = [
   { command: 'summary', description: '📅 Ежедневная сводка' },
   { command: 'grantbee', description: '🐝 Выдать наряд Пчёлка (USER_ID)' },
   { command: 'grantslot', description: '➕ Выдать доп. слот (USER_ID)' },
+  { command: 'broadcast', description: '📣 Рассылка всем пользователям' },
   { command: 'setcommands', description: '🔧 Обновить список команд' },
 ];
 
@@ -1271,6 +1389,101 @@ if (startParam.startsWith('ref_')) {
         );
       }
       await sendMessage(env, chatId, msg, webAppButton);
+      return new Response('OK');
+    }
+
+    // /broadcast ТЕКСТ — рассылка всем пользователям
+    if (
+      /^\/broadcast(?:@\w+)?(?:\s|$)/i.test(
+        text,
+      )
+    ) {
+      if (!ADMIN_IDS.includes(userId)) {
+        return new Response('OK');
+      }
+
+      const broadcastText =
+        text
+          .replace(
+            /^\/broadcast(?:@\w+)?\s*/i,
+            '',
+          )
+          .trim();
+
+      if (!broadcastText) {
+        await sendMessage(
+          env,
+          chatId,
+          `⚠️ *Не указан текст сообщения.*\n\n` +
+            `Использование:\n` +
+            `/broadcast Текст сообщения`,
+        );
+
+        return new Response('OK');
+      }
+
+      if (
+        Array.from(broadcastText).length >
+        4000
+      ) {
+        await sendMessage(
+          env,
+          chatId,
+          '⚠️ Сообщение слишком длинное. Максимум — 4000 символов.',
+        );
+
+        return new Response('OK');
+      }
+
+      const {
+        count,
+        error: countError,
+      } = await supabase
+        .from('user_settings')
+        .select(
+          'telegram_user_id',
+          {
+            count: 'exact',
+            head: true,
+          },
+        );
+
+      if (countError) {
+        await sendMessage(
+          env,
+          chatId,
+          `❌ Не удалось получить список пользователей: ${escapeMd(countError.message)}`,
+        );
+
+        return new Response('OK');
+      }
+
+      await sendMessage(
+        env,
+        chatId,
+        `📣 Рассылка запущена.\nПолучателей: *${count || 0}*`,
+      );
+
+      context.waitUntil(
+        broadcastToAllUsers(
+          env,
+          supabase,
+          broadcastText,
+          chatId,
+        ).catch(async error => {
+          console.error(
+            'Broadcast failed:',
+            error,
+          );
+
+          await sendMessage(
+            env,
+            chatId,
+            `❌ *Ошибка рассылки*\n\n${escapeMd(error?.message || String(error))}`,
+          );
+        }),
+      );
+
       return new Response('OK');
     }
 
