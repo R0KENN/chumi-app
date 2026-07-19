@@ -1126,6 +1126,11 @@ export default function JumpGame() {
 
   const petName = searchParams.get('pet') || '';
 
+  const gameOverPetImage =
+    petName.startsWith('egg_')
+      ? '/pets/egg_dead.png'
+      : `/pets/${petName || 'axolotl_idle'}_dead.png`;
+
   const userId = String(
     window.Telegram?.WebApp?.initDataUnsafe?.user?.id ||
     getLocalStorageItem('chumi_test_uid') ||
@@ -1137,7 +1142,7 @@ export default function JumpGame() {
 
   const t = lang === 'ru'
     ? {
-        title: 'Прыжок Chumi',
+        title: 'Jump Chumi',
         subtitle: 'Поднимайся как можно выше',
         play: 'Играть',
         control: 'Удерживай палец и веди влево или вправо',
@@ -1167,7 +1172,7 @@ export default function JumpGame() {
         waitForSaving: 'Подожди, пока сохранится предыдущий результат.',
       }
     : {
-        title: 'Chumi Jump',
+        title: 'Jump Chumi',
         subtitle: 'Climb as high as you can',
         play: 'Play',
         control: 'Hold and move left or right',
@@ -3091,9 +3096,18 @@ export default function JumpGame() {
               </div>
             )}
 
-            <div className="jump-game-over-emoji">
-              {isNewRecord ? '🎉' : '😿'}
-            </div>
+            <img
+              src={gameOverPetImage}
+              alt=""
+              style={{
+                display: 'block',
+                width: 170,
+                height: 170,
+                maxWidth: '100%',
+                margin: '-28px auto -4px',
+                objectFit: 'contain',
+              }}
+            />
 
             <h2>{t.gameOver}</h2>
 
