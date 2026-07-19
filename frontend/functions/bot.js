@@ -146,123 +146,6 @@ async function notifyAdmins(env, text) {
   }
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function broadcastToAllUsers(
-  env,
-  supabase,
-  text,
-  adminChatId,
-) {
-  const pageSize = 1000;
-  let offset = 0;
-  const userIds = [];
-
-  while (true) {
-    const {
-      data,
-      error,
-    } = await supabase
-      .from('user_settings')
-      .select('telegram_user_id')
-      .order('telegram_user_id', {
-        ascending: true,
-      })
-      .range(
-        offset,
-        offset + pageSize - 1,
-      );
-
-    if (error) {
-      throw new Error(
-        `Failed to load broadcast users: ${error.message}`,
-      );
-    }
-
-    const page = data || [];
-
-    for (const user of page) {
-      if (user.telegram_user_id) {
-        userIds.push(
-          String(user.telegram_user_id),
-        );
-      }
-    }
-
-    if (page.length < pageSize) {
-      break;
-    }
-
-    offset += pageSize;
-  }
-
-  const uniqueUserIds = [
-    ...new Set(userIds),
-  ];
-
-  let sent = 0;
-  let failed = 0;
-  let blocked = 0;
-  const batchSize = 20;
-
-  for (
-    let index = 0;
-    index < uniqueUserIds.length;
-    index += batchSize
-  ) {
-    const batch =
-      uniqueUserIds.slice(
-        index,
-        index + batchSize,
-      );
-
-    const results =
-      await Promise.all(
-        batch.map(targetId =>
-          sendMessage(
-            env,
-            targetId,
-            text,
-            {
-              parse_mode: undefined,
-            },
-          ),
-        ),
-      );
-
-    for (const result of results) {
-      if (result?.ok) {
-        sent += 1;
-      } else {
-        failed += 1;
-
-        if (result?.blocked) {
-          blocked += 1;
-        }
-      }
-    }
-
-    if (
-      index + batchSize <
-      uniqueUserIds.length
-    ) {
-      await sleep(1100);
-    }
-  }
-
-  await sendMessage(
-    env,
-    adminChatId,
-    `✅ *Рассылка завершена*\n\n` +
-      `👥 Всего получателей: *${uniqueUserIds.length}*\n` +
-      `📨 Отправлено: *${sent}*\n` +
-      `🚫 Заблокировали бота: *${blocked}*\n` +
-      `❌ Другие ошибки: *${failed - blocked}*`,
-  );
-}
-
 // Команды для обычных пользователей
 const PUBLIC_COMMANDS = [
   { command: 'start', description: 'Начать работу с ботом' },
@@ -278,13 +161,10 @@ const PUBLIC_COMMANDS = [
 // Дополнительные команды для админа
 const ADMIN_COMMANDS = [
   ...PUBLIC_COMMANDS,
-  { command: 'stats', description: '📊 Статистика приложения' },
-  { command: 'users', description: '👥 Последние пользователи' },
-  { command: 'summary', description: '📅 Ежедневная сводка' },
-  { command: 'grantbee', description: '🐝 Выдать наряд Пчёлка (USER_ID)' },
-  { command: 'grantslot', description: '➕ Выдать доп. слот (USER_ID)' },
-  { command: 'broadcast', description: '📣 Рассылка всем пользователям' },
-  { command: 'setcommands', description: '🔧 Обновить список команд' },
+  {
+    command: 'admin',
+    description: '🛠 Панель администратора',
+  },
 ];
 
 async function setBotCommands(env) {
@@ -499,6 +379,97 @@ function langButtons() {
   };
 }
 
+function adminMenuButtons() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: '📊 Статистика',
+            callback_data: 'admin_stats',
+          },
+          {
+            text: '👥 Пользователи',
+            callback_data: 'admin_users',
+          },
+        ],
+        [
+          {
+            text: '📅 Ежедневная сводка',
+            callback_data: 'admin_summary',
+          },
+        ],
+        [
+          {
+            text: '📣 Создать рассылку',
+            callback_data: 'admin_broadcast',
+          },
+        ],
+        [
+          {
+            text: '🐝 Выдать Пчёлку',
+            callback_data: 'admin_grantbee',
+          },
+          {
+            text: '➕ Выдать слот',
+            callback_data: 'admin_grantslot',
+          },
+        ],
+        [
+          {
+            text: '🔧 Обновить команды',
+            callback_data: 'admin_setcommands',
+          },
+        ],
+        [
+          {
+            text: '🔄 Обновить меню',
+            callback_data: 'admin_menu',
+          },
+        ],
+      ],
+    },
+  };
+}
+
+function adminForceReply(placeholder) {
+  return {
+    reply_markup: {
+      force_reply: true,
+      selective: true,
+      input_field_placeholder: placeholder,
+    },
+  };
+}
+
+async function answerCallbackQuery(
+  env,
+  callbackQueryId,
+  options = {},
+) {
+  try {
+    await fetch(
+      `https://api.telegram.org/bot${env.BOT_TOKEN}/answerCallbackQuery`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          callback_query_id:
+            callbackQueryId,
+          ...options,
+        }),
+      },
+    );
+  } catch (error) {
+    console.error(
+      'answerCallbackQuery failed:',
+      error,
+    );
+  }
+}
+
 function inviteButton(code, lang, botUsername = 'ChumiPetBot') {
   const inviteUrl = `https://t.me/${botUsername}?start=join_${code}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(T[lang].inviteText(code))}`;
@@ -602,33 +573,165 @@ export async function onRequestPost(context) {
       );
     }
 
-    // ═══ CALLBACK QUERY (кнопки смены языка) ═══
+    // ═══ CALLBACK QUERY ═══
     if (update.callback_query) {
       const cb = update.callback_query;
       const cbUserId = String(cb.from.id);
       const cbChatId = cb.message?.chat?.id;
-      const cbData = cb.data;
+      const cbData = cb.data || '';
 
-      if (cbData === 'set_lang_ru' || cbData === 'set_lang_en') {
-        const newLang = cbData === 'set_lang_ru' ? 'ru' : 'en';
-        await setUserLang(supabase, cbUserId, newLang);
+      if (
+        cbData === 'set_lang_ru' ||
+        cbData === 'set_lang_en'
+      ) {
+        const newLang =
+          cbData === 'set_lang_ru'
+            ? 'ru'
+            : 'en';
 
-        // Ответить на callback
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            callback_query_id: cb.id,
-            text: newLang === 'ru' ? '✅ Русский' : '✅ English',
-          }),
-        });
+        await setUserLang(
+          supabase,
+          cbUserId,
+          newLang,
+        );
 
-        // Отправить подтверждение
+        await answerCallbackQuery(
+          env,
+          cb.id,
+          {
+            text:
+              newLang === 'ru'
+                ? '✅ Русский'
+                : '✅ English',
+          },
+        );
+
         if (cbChatId) {
-          await sendMessage(env, cbChatId, T[newLang].langChanged, webAppButton);
+          await sendMessage(
+            env,
+            cbChatId,
+            T[newLang].langChanged,
+            webAppButton,
+          );
         }
+
+        return new Response('OK');
       }
-      return new Response('OK');
+
+      if (cbData.startsWith('admin_')) {
+        if (!ADMIN_IDS.includes(cbUserId)) {
+          await answerCallbackQuery(
+            env,
+            cb.id,
+            {
+              text:
+                '⛔ Нет доступа',
+              show_alert: true,
+            },
+          );
+
+          return new Response('OK');
+        }
+
+        if (!cbChatId) {
+          await answerCallbackQuery(
+            env,
+            cb.id,
+          );
+
+          return new Response('OK');
+        }
+
+        await answerCallbackQuery(
+          env,
+          cb.id,
+        );
+
+        if (cbData === 'admin_menu') {
+          await sendMessage(
+            env,
+            cbChatId,
+            '🛠 *Панель администратора*\n\nВыберите действие:',
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
+        if (cbData === 'admin_broadcast') {
+          await sendMessage(
+            env,
+            cbChatId,
+            'ADMIN_BROADCAST_PROMPT\n\n📣 Отправьте текст сообщения для рассылки всем пользователям.',
+            adminForceReply(
+              'Введите текст рассылки',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        if (cbData === 'admin_grantbee') {
+          await sendMessage(
+            env,
+            cbChatId,
+            'ADMIN_GRANTBEE_PROMPT\n\n🐝 Отправьте Telegram ID пользователя, которому нужно выдать наряд Пчёлка.',
+            adminForceReply(
+              'Введите Telegram ID',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        if (cbData === 'admin_grantslot') {
+          await sendMessage(
+            env,
+            cbChatId,
+            'ADMIN_GRANTSLOT_PROMPT\n\n➕ Отправьте Telegram ID пользователя, которому нужно выдать дополнительный слот.',
+            adminForceReply(
+              'Введите Telegram ID',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const adminCommandMap = {
+          admin_stats: '/stats',
+          admin_users: '/users',
+          admin_summary: '/summary',
+          admin_setcommands:
+            '/setcommands',
+        };
+
+        const adminCommand =
+          adminCommandMap[cbData];
+
+        if (!adminCommand) {
+          return new Response('OK');
+        }
+
+        update.message = {
+          message_id:
+            cb.message?.message_id ||
+            0,
+          from: cb.from,
+          chat: cb.message.chat,
+          date:
+            Math.floor(
+              Date.now() / 1000,
+            ),
+          text: adminCommand,
+        };
+      } else {
+        await answerCallbackQuery(
+          env,
+          cb.id,
+        );
+
+        return new Response('OK');
+      }
     }
 
     // ═══ INLINE QUERY ═══
@@ -974,9 +1077,35 @@ export async function onRequestPost(context) {
 
     const chatId = message.chat.id;
     const userId = String(message.from.id);
-    const text = message.text.trim();
+    let text = message.text.trim();
     const firstName = message.from.first_name || 'User';
     const username = message.from.username || null;
+
+    const repliedBotText =
+      message.reply_to_message?.text ||
+      '';
+
+    if (ADMIN_IDS.includes(userId)) {
+      if (
+        repliedBotText.startsWith(
+          'ADMIN_BROADCAST_PROMPT',
+        )
+      ) {
+        text = `/broadcast ${text}`;
+      } else if (
+        repliedBotText.startsWith(
+          'ADMIN_GRANTBEE_PROMPT',
+        )
+      ) {
+        text = `/grantbee ${text}`;
+      } else if (
+        repliedBotText.startsWith(
+          'ADMIN_GRANTSLOT_PROMPT',
+        )
+      ) {
+        text = `/grantslot ${text}`;
+      }
+    }
 
     // Получаем язык пользователя из базы
     let lang = await getUserLang(supabase, userId);
@@ -1076,6 +1205,35 @@ if (startParam.startsWith('ref_')) {
       }
 
       await sendMessage(env, chatId, T[lang].welcome(escapeMd(firstName)), webAppButton);
+      return new Response('OK');
+    }
+
+    // /admin — панель администратора
+    if (
+      text === '/admin' ||
+      text.startsWith('/admin@')
+    ) {
+      if (!ADMIN_IDS.includes(userId)) {
+        return new Response('OK');
+      }
+
+      if (message.chat.type !== 'private') {
+        await sendMessage(
+          env,
+          chatId,
+          '⚠️ Панель администратора доступна только в личном чате с ботом.',
+        );
+
+        return new Response('OK');
+      }
+
+      await sendMessage(
+        env,
+        chatId,
+        '🛠 *Панель администратора*\n\nВыберите действие:',
+        adminMenuButtons(),
+      );
+
       return new Response('OK');
     }
 
@@ -1392,7 +1550,7 @@ if (startParam.startsWith('ref_')) {
       return new Response('OK');
     }
 
-    // /broadcast ТЕКСТ — рассылка всем пользователям
+    // /broadcast ТЕКСТ — постановка рассылки в очередь
     if (
       /^\/broadcast(?:@\w+)?(?:\s|$)/i.test(
         text,
@@ -1436,23 +1594,46 @@ if (startParam.startsWith('ref_')) {
       }
 
       const {
-        count,
-        error: countError,
-      } = await supabase
-        .from('user_settings')
-        .select(
-          'telegram_user_id',
-          {
-            count: 'exact',
-            head: true,
-          },
+        data: createdJobs,
+        error: createError,
+      } = await supabase.rpc(
+        'create_broadcast_job',
+        {
+          p_message_text:
+            broadcastText,
+          p_created_by:
+            userId,
+          p_admin_chat_id:
+            String(chatId),
+        },
+      );
+
+      if (createError) {
+        console.error(
+          'Broadcast queue creation failed:',
+          createError,
         );
 
-      if (countError) {
         await sendMessage(
           env,
           chatId,
-          `❌ Не удалось получить список пользователей: ${escapeMd(countError.message)}`,
+          `❌ *Не удалось создать рассылку*\n\n` +
+            `${escapeMd(createError.message || 'Unknown database error')}`,
+        );
+
+        return new Response('OK');
+      }
+
+      const createdJob =
+        Array.isArray(createdJobs)
+          ? createdJobs[0]
+          : createdJobs;
+
+      if (!createdJob?.job_id) {
+        await sendMessage(
+          env,
+          chatId,
+          '❌ База данных не вернула ID рассылки.',
         );
 
         return new Response('OK');
@@ -1461,27 +1642,11 @@ if (startParam.startsWith('ref_')) {
       await sendMessage(
         env,
         chatId,
-        `📣 Рассылка запущена.\nПолучателей: *${count || 0}*`,
-      );
-
-      context.waitUntil(
-        broadcastToAllUsers(
-          env,
-          supabase,
-          broadcastText,
-          chatId,
-        ).catch(async error => {
-          console.error(
-            'Broadcast failed:',
-            error,
-          );
-
-          await sendMessage(
-            env,
-            chatId,
-            `❌ *Ошибка рассылки*\n\n${escapeMd(error?.message || String(error))}`,
-          );
-        }),
+        `✅ *Рассылка поставлена в очередь*\n\n` +
+          `🆔 Задание: \`${createdJob.job_id}\`\n` +
+          `👥 Получателей: *${createdJob.recipient_count || 0}*\n\n` +
+          `Обработка начнётся автоматически в течение минуты.`,
+        adminMenuButtons(),
       );
 
       return new Response('OK');

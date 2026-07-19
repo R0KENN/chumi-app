@@ -4755,6 +4755,255 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       return json({ success: true, deleted, errors }, 200, request);
     }
 
+    // ── POST /api/process-broadcast-queue (cron) ──
+    if (
+      request.method === 'POST' &&
+      path === '/api/process-broadcast-queue'
+    ) {
+      if (
+        !isCronAuthorized(
+          request,
+          env,
+        )
+      ) {
+        return json(
+          { error: 'Forbidden' },
+          403,
+          request,
+        );
+      }
+
+      const {
+        data: claimedRecipients,
+        error: claimError,
+      } = await supabase.rpc(
+        'claim_broadcast_recipients',
+        {
+          p_limit: 20,
+        },
+      );
+
+      if (claimError) {
+        console.error(
+          'Broadcast queue claim failed:',
+          claimError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to claim broadcast recipients',
+            details:
+              claimError.message,
+          },
+          500,
+          request,
+        );
+      }
+
+      const recipients =
+        claimedRecipients || [];
+
+      let jobId = null;
+      let sent = 0;
+      let failed = 0;
+      let blocked = 0;
+      let retrying = 0;
+
+      if (recipients.length > 0) {
+        jobId =
+          Number(
+            recipients[0].job_id,
+          );
+
+        const results = [];
+
+        for (const recipient of recipients) {
+          const delivery =
+            await sendTelegramMessage(
+              env,
+              recipient.telegram_user_id,
+              recipient.message_text,
+              {
+                parse_mode: undefined,
+              },
+            );
+
+          let recipientStatus;
+          let lastError = null;
+
+          if (delivery?.ok) {
+            recipientStatus = 'sent';
+            sent += 1;
+          } else if (delivery?.blocked) {
+            recipientStatus = 'blocked';
+            blocked += 1;
+
+            lastError =
+              delivery.description ||
+              `Telegram HTTP ${delivery.status || 403}`;
+          } else if (
+            Number(recipient.attempts) >= 3
+          ) {
+            recipientStatus = 'failed';
+            failed += 1;
+
+            lastError =
+              delivery?.description ||
+              delivery?.error ||
+              `Telegram HTTP ${delivery?.status || 0}`;
+          } else {
+            recipientStatus = 'pending';
+            retrying += 1;
+
+            lastError =
+              delivery?.description ||
+              delivery?.error ||
+              `Telegram HTTP ${delivery?.status || 0}`;
+          }
+
+          results.push({
+            id:
+              Number(
+                recipient.recipient_id,
+              ),
+            status:
+              recipientStatus,
+            last_error:
+              lastError
+                ? String(lastError).slice(
+                    0,
+                    1000,
+                  )
+                : null,
+          });
+        }
+
+        const {
+          error: completeError,
+        } = await supabase.rpc(
+          'complete_broadcast_batch',
+          {
+            p_job_id: jobId,
+            p_results: results,
+          },
+        );
+
+        if (completeError) {
+          console.error(
+            'Broadcast batch completion failed:',
+            completeError,
+          );
+
+          return json(
+            {
+              error:
+                'Messages were processed, but batch completion failed',
+              details:
+                completeError.message,
+              jobId,
+              claimed:
+                recipients.length,
+              sent,
+              failed,
+              blocked,
+              retrying,
+            },
+            500,
+            request,
+          );
+        }
+      }
+
+      const {
+        data: completedJobs,
+        error: completedJobsError,
+      } = await supabase
+        .from('broadcast_jobs')
+        .select(
+          'id, admin_chat_id, total_count, sent_count, failed_count, blocked_count, completed_at'
+        )
+        .eq(
+          'status',
+          'completed',
+        )
+        .is(
+          'notified_at',
+          null,
+        )
+        .order(
+          'completed_at',
+          {
+            ascending: true,
+          },
+        )
+        .limit(5);
+
+      if (completedJobsError) {
+        console.error(
+          'Completed broadcasts query failed:',
+          completedJobsError,
+        );
+      } else {
+        for (const completedJob of (
+          completedJobs || []
+        )) {
+          const notification =
+            await sendTelegramMessage(
+              env,
+              completedJob.admin_chat_id,
+              `✅ *Рассылка завершена*\n\n` +
+                `🆔 Задание: \`${completedJob.id}\`\n` +
+                `👥 Всего получателей: *${completedJob.total_count || 0}*\n` +
+                `📨 Отправлено: *${completedJob.sent_count || 0}*\n` +
+                `🚫 Заблокировали бота: *${completedJob.blocked_count || 0}*\n` +
+                `❌ Другие ошибки: *${completedJob.failed_count || 0}*`,
+            );
+
+          if (notification?.ok) {
+            const {
+              error: notifyUpdateError,
+            } = await supabase
+              .from('broadcast_jobs')
+              .update({
+                notified_at:
+                  new Date().toISOString(),
+              })
+              .eq(
+                'id',
+                completedJob.id,
+              )
+              .is(
+                'notified_at',
+                null,
+              );
+
+            if (notifyUpdateError) {
+              console.error(
+                'Broadcast notification status update failed:',
+                notifyUpdateError,
+              );
+            }
+          }
+        }
+      }
+
+      return json(
+        {
+          success: true,
+          jobId,
+          claimed:
+            recipients.length,
+          sent,
+          failed,
+          blocked,
+          retrying,
+        },
+        200,
+        request,
+      );
+    }
+
         // ── POST /api/admin-daily-summary (cron) ──
     // Ежедневная сводка для админа
     if (request.method === 'POST' && path === '/api/admin-daily-summary') {

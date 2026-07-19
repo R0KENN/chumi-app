@@ -94,9 +94,54 @@ async function runScheduledTasks(
 
   const tasks = [];
 
+  const scheduledTimestamp =
+    Number(
+      controller?.scheduledTime,
+    );
+
+  const scheduledDate =
+    Number.isFinite(
+      scheduledTimestamp,
+    )
+      ? new Date(
+          scheduledTimestamp,
+        )
+      : new Date();
+
+  const utcMinute =
+    scheduledDate.getUTCMinutes();
+
+  const utcHour =
+    scheduledDate.getUTCHours();
+
+  const utcWeekday =
+    scheduledDate.getUTCDay();
+
+  const isUnifiedSchedule =
+    cron === '* * * * *';
+
+  const isManualRun =
+    !cron;
+
   if (
+    isUnifiedSchedule ||
+    isManualRun
+  ) {
+    tasks.push(
+      hit(
+        'Broadcast queue',
+        '/api/process-broadcast-queue',
+      ),
+    );
+  }
+
+  if (
+    (
+      isUnifiedSchedule &&
+      utcMinute % 30 === 0
+    ) ||
     cron === '*/30 * * * *' ||
-    !cron
+    isManualRun
   ) {
     tasks.push(
       hit(
@@ -110,7 +155,14 @@ async function runScheduledTasks(
     );
   }
 
-  if (cron === '0 18 * * *') {
+  if (
+    (
+      isUnifiedSchedule &&
+      utcHour === 18 &&
+      utcMinute === 0
+    ) ||
+    cron === '0 18 * * *'
+  ) {
     tasks.push(
       hit(
         'Reminders',
@@ -119,7 +171,14 @@ async function runScheduledTasks(
     );
   }
 
-  if (cron === '0 9 * * *') {
+  if (
+    (
+      isUnifiedSchedule &&
+      utcHour === 9 &&
+      utcMinute === 0
+    ) ||
+    cron === '0 9 * * *'
+  ) {
     tasks.push(
       hit(
         'Daily summary',
@@ -127,32 +186,7 @@ async function runScheduledTasks(
       ),
     );
 
-    /*
-     * Используем существующий ежедневный Cron Trigger,
-     * чтобы не расходовать дополнительный лимит Cloudflare.
-     *
-     * controller.scheduledTime — плановое время запуска
-     * Cloudflare в миллисекундах. getUTCDay() === 1
-     * соответствует понедельнику.
-     */
-    const scheduledTimestamp =
-      Number(
-        controller?.scheduledTime,
-      );
-
-    const scheduledDate =
-      Number.isFinite(
-        scheduledTimestamp,
-      )
-        ? new Date(
-            scheduledTimestamp,
-          )
-        : new Date();
-
-    const isMonday =
-      scheduledDate.getUTCDay() === 1;
-
-    if (isMonday) {
+    if (utcWeekday === 1) {
       tasks.push(
         hit(
           'Weekly game report',
@@ -162,7 +196,14 @@ async function runScheduledTasks(
     }
   }
 
-  if (cron === '0 4 * * *') {
+  if (
+    (
+      isUnifiedSchedule &&
+      utcHour === 4 &&
+      utcMinute === 0
+    ) ||
+    cron === '0 4 * * *'
+  ) {
     tasks.push(
       hit(
         'Postcards cleanup',
