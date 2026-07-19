@@ -60,4 +60,4 @@ jobs:
           node-version: 22
 
       - name: Check worker syntax
-        run: node --check cron-worker/src/index.js
+        run: node --check cron-worker/index.js
