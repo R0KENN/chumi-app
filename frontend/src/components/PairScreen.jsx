@@ -344,6 +344,8 @@ const [diaryLoading, setDiaryLoading] = useState(false);
 const [diaryEmoji, setDiaryEmoji] = useState('😊');
 const [diaryText, setDiaryText] = useState('');
 const [diarySaving, setDiarySaving] = useState(false);
+const [diaryCanCreate, setDiaryCanCreate] = useState(false);
+const [diaryToday, setDiaryToday] = useState(null);
 
 const loadDiary = useCallback(async () => {
   setDiaryLoading(true);
@@ -357,7 +359,25 @@ const loadDiary = useCallback(async () => {
     );
 
     const data = await res.json();
-    setDiaryEntries(data.entries || []);
+
+    if (!res.ok || data.error) {
+      throw new Error(
+        data.error ||
+        `Failed to load diary: ${res.status}`,
+      );
+    }
+
+    setDiaryEntries(
+      data.entries || [],
+    );
+
+    setDiaryCanCreate(
+      data.canCreate === true,
+    );
+
+    setDiaryToday(
+      data.today || null,
+    );
   } catch (error) {
     console.error('Failed to load diary:', error);
   } finally {
@@ -370,27 +390,99 @@ useEffect(() => {
 }, [showDiary, loadDiary]);
 
 const handleSaveDiary = async () => {
-  if (!diaryText.trim() || diarySaving) return;
+  if (
+    !diaryCanCreate ||
+    !diaryText.trim() ||
+    diarySaving
+  ) {
+    return;
+  }
+
   setDiarySaving(true);
+
   try {
-    const res = await fetch(`${API}/diary`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ userId, pairCode: pairId, emoji: diaryEmoji, text: diaryText.trim() }),
-    });
-    const data = await res.json();
-    if (!data.error) {
-      haptic('success');
+    const res = await fetch(
+      `${API}/diary`,
+      {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          userId,
+          pairCode: pairId,
+          emoji: diaryEmoji,
+          text: diaryText.trim(),
+        }),
+      },
+    );
+
+    const data = await res
+      .json()
+      .catch(() => ({}));
+
+    if (
+      res.status === 409 ||
+      data.code ===
+        'DIARY_ENTRY_ALREADY_EXISTS'
+    ) {
+      setDiaryCanCreate(false);
       setDiaryText('');
+      haptic('warning');
+
+      const message =
+        lang === 'ru'
+          ? 'Сегодня вы уже оставили запись. Изменить или перезаписать её нельзя.'
+          : 'You have already added an entry today. It cannot be changed or overwritten.';
+
+      if (tg?.showAlert) {
+        tg.showAlert(message);
+      } else {
+        alert(message);
+      }
+
       await loadDiary();
-} else {
-  haptic('error');
-  const errMsg = data.error || (lang === 'ru' ? 'Не удалось сохранить' : 'Failed to save');
-  if (tg?.showAlert) tg.showAlert(errMsg);
-  else alert(errMsg);
-}
-  } catch (e) { haptic('error'); }
-  finally { setDiarySaving(false); }
+      return;
+    }
+
+    if (!res.ok || data.error) {
+      throw new Error(
+        data.error ||
+        (
+          lang === 'ru'
+            ? 'Не удалось сохранить запись'
+            : 'Failed to save the entry'
+        ),
+      );
+    }
+
+    haptic('success');
+    setDiaryText('');
+    setDiaryCanCreate(false);
+
+    await loadDiary();
+  } catch (error) {
+    console.error(
+      'Failed to save diary entry:',
+      error,
+    );
+
+    haptic('error');
+
+    const message =
+      error?.message ||
+      (
+        lang === 'ru'
+          ? 'Не удалось сохранить запись'
+          : 'Failed to save the entry'
+      );
+
+    if (tg?.showAlert) {
+      tg.showAlert(message);
+    } else {
+      alert(message);
+    }
+  } finally {
+    setDiarySaving(false);
+  }
 };
 
 // Когда открывается календарь — сбрасываем месяц на текущий
@@ -986,6 +1078,9 @@ useEffect(() => {
       .catch(() => {})
       .finally(() => setShareCardGenerating(false));
   }
+// generatePromoCard намеренно не добавляется:
+// функция создаётся внутри компонента и меняется при каждом рендере.
+// eslint-disable-next-line react-hooks/exhaustive-deps
 }, [showShareCard, shareCardPet, shareCardUrl, shareCardGenerating]);
 
 useEffect(() => {
@@ -996,6 +1091,9 @@ useEffect(() => {
       .catch(() => {})
       .finally(() => setPostcardGenerating(false));
   }
+// generatePostcard намеренно не добавляется:
+// функция создаётся внутри компонента и меняется при каждом рендере.
+// eslint-disable-next-line react-hooks/exhaustive-deps
 }, [showPostcard, postcardUrl, postcardGenerating, postcardBg]);
 
   const handleSendShareCard = async () => {
@@ -2873,54 +2971,82 @@ calendarData.days.forEach(d => {
       <h3>{lang === 'ru' ? 'Наш дневник' : 'Our diary'}</h3>
 
       {/* Форма ввода */}
-      <div style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f5f5f7', borderRadius: 14, padding: 12, marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
-          {lang === 'ru' ? 'Запись дня (1 в день)' : "Today's entry (1 per day)"}
-        </div>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          gap: 6,
-          marginBottom: 8,
-        }}>
-          {['😊','🥰','😂','😍','🤗','😎','😴',
-            '🥺','😢','😋','😇','🤔','😤','🥳',
-            '🌙','🔥','💖','✨','🌈','☀️','💕'].map(e => (
-            <button key={e} onClick={() => setDiaryEmoji(e)} style={{
-              fontSize: 20, padding: 4, borderRadius: 8, border: 'none',
-              background: diaryEmoji === e ? accentColor + '30' : 'transparent',
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              aspectRatio: '1 / 1',
-            }}>{e}</button>
-          ))}
-        </div>
-        <textarea
-          value={diaryText}
-          onChange={e => setDiaryText(e.target.value.slice(0, 100))}
-          placeholder={lang === 'ru' ? 'Что-то приятное или просто как день...' : 'Something nice or just how the day was...'}
-          rows={2}
-          style={{
-            width: '100%', borderRadius: 10,
-            border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #ddd',
-            background: isDark ? 'rgba(255,255,255,0.06)' : '#fff',
-            color: isDark ? '#f2f2f5' : '#1a1a1a',
-            padding: 8, fontSize: 14, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
-          }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-          <span style={{ fontSize: 11, color: '#aaa' }}>{diaryText.length}/100</span>
-          <button onClick={handleSaveDiary} disabled={!diaryText.trim() || diarySaving} style={{
-            padding: '8px 18px', borderRadius: 12, border: 'none',
-            background: diaryText.trim() ? accentColor : (isDark ? 'rgba(255,255,255,0.12)' : '#ececef'),
-            color: diaryText.trim() ? '#fff' : (isDark ? 'rgba(255,255,255,0.4)' : '#b8b8be'),
-            fontSize: 13, fontWeight: 600,
-            cursor: diaryText.trim() ? 'pointer' : 'default',
+      {diaryLoading ? null : diaryCanCreate ? (
+        <div style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#f5f5f7', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
+            {lang === 'ru'
+              ? 'Одна неизменяемая запись в день'
+              : 'One immutable entry per day'}
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: 6,
+            marginBottom: 8,
           }}>
-            {diarySaving ? '...' : (lang === 'ru' ? 'Сохранить' : 'Save')}
-          </button>
+            {['😊','🥰','😂','😍','🤗','😎','😴',
+              '🥺','😢','😋','😇','🤔','😤','🥳',
+              '🌙','🔥','💖','✨','🌈','☀️','💕'].map(e => (
+              <button key={e} onClick={() => setDiaryEmoji(e)} style={{
+                fontSize: 20, padding: 4, borderRadius: 8, border: 'none',
+                background: diaryEmoji === e ? accentColor + '30' : 'transparent',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                aspectRatio: '1 / 1',
+              }}>{e}</button>
+            ))}
+          </div>
+          <textarea
+            value={diaryText}
+            onChange={e => setDiaryText(e.target.value.slice(0, 100))}
+            placeholder={lang === 'ru' ? 'Что-то приятное или просто как день...' : 'Something nice or just how the day was...'}
+            rows={2}
+            style={{
+              width: '100%', borderRadius: 10,
+              border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #ddd',
+              background: isDark ? 'rgba(255,255,255,0.06)' : '#fff',
+              color: isDark ? '#f2f2f5' : '#1a1a1a',
+              padding: 8, fontSize: 14, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+            }}
+          />
+          <div style={{ fontSize: 11, color: '#999', lineHeight: 1.4, marginTop: 6 }}>
+            {lang === 'ru'
+              ? 'После сохранения запись нельзя будет изменить или удалить.'
+              : 'After saving, the entry cannot be changed or deleted.'}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: '#aaa' }}>{diaryText.length}/100</span>
+            <button
+              onClick={handleSaveDiary}
+              disabled={!diaryText.trim() || diarySaving || !diaryCanCreate}
+              style={{
+                padding: '8px 18px', borderRadius: 12, border: 'none',
+                background: diaryText.trim() && diaryCanCreate ? accentColor : (isDark ? 'rgba(255,255,255,0.12)' : '#ececef'),
+                color: diaryText.trim() && diaryCanCreate ? '#fff' : (isDark ? 'rgba(255,255,255,0.4)' : '#b8b8be'),
+                fontSize: 13, fontWeight: 600,
+                cursor: diaryText.trim() && diaryCanCreate ? 'pointer' : 'default',
+              }}
+            >
+              {diarySaving ? '...' : (lang === 'ru' ? 'Сохранить навсегда' : 'Save permanently')}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{
+          background: isDark ? 'rgba(76,175,80,0.14)' : '#edf8ef',
+          border: isDark ? '1px solid rgba(76,175,80,0.25)' : '1px solid #cce8d1',
+          borderRadius: 14,
+          padding: 12,
+          marginBottom: 12,
+          fontSize: 13,
+          lineHeight: 1.45,
+          color: isDark ? '#d9f3de' : '#2f6f3a',
+        }}>
+          {lang === 'ru'
+            ? `✅ Запись за ${diaryToday || 'сегодня'} уже сохранена. Изменить или перезаписать её нельзя.`
+            : `✅ The entry for ${diaryToday || 'today'} has already been saved. It cannot be changed or overwritten.`}
+        </div>
+      )}
 
       {/* Лента записей */}
       <div style={{ flex: 1, overflowY: 'auto', marginBottom: 8 }}>

@@ -128,6 +128,302 @@ async function sendMessage(env, chatId, text, extra = {}) {
   }
 }
 
+async function copyTelegramMessage(
+  env,
+  chatId,
+  sourceChatId,
+  sourceMessageId,
+  buttons = [],
+) {
+  try {
+    const body = {
+      chat_id: chatId,
+      from_chat_id: sourceChatId,
+      message_id: Number(sourceMessageId),
+    };
+
+    if (
+      Array.isArray(buttons) &&
+      buttons.length > 0
+    ) {
+      body.reply_markup = {
+        inline_keyboard: buttons,
+      };
+    }
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${env.BOT_TOKEN}/copyMessage`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    const data = await response
+      .json()
+      .catch(() => ({}));
+
+    if (
+      !response.ok ||
+      data.ok === false
+    ) {
+      return {
+        ok: false,
+        status: response.status,
+        description:
+          data.description ||
+          'Telegram copyMessage failed',
+      };
+    }
+
+    return {
+      ok: true,
+      messageId:
+        data.result?.message_id ||
+        null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        String(
+          error?.message ||
+          error,
+        ),
+    };
+  }
+}
+
+function parseBroadcastButtons(input) {
+  const normalized =
+    String(input || '').trim();
+
+  if (
+    !normalized ||
+    /^\/skip$/i.test(normalized) ||
+    /^без кнопок$/i.test(normalized)
+  ) {
+    return {
+      buttons: [],
+      error: null,
+    };
+  }
+
+  const rows = normalized
+    .split('\n')
+    .map(row => row.trim())
+    .filter(Boolean);
+
+  if (rows.length > 8) {
+    return {
+      buttons: [],
+      error:
+        'Максимум 8 рядов кнопок.',
+    };
+  }
+
+  const buttons = [];
+  let totalButtons = 0;
+
+  for (const row of rows) {
+    const rawButtons = row
+      .split('||')
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    if (
+      rawButtons.length === 0 ||
+      rawButtons.length > 8
+    ) {
+      return {
+        buttons: [],
+        error:
+          'В одном ряду должно быть от 1 до 8 кнопок.',
+      };
+    }
+
+    const parsedRow = [];
+
+    for (const rawButton of rawButtons) {
+      const separatorIndex =
+        rawButton.indexOf('|');
+
+      if (separatorIndex <= 0) {
+        return {
+          buttons: [],
+          error:
+            `Некорректная кнопка: ${rawButton}`,
+        };
+      }
+
+      const buttonText =
+        rawButton
+          .slice(0, separatorIndex)
+          .trim()
+          .slice(0, 64);
+
+      const target =
+        rawButton
+          .slice(separatorIndex + 1)
+          .trim();
+
+      if (!buttonText || !target) {
+        return {
+          buttons: [],
+          error:
+            `Некорректная кнопка: ${rawButton}`,
+        };
+      }
+
+      if (
+        target.toLowerCase() ===
+        'webapp'
+      ) {
+        parsedRow.push({
+          text: buttonText,
+          web_app: {
+            url: WEBAPP_URL,
+          },
+        });
+      } else {
+        let parsedUrl;
+
+        try {
+          parsedUrl =
+            new URL(target);
+        } catch {
+          return {
+            buttons: [],
+            error:
+              `Некорректная ссылка: ${target}`,
+          };
+        }
+
+        if (
+          ![
+            'http:',
+            'https:',
+            'tg:',
+          ].includes(
+            parsedUrl.protocol,
+          )
+        ) {
+          return {
+            buttons: [],
+            error:
+              `Недопустимый протокол ссылки: ${target}`,
+          };
+        }
+
+        parsedRow.push({
+          text: buttonText,
+          url: target,
+        });
+      }
+
+      totalButtons += 1;
+
+      if (totalButtons > 20) {
+        return {
+          buttons: [],
+          error:
+            'Максимум 20 кнопок в одном посте.',
+        };
+      }
+    }
+
+    buttons.push(parsedRow);
+  }
+
+  return {
+    buttons,
+    error: null,
+  };
+}
+
+function parseBroadcastSchedule(input) {
+  const normalized =
+    String(input || '')
+      .trim()
+      .toLowerCase();
+
+  if (
+    normalized === 'сейчас' ||
+    normalized === 'now' ||
+    normalized === '/now'
+  ) {
+    return {
+      scheduledAt:
+        new Date().toISOString(),
+      error: null,
+    };
+  }
+
+  const match =
+    normalized.match(
+      /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/,
+    );
+
+  if (!match) {
+    return {
+      scheduledAt: null,
+      error:
+        'Используйте «сейчас» или дату в формате ГГГГ-ММ-ДД ЧЧ:ММ.',
+    };
+  }
+
+  const [
+    ,
+    year,
+    month,
+    day,
+    hour,
+    minute,
+  ] = match;
+
+  /*
+   * Ввод администратора интерпретируется
+   * по московскому времени UTC+3.
+   */
+  const date =
+    new Date(
+      `${year}-${month}-${day}T${hour}:${minute}:00+03:00`,
+    );
+
+  if (
+    !Number.isFinite(
+      date.getTime(),
+    )
+  ) {
+    return {
+      scheduledAt: null,
+      error:
+        'Некорректная дата.',
+    };
+  }
+
+  if (
+    date.getTime() <
+    Date.now() + 60 * 1000
+  ) {
+    return {
+      scheduledAt: null,
+      error:
+        'Отложенная дата должна быть минимум на 1 минуту позже текущего времени.',
+    };
+  }
+
+  return {
+    scheduledAt:
+      date.toISOString(),
+    error: null,
+  };
+}
+
 // Отправляет уведомление всем админам
 async function notifyAdmins(env, text) {
   for (const adminId of ADMIN_IDS) {
@@ -311,6 +607,8 @@ async function syncTelegramProfile(
   }
 }
 
+// Функция оставлена для возможного ручного обновления профилей.
+// eslint-disable-next-line no-unused-vars
 async function refreshTelegramProfiles(
   env,
   supabase,
@@ -800,6 +1098,157 @@ export async function onRequestPost(context) {
           cb.id,
         );
 
+        if (
+          cbData.startsWith(
+            'admin_broadcast_cancel_',
+          )
+        ) {
+          const draftId =
+            cbData.replace(
+              'admin_broadcast_cancel_',
+              '',
+            );
+
+          await supabase
+            .from('broadcast_drafts')
+            .delete()
+            .eq('id', draftId)
+            .eq('created_by', cbUserId);
+
+          await sendMessage(
+            env,
+            cbChatId,
+            '🗑️ Создание рассылки отменено.',
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData.startsWith(
+            'admin_broadcast_confirm_',
+          )
+        ) {
+          const draftId =
+            cbData.replace(
+              'admin_broadcast_confirm_',
+              '',
+            );
+
+          const {
+            data: draft,
+            error: draftError,
+          } = await supabase
+            .from('broadcast_drafts')
+            .select(
+              'id, created_by, admin_chat_id, source_chat_id, source_message_id, buttons, scheduled_at'
+            )
+            .eq('id', draftId)
+            .eq('created_by', cbUserId)
+            .maybeSingle();
+
+          if (draftError || !draft) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Черновик рассылки не найден или уже был использован.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          const {
+            data: createdJobs,
+            error: createError,
+          } = await supabase.rpc(
+            'create_custom_broadcast_job',
+            {
+              p_source_chat_id:
+                draft.source_chat_id,
+              p_source_message_id:
+                Number(
+                  draft.source_message_id,
+                ),
+              p_buttons:
+                draft.buttons || [],
+              p_scheduled_at:
+                draft.scheduled_at ||
+                new Date().toISOString(),
+              p_created_by:
+                cbUserId,
+              p_admin_chat_id:
+                String(cbChatId),
+            },
+          );
+
+          if (createError) {
+            console.error(
+              'Custom broadcast creation failed:',
+              createError,
+            );
+
+            await sendMessage(
+              env,
+              cbChatId,
+              `❌ *Не удалось создать рассылку*\n\n` +
+                `${escapeMd(createError.message || 'Unknown database error')}`,
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          const createdJob =
+            Array.isArray(createdJobs)
+              ? createdJobs[0]
+              : createdJobs;
+
+          await supabase
+            .from('broadcast_drafts')
+            .delete()
+            .eq('id', draftId);
+
+          const scheduledDate =
+            new Date(
+              draft.scheduled_at ||
+              Date.now(),
+            );
+
+          const isScheduled =
+            scheduledDate.getTime() >
+            Date.now() + 30 * 1000;
+
+          const scheduleText =
+            isScheduled
+              ? scheduledDate.toLocaleString(
+                  'ru-RU',
+                  {
+                    timeZone:
+                      'Europe/Moscow',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  },
+                ) + ' МСК'
+              : 'как можно скорее';
+
+          await sendMessage(
+            env,
+            cbChatId,
+            `✅ *Рассылка создана*\n\n` +
+              `🆔 Задание: \`${createdJob?.job_id || '—'}\`\n` +
+              `👥 Получателей: *${createdJob?.recipient_count || 0}*\n` +
+              `🕒 Отправка: *${escapeMd(scheduleText)}*`,
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
         if (cbData === 'admin_menu') {
           await sendMessage(
             env,
@@ -815,9 +1264,13 @@ export async function onRequestPost(context) {
           await sendMessage(
             env,
             cbChatId,
-            'ADMIN_BROADCAST_PROMPT\n\n📣 Отправьте текст сообщения для рассылки всем пользователям.',
+            `ADMIN_BROADCAST_POST_PROMPT\n\n` +
+              `📣 *Создание рассылки*\n\n` +
+              `Ответьте на это сообщение любым постом, который нужно разослать.\n\n` +
+              `Поддерживаются текст, форматирование, фото, видео, GIF, документ, аудио, голосовое сообщение и стикер.\n\n` +
+              `После этого бот предложит добавить кнопки и выбрать время отправки.`,
             adminForceReply(
-              'Введите текст рассылки',
+              'Отправьте готовый пост',
             ),
           );
 
@@ -1228,38 +1681,392 @@ export async function onRequestPost(context) {
 
     // ═══ MESSAGES ═══
     const message = update.message;
-    if (!message || !message.text) return new Response('OK');
+
+    if (!message) {
+      return new Response('OK');
+    }
 
     const chatId = message.chat.id;
     const userId = String(message.from.id);
-    let text = message.text.trim();
-    const firstName = message.from.first_name || 'User';
-    const username = message.from.username || null;
+
+    const messageText =
+      typeof message.text === 'string'
+        ? message.text.trim()
+        : '';
+
+    let text = messageText;
+
+    const firstName =
+      message.from.first_name ||
+      'User';
+
+    const username =
+      message.from.username ||
+      null;
 
     const repliedBotText =
       message.reply_to_message?.text ||
+      message.reply_to_message?.caption ||
       '';
 
-    if (ADMIN_IDS.includes(userId)) {
+    if (
+      ADMIN_IDS.includes(userId) &&
+      message.chat.type === 'private'
+    ) {
+      /*
+       * Шаг 1: администратор ответил готовым постом.
+       * Сохраняем только ссылку на исходное сообщение.
+       * Сам пост затем отправляется через copyMessage,
+       * поэтому сохраняются медиа и форматирование.
+       */
       if (
         repliedBotText.startsWith(
-          'ADMIN_BROADCAST_PROMPT',
+          'ADMIN_BROADCAST_POST_PROMPT',
         )
       ) {
-        text = `/broadcast ${text}`;
-      } else if (
+        const {
+          data: draft,
+          error: draftError,
+        } = await supabase
+          .from('broadcast_drafts')
+          .insert({
+            created_by: userId,
+            admin_chat_id:
+              String(chatId),
+            source_chat_id:
+              String(chatId),
+            source_message_id:
+              Number(message.message_id),
+            buttons: [],
+          })
+          .select('id')
+          .single();
+
+        if (draftError || !draft?.id) {
+          console.error(
+            'Broadcast draft creation failed:',
+            draftError,
+          );
+
+          await sendMessage(
+            env,
+            chatId,
+            `❌ *Не удалось сохранить пост*\n\n` +
+              `${escapeMd(draftError?.message || 'Unknown database error')}`,
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
+        await sendMessage(
+          env,
+          chatId,
+          `ADMIN_BROADCAST_BUTTONS_PROMPT:${draft.id}\n\n` +
+            `🔘 *Добавьте кнопки к посту*\n\n` +
+            `Одна кнопка:\n` +
+            `Название | https://example.com\n\n` +
+            `Две кнопки в одном ряду:\n` +
+            `Сайт | https://example.com || Канал | https://t.me/example\n\n` +
+            `Кнопка открытия Mini App:\n` +
+            `Открыть Chumi | webapp\n\n` +
+            `Каждый новый ряд отправляйте с новой строки.\n\n` +
+            `Если кнопки не нужны — отправьте:\n` +
+            `/skip`,
+          adminForceReply(
+            'Кнопки или /skip',
+          ),
+        );
+
+        return new Response('OK');
+      }
+
+      /*
+       * Шаг 2: администратор прислал описание кнопок.
+       */
+      if (
+        repliedBotText.startsWith(
+          'ADMIN_BROADCAST_BUTTONS_PROMPT:'
+        )
+      ) {
+        const draftId =
+          repliedBotText
+            .split('\n')[0]
+            .replace(
+              'ADMIN_BROADCAST_BUTTONS_PROMPT:',
+              '',
+            )
+            .trim();
+
+        const {
+          buttons,
+          error: buttonsError,
+        } = parseBroadcastButtons(
+          messageText,
+        );
+
+        if (buttonsError) {
+          await sendMessage(
+            env,
+            chatId,
+            `❌ *Ошибка в кнопках*\n\n` +
+              `${escapeMd(buttonsError)}\n\n` +
+              `Повторите ввод в формате:\n` +
+              `Название | https://example.com\n\n` +
+              `Или отправьте /skip`,
+            adminForceReply(
+              'Исправьте кнопки',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const {
+          data: updatedDraft,
+          error: updateError,
+        } = await supabase
+          .from('broadcast_drafts')
+          .update({
+            buttons,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq('id', draftId)
+          .eq('created_by', userId)
+          .select('id')
+          .maybeSingle();
+
+        if (
+          updateError ||
+          !updatedDraft
+        ) {
+          await sendMessage(
+            env,
+            chatId,
+            '❌ Черновик рассылки не найден. Начните создание поста заново.',
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
+        await sendMessage(
+          env,
+          chatId,
+          `ADMIN_BROADCAST_SCHEDULE_PROMPT:${draftId}\n\n` +
+            `🕒 *Когда отправить пост?*\n\n` +
+            `Для немедленной отправки:\n` +
+            `сейчас\n\n` +
+            `Для отложенной отправки укажите московское время:\n` +
+            `2026-07-20 18:30\n\n` +
+            `Формат: ГГГГ-ММ-ДД ЧЧ:ММ`,
+          adminForceReply(
+            'сейчас или ГГГГ-ММ-ДД ЧЧ:ММ',
+          ),
+        );
+
+        return new Response('OK');
+      }
+
+      /*
+       * Шаг 3: администратор выбрал время.
+       * Показываем итоговое превью и кнопки подтверждения.
+       */
+      if (
+        repliedBotText.startsWith(
+          'ADMIN_BROADCAST_SCHEDULE_PROMPT:'
+        )
+      ) {
+        const draftId =
+          repliedBotText
+            .split('\n')[0]
+            .replace(
+              'ADMIN_BROADCAST_SCHEDULE_PROMPT:',
+              '',
+            )
+            .trim();
+
+        const {
+          scheduledAt,
+          error: scheduleError,
+        } = parseBroadcastSchedule(
+          messageText,
+        );
+
+        if (scheduleError) {
+          await sendMessage(
+            env,
+            chatId,
+            `❌ *Ошибка времени отправки*\n\n` +
+              `${escapeMd(scheduleError)}\n\n` +
+              `Отправьте «сейчас» или дату в формате:\n` +
+              `2026-07-20 18:30`,
+            adminForceReply(
+              'Исправьте время',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const {
+          data: draft,
+          error: draftError,
+        } = await supabase
+          .from('broadcast_drafts')
+          .update({
+            scheduled_at:
+              scheduledAt,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq('id', draftId)
+          .eq('created_by', userId)
+          .select(
+            'id, source_chat_id, source_message_id, buttons, scheduled_at'
+          )
+          .maybeSingle();
+
+        if (
+          draftError ||
+          !draft
+        ) {
+          await sendMessage(
+            env,
+            chatId,
+            '❌ Черновик рассылки не найден. Начните создание поста заново.',
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
+        await sendMessage(
+          env,
+          chatId,
+          '👁 *Предварительный просмотр поста:*',
+          {
+            reply_markup: {
+              inline_keyboard: [],
+            },
+          },
+        );
+
+        const previewResult =
+          await copyTelegramMessage(
+            env,
+            chatId,
+            draft.source_chat_id,
+            draft.source_message_id,
+            Array.isArray(
+              draft.buttons,
+            )
+              ? draft.buttons
+              : [],
+          );
+
+        if (!previewResult.ok) {
+          await sendMessage(
+            env,
+            chatId,
+            `❌ *Не удалось создать предварительный просмотр*\n\n` +
+              `${escapeMd(
+                previewResult.description ||
+                previewResult.error ||
+                'Telegram copyMessage failed',
+              )}`,
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
+        const scheduledDate =
+          new Date(
+            draft.scheduled_at,
+          );
+
+        const isScheduled =
+          scheduledDate.getTime() >
+          Date.now() + 30 * 1000;
+
+        const scheduleText =
+          isScheduled
+            ? scheduledDate.toLocaleString(
+                'ru-RU',
+                {
+                  timeZone:
+                    'Europe/Moscow',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                },
+              ) + ' МСК'
+            : 'сейчас';
+
+        await sendMessage(
+          env,
+          chatId,
+          `📣 *Подтвердите рассылку*\n\n` +
+            `🕒 Отправка: *${escapeMd(scheduleText)}*\n` +
+            `🔘 Кнопок: *${(draft.buttons || []).flat().length}*\n\n` +
+            `После подтверждения список получателей будет зафиксирован.`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text:
+                      '✅ Подтвердить',
+                    callback_data:
+                      `admin_broadcast_confirm_${draftId}`,
+                  },
+                ],
+                [
+                  {
+                    text:
+                      '❌ Отменить',
+                    callback_data:
+                      `admin_broadcast_cancel_${draftId}`,
+                  },
+                ],
+              ],
+            },
+          },
+        );
+
+        return new Response('OK');
+      }
+
+      /*
+       * Старые Force Reply-команды админской панели.
+       */
+      if (
         repliedBotText.startsWith(
           'ADMIN_GRANTBEE_PROMPT',
         )
       ) {
-        text = `/grantbee ${text}`;
+        text =
+          `/grantbee ${messageText}`;
       } else if (
         repliedBotText.startsWith(
           'ADMIN_GRANTSLOT_PROMPT',
         )
       ) {
-        text = `/grantslot ${text}`;
+        text =
+          `/grantslot ${messageText}`;
       }
+    }
+
+    /*
+     * Медиа без текста уже обработано конструктором выше.
+     * Для остальных обработчиков бота по-прежнему нужен текст.
+     */
+    if (!text) {
+      return new Response('OK');
     }
 
     // Получаем язык пользователя из базы

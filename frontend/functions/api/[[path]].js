@@ -294,6 +294,94 @@ async function sendTelegramMessage(env, chatId, text, extra = {}) {
   }
 }
 
+async function copyTelegramMessage(
+  env,
+  chatId,
+  sourceChatId,
+  sourceMessageId,
+  buttons = [],
+) {
+  try {
+    const body = {
+      chat_id: chatId,
+      from_chat_id: sourceChatId,
+      message_id: Number(sourceMessageId),
+    };
+
+    if (
+      Array.isArray(buttons) &&
+      buttons.length > 0
+    ) {
+      body.reply_markup = {
+        inline_keyboard: buttons,
+      };
+    }
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${env.BOT_TOKEN}/copyMessage`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    const data = await response
+      .json()
+      .catch(() => ({}));
+
+    if (
+      !response.ok ||
+      data.ok === false
+    ) {
+      const description =
+        data.description || '';
+
+      const blocked =
+        response.status === 403 ||
+        /blocked|deactivated|chat not found/i.test(
+          description,
+        );
+
+      console.warn(
+        `Telegram copyMessage failed (chat ${chatId}, status ${response.status})` +
+        `${blocked ? ' [blocked]' : ''}: ${description}`,
+      );
+
+      return {
+        ok: false,
+        blocked,
+        status: response.status,
+        description,
+      };
+    }
+
+    return {
+      ok: true,
+      messageId:
+        data.result?.message_id ||
+        null,
+    };
+  } catch (error) {
+    console.error(
+      'Telegram copyMessage error:',
+      error,
+    );
+
+    return {
+      ok: false,
+      error:
+        String(
+          error?.message ||
+          error,
+        ),
+    };
+  }
+}
+
 async function sendTelegramSticker(
   env,
   chatId,
@@ -3140,120 +3228,392 @@ if (request.method === 'GET' && path.match(/^\/api\/streak-calendar\/[^/]+$/)) {
 }
 
 // ── GET /api/diary/:pairCode ──
-// Возвращает все записи дневника пары, сгруппированные по датам
+// Возвращает записи и сообщает, можно ли пользователю создать запись сегодня.
 if (request.method === 'GET' && path.match(/^\/api\/diary\/[^/]+$/)) {
   const pairCode = path.split('/')[3];
   const authedId = getAuthedUserId(request, env);
-  if (!authedId) return json({ error: 'Unauthorized' }, 401, request);
-  if (!(await isPairMember(supabase, pairCode, authedId))) {
-    return json({ error: 'Not a member' }, 403, request);
+
+  if (!authedId) {
+    return json(
+      { error: 'Unauthorized' },
+      401,
+      request,
+    );
   }
-  const { data: entries } = await supabase
+
+  if (
+    !(await isPairMember(
+      supabase,
+      pairCode,
+      authedId,
+    ))
+  ) {
+    return json(
+      { error: 'Not a member' },
+      403,
+      request,
+    );
+  }
+
+  const {
+    data: pair,
+    error: pairError,
+  } = await supabase
+    .from('pairs')
+    .select('timezone')
+    .eq('code', pairCode)
+    .maybeSingle();
+
+  if (pairError) {
+    return json(
+      { error: 'Failed to load pair timezone' },
+      500,
+      request,
+    );
+  }
+
+  if (!pair) {
+    return json(
+      { error: 'Pair not found' },
+      404,
+      request,
+    );
+  }
+
+  const today =
+    getTodayDate(
+      pair.timezone || 'UTC',
+    );
+
+  const {
+    data: entries,
+    error: entriesError,
+  } = await supabase
     .from('pair_diary')
-    .select('id, user_id, emoji, text, entry_date, created_at')
+    .select(
+      'id, user_id, emoji, text, entry_date, created_at'
+    )
     .eq('pair_code', pairCode)
-    .order('entry_date', { ascending: false })
-    .order('created_at', { ascending: false })
+    .order('entry_date', {
+      ascending: false,
+    })
+    .order('created_at', {
+      ascending: false,
+    })
     .limit(200);
-  return json({ entries: entries || [] }, 200, request);
+
+  if (entriesError) {
+    return json(
+      { error: 'Failed to load diary entries' },
+      500,
+      request,
+    );
+  }
+
+  const hasTodayEntry =
+    (entries || []).some(
+      entry =>
+        String(entry.user_id) ===
+          String(authedId) &&
+        entry.entry_date === today,
+    );
+
+  return json(
+    {
+      entries: entries || [],
+      today,
+      canCreate: !hasTodayEntry,
+    },
+    200,
+    request,
+  );
 }
 
 // ── POST /api/diary ──
-// Добавляет запись (или обновляет, если за сегодня уже была) + уведомляет партнёра
+// Создаёт одну неизменяемую запись пользователя в сутки.
 if (request.method === 'POST' && path === '/api/diary') {
-  const body = await request.json();
-  const userId = extractUserId(request, env, body.userId);
-  if (!userId) return json({ error: 'Unauthorized' }, 401, request);
+  const body = await request
+    .json()
+    .catch(() => ({}));
 
-  const pairCode = body.pairCode;
-  const emoji = (body.emoji || '').toString().slice(0, 8);
-  const text = (body.text || '').toString().trim().slice(0, 100);
-  if (!pairCode || !emoji || !text) {
-    return json({ error: 'pairCode, emoji and text required' }, 400, request);
+  const userId = extractUserId(
+    request,
+    env,
+    body.userId,
+  );
+
+  if (!userId) {
+    return json(
+      { error: 'Unauthorized' },
+      401,
+      request,
+    );
   }
 
-  const { data: membership, error: memErr } = await supabase
-    .from('pair_users').select('user_id, display_name')
-    .eq('pair_code', pairCode).eq('user_id', userId).maybeSingle();
-  if (memErr) return json({ error: 'Membership query failed: ' + memErr.message }, 500, request);
-  if (!membership) return json({ error: 'Not a member' }, 403, request);
+  const pairCode =
+    typeof body.pairCode === 'string'
+      ? body.pairCode.trim().toUpperCase()
+      : '';
 
-  const { data: pairTz } = await supabase
-    .from('pairs').select('timezone, pet_name').eq('code', pairCode).maybeSingle();
-  const today = getTodayDate(pairTz?.timezone || 'UTC');
+  const emoji =
+    (body.emoji || '')
+      .toString()
+      .trim()
+      .slice(0, 8);
 
-  // Проверяем, была ли уже запись сегодня (чтобы не спамить уведомлением при правке)
-  const { data: existingToday } = await supabase
-    .from('pair_diary').select('id')
-    .eq('pair_code', pairCode).eq('user_id', userId).eq('entry_date', today)
-    .maybeSingle();
-  const isFirstEntryToday = !existingToday;
+  const text =
+    (body.text || '')
+      .toString()
+      .trim()
+      .slice(0, 100);
 
-  // upsert: одна запись в день на пользователя
-  const { error: upErr } = await supabase
-    .from('pair_diary')
-    .upsert(
-      { pair_code: pairCode, user_id: userId, emoji, text, entry_date: today },
-      { onConflict: 'pair_code,user_id,entry_date' }
+  if (
+    !pairCode ||
+    !emoji ||
+    !text
+  ) {
+    return json(
+      {
+        error:
+          'pairCode, emoji and text required',
+      },
+      400,
+      request,
     );
-  if (upErr) return json({ error: upErr.message }, 500, request);
+  }
 
-  // Уведомляем партнёра только если это новая запись (а не редактирование существующей)
-  if (isFirstEntryToday) {
-    try {
-      const { data: members } = await supabase
-        .from('pair_users').select('user_id').eq('pair_code', pairCode);
-      const partner = (members || []).find(m => String(m.user_id) !== String(userId));
-      if (partner) {
-        const { data: ps } = await supabase
-          .from('user_settings').select('lang')
-          .eq('telegram_user_id', partner.user_id).maybeSingle();
-        const partnerLang = ps?.lang || 'ru';
-        const authorName = membership.display_name || (partnerLang === 'ru' ? 'Партнёр' : 'Partner');
-        const petName = pairTz?.pet_name || 'Chumi';
-        const safeAuthor = escapeMd(authorName);
-        const safePet = escapeMd(petName);
-        const safeText = escapeMd(text);
+  const {
+    data: membership,
+    error: membershipError,
+  } = await supabase
+    .from('pair_users')
+    .select(
+      'user_id, display_name'
+    )
+    .eq('pair_code', pairCode)
+    .eq('user_id', userId)
+    .maybeSingle();
 
-        const notifyText = partnerLang === 'ru'
+  if (membershipError) {
+    return json(
+      {
+        error:
+          'Membership query failed',
+      },
+      500,
+      request,
+    );
+  }
+
+  if (!membership) {
+    return json(
+      { error: 'Not a member' },
+      403,
+      request,
+    );
+  }
+
+  const {
+    data: pair,
+    error: pairError,
+  } = await supabase
+    .from('pairs')
+    .select(
+      'timezone, pet_name'
+    )
+    .eq('code', pairCode)
+    .maybeSingle();
+
+  if (pairError) {
+    return json(
+      { error: 'Failed to load pair' },
+      500,
+      request,
+    );
+  }
+
+  if (!pair) {
+    return json(
+      { error: 'Pair not found' },
+      404,
+      request,
+    );
+  }
+
+  const today =
+    getTodayDate(
+      pair.timezone || 'UTC',
+    );
+
+  /*
+   * Используем только INSERT.
+   * UNIQUE(pair_code, user_id, entry_date)
+   * атомарно защищает запись от повторного создания
+   * и перезаписи при параллельных запросах.
+   */
+  const {
+    data: createdEntry,
+    error: insertError,
+  } = await supabase
+    .from('pair_diary')
+    .insert({
+      pair_code: pairCode,
+      user_id: userId,
+      emoji,
+      text,
+      entry_date: today,
+    })
+    .select(
+      'id, user_id, emoji, text, entry_date, created_at'
+    )
+    .single();
+
+  if (insertError) {
+    if (insertError.code === '23505') {
+      return json(
+        {
+          error:
+            'Diary entry already exists for today',
+          code:
+            'DIARY_ENTRY_ALREADY_EXISTS',
+          entry_date:
+            today,
+        },
+        409,
+        request,
+      );
+    }
+
+    console.error(
+      'Diary insert failed:',
+      insertError,
+    );
+
+    return json(
+      {
+        error:
+          'Failed to create diary entry',
+      },
+      500,
+      request,
+    );
+  }
+
+  try {
+    const {
+      data: members,
+    } = await supabase
+      .from('pair_users')
+      .select('user_id')
+      .eq('pair_code', pairCode);
+
+    const partner =
+      (members || []).find(
+        member =>
+          String(member.user_id) !==
+          String(userId),
+      );
+
+    if (partner) {
+      const {
+        data: partnerSettings,
+      } = await supabase
+        .from('user_settings')
+        .select('lang')
+        .eq(
+          'telegram_user_id',
+          partner.user_id,
+        )
+        .maybeSingle();
+
+      const partnerLang =
+        partnerSettings?.lang || 'ru';
+
+      const authorName =
+        membership.display_name ||
+        (
+          partnerLang === 'ru'
+            ? 'Партнёр'
+            : 'Partner'
+        );
+
+      const petName =
+        pair.pet_name || 'Chumi';
+
+      const safeAuthor =
+        escapeMd(authorName);
+
+      const safePet =
+        escapeMd(petName);
+
+      const safeText =
+        escapeMd(text);
+
+      const notifyText =
+        partnerLang === 'ru'
           ? `📔 *${safeAuthor}* оставил(а) запись в дневнике ${safePet}!\n\n${emoji} _${safeText}_`
           : `📔 *${safeAuthor}* added a diary entry for ${safePet}!\n\n${emoji} _${safeText}_`;
-        const btnText = partnerLang === 'ru' ? '📖 Посмотреть' : '📖 View';
 
-        await sendTelegramMessage(env, partner.user_id, notifyText, {
+      const buttonText =
+        partnerLang === 'ru'
+          ? '📖 Посмотреть'
+          : '📖 View';
+
+      await sendTelegramMessage(
+        env,
+        partner.user_id,
+        notifyText,
+        {
           reply_markup: {
-            inline_keyboard: [[{ text: btnText, web_app: { url: 'https://chumi.space' } }]],
+            inline_keyboard: [
+              [
+                {
+                  text: buttonText,
+                  web_app: {
+                    url: WEBAPP_URL,
+                  },
+                },
+              ],
+            ],
           },
-        });
-      }
-    } catch (e) {
-      // Не падаем, если Telegram-сообщение не отправилось
-      console.error('Diary notify error:', e);
+        },
+      );
     }
+  } catch (error) {
+    console.error(
+      'Diary notification failed:',
+      error,
+    );
   }
 
-  return json({ success: true, entry_date: today }, 200, request);
+  return json(
+    {
+      success: true,
+      entry: createdEntry,
+      entry_date: today,
+      canCreate: false,
+    },
+    201,
+    request,
+  );
 }
 
-// ── DELETE /api/diary/:id ──
-// Удаляет свою запись
-if (request.method === 'POST' && path === '/api/diary-delete') {
-  const body = await request.json();
-  const userId = extractUserId(request, env, body.userId);
-  if (!userId) return json({ error: 'Unauthorized' }, 401, request);
-
-  const entryId = body.entryId;
-  if (!entryId) return json({ error: 'entryId required' }, 400, request);
-
-  // Проверяем, что запись принадлежит вызывающему
-  const { data: entry } = await supabase
-    .from('pair_diary').select('user_id')
-    .eq('id', entryId).maybeSingle();
-  if (!entry) return json({ error: 'Entry not found' }, 404, request);
-  if (String(entry.user_id) !== String(userId)) return json({ error: 'Not yours' }, 403, request);
-
-  await supabase.from('pair_diary').delete().eq('id', entryId);
-  return json({ success: true }, 200, request);
+// Записи дневника неизменяемые.
+// Удаление через пользовательский API запрещено.
+if (
+  request.method === 'POST' &&
+  path === '/api/diary-delete'
+) {
+  return json(
+    {
+      error:
+        'Diary entries cannot be deleted',
+      code:
+        'DIARY_ENTRY_IMMUTABLE',
+    },
+    405,
+    request,
+  );
 }
 
     // ── GET /api/user-slots/:userId ──
@@ -5113,14 +5473,27 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
 
         for (const recipient of recipients) {
           const delivery =
-            await sendTelegramMessage(
-              env,
-              recipient.telegram_user_id,
-              recipient.message_text,
-              {
-                parse_mode: undefined,
-              },
-            );
+            recipient.source_chat_id &&
+            recipient.source_message_id
+              ? await copyTelegramMessage(
+                  env,
+                  recipient.telegram_user_id,
+                  recipient.source_chat_id,
+                  recipient.source_message_id,
+                  Array.isArray(
+                    recipient.buttons,
+                  )
+                    ? recipient.buttons
+                    : [],
+                )
+              : await sendTelegramMessage(
+                  env,
+                  recipient.telegram_user_id,
+                  recipient.message_text,
+                  {
+                    parse_mode: undefined,
+                  },
+                );
 
           let recipientStatus;
           let lastError = null;
