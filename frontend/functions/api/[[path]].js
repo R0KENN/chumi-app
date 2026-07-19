@@ -1352,6 +1352,30 @@ async function syncAuthenticatedTelegramProfile(
         ).slice(0, 100)
       : null;
 
+  /*
+   * Авторизованный запрос Mini App
+   * фиксирует последнюю активность пользователя.
+   */
+  const {
+    error: activityUpdateError,
+  } = await supabase
+    .from('user_settings')
+    .update({
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'telegram_user_id',
+      userId,
+    );
+
+  if (activityUpdateError) {
+    console.error(
+      'Failed to update Mini App activity:',
+      activityUpdateError,
+    );
+  }
+
   const {
     error: pairUsersError,
   } = await supabase
@@ -1671,7 +1695,22 @@ export async function onRequest(context) {
         'X-Telegram-Init-Data',
       );
 
-    if (initDataForProfile) {
+    const shouldSyncProfile =
+      (
+        request.method === 'GET' &&
+        path.match(
+          /^\/api\/pairs\/[^/]+$/,
+        )
+      ) ||
+      (
+        request.method === 'POST' &&
+        path === '/api/game-score'
+      );
+
+    if (
+      initDataForProfile &&
+      shouldSyncProfile
+    ) {
       const authenticatedProfile =
         validateInitData(
           initDataForProfile,

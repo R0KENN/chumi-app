@@ -220,6 +220,30 @@ async function syncTelegramProfile(
   const userId =
     String(telegramUser.id);
 
+  /*
+   * Любое событие пользователя в боте
+   * считается активностью.
+   */
+  const {
+    error: activityUpdateError,
+  } = await supabase
+    .from('user_settings')
+    .update({
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'telegram_user_id',
+      userId,
+    );
+
+  if (activityUpdateError) {
+    console.error(
+      'Failed to update bot activity:',
+      activityUpdateError,
+    );
+  }
+
   const displayName =
     [
       telegramUser.first_name,
@@ -1963,11 +1987,11 @@ if (startParam.startsWith('ref_')) {
         ).toISOString();
 
       /*
-       * Получаем все действия постранично,
-       * поскольку Supabase обычно возвращает
-       * не более 1000 строк за один запрос.
+       * user_settings.updated_at является
+       * единым временем последней активности:
+       * оно обновляется ботом и Mini App.
        */
-      const activeByUser = new Map();
+      const activeUsers = [];
       const pageSize = 1000;
       let pageOffset = 0;
 
@@ -1976,16 +2000,16 @@ if (startParam.startsWith('ref_')) {
           data: activityRows,
           error: activityError,
         } = await supabase
-          .from('daily_tasks')
+          .from('user_settings')
           .select(
-            'user_id, completed_at'
+            'telegram_user_id, updated_at'
           )
           .gte(
-            'completed_at',
+            'updated_at',
             activeSince,
           )
           .order(
-            'completed_at',
+            'updated_at',
             {
               ascending: false,
             },
@@ -2016,24 +2040,20 @@ if (startParam.startsWith('ref_')) {
           activityRows || [];
 
         for (const activity of currentPage) {
-          const activeUserId =
-            String(activity.user_id);
-
-          /*
-           * Строки идут от новых к старым,
-           * поэтому первая запись пользователя
-           * является его последней активностью.
-           */
           if (
-            !activeByUser.has(
-              activeUserId,
-            )
+            !activity.telegram_user_id
           ) {
-            activeByUser.set(
-              activeUserId,
-              activity.completed_at,
-            );
+            continue;
           }
+
+          activeUsers.push({
+            userId:
+              String(
+                activity.telegram_user_id,
+              ),
+            lastActivity:
+              activity.updated_at,
+          });
         }
 
         if (
@@ -2045,31 +2065,6 @@ if (startParam.startsWith('ref_')) {
 
         pageOffset += pageSize;
       }
-
-      const activeUsers =
-        [...activeByUser.entries()]
-          .map(
-            ([
-              activeUserId,
-              lastActivity,
-            ]) => ({
-              userId:
-                activeUserId,
-              lastActivity,
-            }),
-          )
-          .sort(
-            (
-              firstUser,
-              secondUser,
-            ) =>
-              new Date(
-                secondUser.lastActivity,
-              ).getTime() -
-              new Date(
-                firstUser.lastActivity,
-              ).getTime(),
-          );
 
       if (activeUsers.length === 0) {
         await sendMessage(
