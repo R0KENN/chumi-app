@@ -1224,6 +1224,62 @@ async function sendAdminRankingPhoto(
   }
 }
 
+async function sendAdminWeeklyRewardPrompt(
+  env,
+  adminId,
+  weekStart,
+  winnerCount,
+) {
+  const weekKey =
+    String(weekStart).replace(
+      /-/g,
+      '',
+    );
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type':
+          'application/json',
+      },
+      body: JSON.stringify({
+        chat_id:
+          String(adminId),
+        text:
+          `🎁 Награждение топ-10\n\n` +
+          `Неделя: ${weekStart}\n` +
+          `Победителей: ${winnerCount}\n\n` +
+          `Выберите актуальный Telegram-подарок и подтвердите отправку.`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '🎁 Выбрать подарок',
+                callback_data:
+                  `admin_reward_open_${weekKey}`,
+              },
+            ],
+          ],
+        },
+      }),
+    },
+  );
+
+  const data = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(
+      data.description ||
+      `Telegram reward prompt failed: ${response.status}`,
+    );
+  }
+}
+
 function buildWeeklyRankingChunks(
   rows,
   weekStart,
@@ -2075,6 +2131,50 @@ export async function onRequest(context) {
             );
         }
 
+        let rewardWinnerCount = 0;
+
+        if (
+          rankedRows.length > 0 &&
+          ADMIN_IDS.length > 0
+        ) {
+          const {
+            data: preparedRewards,
+            error: prepareRewardsError,
+          } = await supabase.rpc(
+            'prepare_weekly_game_rewards',
+            {
+              p_week_start:
+                previousWeekStart,
+              p_admin_chat_id:
+                String(ADMIN_IDS[0]),
+              p_created_by:
+                String(ADMIN_IDS[0]),
+            },
+          );
+
+          if (prepareRewardsError) {
+            throw new Error(
+              prepareRewardsError.message ||
+              'Failed to prepare weekly rewards',
+            );
+          }
+
+          const preparedReward =
+            Array.isArray(
+              preparedRewards,
+            )
+              ? preparedRewards[0]
+              : preparedRewards;
+
+          rewardWinnerCount =
+            Number(
+              preparedReward?.reward_winner_count,
+            ) || Math.min(
+              rankedRows.length,
+              10,
+            );
+        }
+
         for (
           const adminId of ADMIN_IDS
         ) {
@@ -2094,6 +2194,15 @@ export async function onRequest(context) {
               adminId,
               rankingImage,
               `🏆 Chumi Jump: ${previousWeekStart} — ${previousWeekEnd}`,
+            );
+          }
+
+          if (rewardWinnerCount > 0) {
+            await sendAdminWeeklyRewardPrompt(
+              env,
+              adminId,
+              previousWeekStart,
+              rewardWinnerCount,
             );
           }
         }

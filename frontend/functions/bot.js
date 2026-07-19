@@ -198,6 +198,2695 @@ async function copyTelegramMessage(
   }
 }
 
+async function callTelegramBotApi(
+  env,
+  method,
+  body = {},
+) {
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    const data = await response
+      .json()
+      .catch(() => ({}));
+
+    if (
+      !response.ok ||
+      data.ok === false
+    ) {
+      return {
+        ok: false,
+        networkError: false,
+        status:
+          response.status,
+        description:
+          data.description ||
+          `Telegram ${method} failed`,
+        errorCode:
+          data.error_code ||
+          null,
+      };
+    }
+
+    return {
+      ok: true,
+      result:
+        data.result,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      networkError: true,
+      status: 0,
+      description:
+        String(
+          error?.message ||
+          error,
+        ),
+    };
+  }
+}
+
+function rewardWeekToKey(
+  weekStart,
+) {
+  return String(
+    weekStart || '',
+  ).replace(
+    /-/g,
+    '',
+  );
+}
+
+function rewardKeyToWeek(
+  weekKey,
+) {
+  const match =
+    String(weekKey || '').match(
+      /^(\d{4})(\d{2})(\d{2})$/,
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  const weekStart =
+    `${match[1]}-${match[2]}-${match[3]}`;
+
+  const date =
+    new Date(
+      `${weekStart}T00:00:00.000Z`,
+    );
+
+  if (
+    !Number.isFinite(
+      date.getTime(),
+    ) ||
+    date.toISOString().slice(0, 10) !==
+      weekStart
+  ) {
+    return null;
+  }
+
+  return weekStart;
+}
+
+function getPreviousUtcWeekStart() {
+  const date = new Date();
+
+  const day =
+    date.getUTCDay();
+
+  const daysSinceMonday =
+    day === 0
+      ? 6
+      : day - 1;
+
+  date.setUTCHours(
+    0,
+    0,
+    0,
+    0,
+  );
+
+  date.setUTCDate(
+    date.getUTCDate() -
+    daysSinceMonday -
+    7,
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
+
+async function getAvailableTelegramGifts(
+  env,
+) {
+  const response =
+    await callTelegramBotApi(
+      env,
+      'getAvailableGifts',
+    );
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      gifts: [],
+      ...response,
+    };
+  }
+
+  const gifts =
+    Array.isArray(
+      response.result?.gifts,
+    )
+      ? response.result.gifts
+      : [];
+
+  gifts.sort(
+    (
+      firstGift,
+      secondGift,
+    ) => {
+      const priceDifference =
+        Number(
+          firstGift.star_count,
+        ) -
+        Number(
+          secondGift.star_count,
+        );
+
+      if (priceDifference !== 0) {
+        return priceDifference;
+      }
+
+      return String(
+        firstGift.id,
+      ).localeCompare(
+        String(
+          secondGift.id,
+        ),
+      );
+    },
+  );
+
+  return {
+    ok: true,
+    gifts,
+  };
+}
+
+async function getTelegramBotStarBalance(
+  env,
+) {
+  const response =
+    await callTelegramBotApi(
+      env,
+      'getMyStarBalance',
+    );
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      amount: 0,
+      ...response,
+    };
+  }
+
+  return {
+    ok: true,
+    amount:
+      Number(
+        response.result?.amount,
+      ) || 0,
+    nanostarAmount:
+      Number(
+        response.result?.nanostar_amount,
+      ) || 0,
+  };
+}
+
+async function sendTelegramGiftPreview(
+  env,
+  chatId,
+  gift,
+) {
+  const stickerFileId =
+    gift?.sticker?.file_id;
+
+  if (!stickerFileId) {
+    return {
+      ok: true,
+      skipped: true,
+    };
+  }
+
+  return callTelegramBotApi(
+    env,
+    'sendSticker',
+    {
+      chat_id:
+        String(chatId),
+      sticker:
+        stickerFileId,
+    },
+  );
+}
+
+async function sendWeeklyRewardSummary(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+) {
+  const {
+    data: batch,
+    error: batchError,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'week_start, status, winner_count, selected_gift_id, selected_gift_star_count, total_star_cost'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  if (batchError || !batch) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Награды для этой недели не найдены.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const {
+    data: rewards,
+    error: rewardsError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'position, user_id, display_name, username, best_score, status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .order(
+      'position',
+      {
+        ascending: true,
+      },
+    );
+
+  if (rewardsError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось загрузить победителей:\n` +
+        `${escapeMd(rewardsError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const weekKey =
+    rewardWeekToKey(
+      weekStart,
+    );
+
+  const winnerLines =
+    (rewards || []).map(
+      reward => {
+        const name =
+          escapeMd(
+            reward.display_name ||
+            'Игрок',
+          );
+
+        const username =
+          reward.username
+            ? ` @${escapeMd(reward.username)}`
+            : '';
+
+        return (
+          `${reward.position}. ${name}${username}\n` +
+          `   ID: \`${reward.user_id}\` · ` +
+          `${reward.best_score} очков · ` +
+          `${reward.status}`
+        );
+      },
+    );
+
+  const selectedGiftText =
+    batch.selected_gift_id
+      ? (
+          `🎁 Подарок: \`${escapeMd(batch.selected_gift_id)}\`\n` +
+          `⭐ Цена одного: *${batch.selected_gift_star_count || 0}*\n` +
+          `💰 Общая стоимость: *${batch.total_star_cost || 0} Stars*`
+        )
+      : '🎁 Подарок пока не выбран.';
+
+  const keyboard = [];
+
+  if (batch.status === 'draft') {
+    keyboard.push([
+      {
+        text:
+          batch.selected_gift_id
+            ? '🔄 Изменить подарок'
+            : '🎁 Выбрать подарок',
+        callback_data:
+          `admin_reward_page_${weekKey}_0`,
+      },
+    ]);
+
+    if (batch.selected_gift_id) {
+      keyboard.push([
+        {
+          text:
+            '✅ Отправить топ-10',
+          callback_data:
+            `admin_reward_confirm_${weekKey}`,
+        },
+      ]);
+    }
+  }
+
+  if (batch.status === 'partial') {
+    keyboard.push([
+      {
+        text:
+          '🔁 Повторить ошибки',
+        callback_data:
+          `admin_reward_retry_${weekKey}`,
+      },
+    ]);
+  }
+
+  keyboard.push([
+    {
+      text:
+        '⬅️ В админ-панель',
+      callback_data:
+        'admin_menu',
+    },
+  ]);
+
+  await sendMessage(
+    env,
+    chatId,
+    `🏆 *Награды Chumi Jump*\n\n` +
+      `📅 Неделя: \`${weekStart}\`\n` +
+      `📌 Статус: *${escapeMd(batch.status)}*\n\n` +
+      `${winnerLines.join('\n\n') || 'Победителей нет.'}\n\n` +
+      `${selectedGiftText}`,
+    {
+      reply_markup: {
+        inline_keyboard:
+          keyboard,
+      },
+    },
+  );
+}
+
+async function sendWeeklyGiftCatalogPage(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  requestedIndex,
+) {
+  const {
+    data: batch,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'status, winner_count'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  if (!batch) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Недельное награждение не найдено.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (batch.status !== 'draft') {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Выбор подарка уже закрыт.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const catalog =
+    await getAvailableTelegramGifts(
+      env,
+    );
+
+  if (!catalog.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось получить каталог подарков:\n` +
+        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const gifts =
+    catalog.gifts.filter(
+      gift =>
+        gift?.id &&
+        Number(
+          gift.star_count,
+        ) > 0 &&
+        (
+          gift.remaining_count ===
+            undefined ||
+          gift.remaining_count ===
+            null ||
+          Number(
+            gift.remaining_count,
+          ) > 0
+        ),
+    );
+
+  if (gifts.length === 0) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Сейчас Telegram не вернул доступных подарков.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const index =
+    Math.min(
+      Math.max(
+        Number(
+          requestedIndex,
+        ) || 0,
+        0,
+      ),
+      gifts.length - 1,
+    );
+
+  const gift =
+    gifts[index];
+
+  await sendTelegramGiftPreview(
+    env,
+    chatId,
+    gift,
+  );
+
+  const balance =
+    await getTelegramBotStarBalance(
+      env,
+    );
+
+  const remainingText =
+    gift.remaining_count ===
+      undefined ||
+    gift.remaining_count ===
+      null
+      ? 'без указанного лимита'
+      : String(
+          gift.remaining_count,
+        );
+
+  const requiredStars =
+    Number(
+      gift.star_count,
+    ) *
+    Number(
+      batch.winner_count,
+    );
+
+  const previousIndex =
+    index > 0
+      ? index - 1
+      : gifts.length - 1;
+
+  const nextIndex =
+    index < gifts.length - 1
+      ? index + 1
+      : 0;
+
+  const weekKey =
+    rewardWeekToKey(
+      weekStart,
+    );
+
+  const giftId =
+    String(
+      gift.id,
+    );
+
+  const selectCallback =
+    `admin_reward_select_${weekKey}_${giftId}`;
+
+  if (selectCallback.length > 64) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Идентификатор подарка слишком длинный для Telegram callback.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    `🎁 *Подарок ${index + 1} из ${gifts.length}*\n\n` +
+      `ID: \`${escapeMd(giftId)}\`\n` +
+      `⭐ Цена: *${Number(gift.star_count)} Stars*\n` +
+      `📦 Осталось: *${escapeMd(remainingText)}*\n` +
+      `👥 Получателей: *${batch.winner_count}*\n` +
+      `💰 Нужно: *${requiredStars} Stars*\n` +
+      `🏦 Баланс бота: *${balance.ok ? balance.amount : 'не удалось получить'}*`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '⬅️',
+              callback_data:
+                `admin_reward_page_${weekKey}_${previousIndex}`,
+            },
+            {
+              text:
+                `${index + 1}/${gifts.length}`,
+              callback_data:
+                `admin_reward_page_${weekKey}_${index}`,
+            },
+            {
+              text:
+                '➡️',
+              callback_data:
+                `admin_reward_page_${weekKey}_${nextIndex}`,
+            },
+          ],
+          [
+            {
+              text:
+                `✅ Выбрать за ${gift.star_count} ⭐`,
+              callback_data:
+                selectCallback,
+            },
+          ],
+          [
+            {
+              text:
+                '📋 К списку победителей',
+              callback_data:
+                `admin_reward_open_${weekKey}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function selectWeeklyTelegramGift(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  giftId,
+) {
+  const catalog =
+    await getAvailableTelegramGifts(
+      env,
+    );
+
+  if (!catalog.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось проверить подарок:\n` +
+        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const gift =
+    catalog.gifts.find(
+      catalogGift =>
+        String(
+          catalogGift.id,
+        ) ===
+        String(
+          giftId,
+        ),
+    );
+
+  if (!gift) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Подарок больше не доступен. Выберите другой.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const {
+    data: batch,
+    error: batchError,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'winner_count, status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      'draft',
+    )
+    .maybeSingle();
+
+  if (batchError || !batch) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Выбор подарка уже закрыт.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const starCount =
+    Number(
+      gift.star_count,
+    ) || 0;
+
+  const totalCost =
+    starCount *
+    Number(
+      batch.winner_count,
+    );
+
+  const remainingCount =
+    gift.remaining_count ===
+      undefined ||
+    gift.remaining_count ===
+      null
+      ? null
+      : Number(
+          gift.remaining_count,
+        );
+
+  const {
+    error: updateBatchError,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .update({
+      selected_gift_id:
+        String(gift.id),
+      selected_gift_star_count:
+        starCount,
+      selected_gift_remaining_count:
+        remainingCount,
+      total_star_cost:
+        totalCost,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      'draft',
+    );
+
+  if (updateBatchError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось сохранить подарок:\n` +
+        `${escapeMd(updateBatchError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const {
+    error: updateRewardsError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .update({
+      gift_id:
+        String(gift.id),
+      gift_star_count:
+        starCount,
+      status:
+        'selected',
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .in(
+      'status',
+      [
+        'pending',
+        'selected',
+      ],
+    );
+
+  if (updateRewardsError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось обновить награды:\n` +
+        `${escapeMd(updateRewardsError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendWeeklyRewardSummary(
+    env,
+    supabase,
+    chatId,
+    weekStart,
+  );
+}
+
+async function processWeeklyTelegramGifts(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  retryFailed = false,
+) {
+  const expectedBatchStatus =
+    retryFailed
+      ? 'partial'
+      : 'draft';
+
+  const {
+    data: batch,
+    error: batchError,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'week_start, status, winner_count, selected_gift_id, selected_gift_star_count'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      expectedBatchStatus,
+    )
+    .maybeSingle();
+
+  if (
+    batchError ||
+    !batch
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Награждение уже запущено, завершено или недоступно.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (!batch.selected_gift_id) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Сначала выберите подарок.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const targetStatuses =
+    retryFailed
+      ? [
+          'failed',
+        ]
+      : [
+          'pending',
+          'selected',
+          'failed',
+        ];
+
+  const {
+    data: recipients,
+    error: recipientsError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'id, position, user_id, display_name, best_score, status, attempts'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .in(
+      'status',
+      targetStatuses,
+    )
+    .order(
+      'position',
+      {
+        ascending: true,
+      },
+    );
+
+  if (recipientsError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось загрузить получателей:\n` +
+        `${escapeMd(recipientsError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (
+    !recipients ||
+    recipients.length === 0
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      'ℹ️ Нет наград, которые можно безопасно отправить повторно.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const catalog =
+    await getAvailableTelegramGifts(
+      env,
+    );
+
+  if (!catalog.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось проверить каталог:\n` +
+        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const currentGift =
+    catalog.gifts.find(
+      gift =>
+        String(
+          gift.id,
+        ) ===
+        String(
+          batch.selected_gift_id,
+        ),
+    );
+
+  if (!currentGift) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Выбранный подарок больше не доступен.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const giftPrice =
+    Number(
+      currentGift.star_count,
+    ) || 0;
+
+  const requiredStars =
+    giftPrice *
+    recipients.length;
+
+  const remainingCount =
+    currentGift.remaining_count ===
+      undefined ||
+    currentGift.remaining_count ===
+      null
+      ? null
+      : Number(
+          currentGift.remaining_count,
+        );
+
+  if (
+    remainingCount !== null &&
+    remainingCount <
+      recipients.length
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      `⚠️ Подарков недостаточно.\n\n` +
+        `Нужно: *${recipients.length}*\n` +
+        `Осталось: *${remainingCount}*`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const balance =
+    await getTelegramBotStarBalance(
+      env,
+    );
+
+  if (!balance.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось проверить баланс бота:\n` +
+        `${escapeMd(balance.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (
+    balance.amount <
+    requiredStars
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      `⚠️ *Недостаточно Stars*\n\n` +
+        `Баланс: *${balance.amount} ⭐*\n` +
+        `Нужно: *${requiredStars} ⭐*\n` +
+        `Не хватает: *${requiredStars - balance.amount} ⭐*`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const {
+    data: claimedBatch,
+    error: claimError,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .update({
+      status:
+        'sending',
+      sending_started_at:
+        new Date().toISOString(),
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      expectedBatchStatus,
+    )
+    .select(
+      'week_start'
+    )
+    .maybeSingle();
+
+  if (
+    claimError ||
+    !claimedBatch
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Награждение уже было запущено другим запросом.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    `⏳ Начинаю отправку подарков.\n\n` +
+      `Получателей: *${recipients.length}*\n` +
+      `Стоимость: *${requiredStars} ⭐*`,
+    {
+      reply_markup: {
+        inline_keyboard: [],
+      },
+    },
+  );
+
+  for (const recipient of recipients) {
+    const attemptedAt =
+      new Date().toISOString();
+
+    const {
+      data: claimedReward,
+      error: rewardClaimError,
+    } = await supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .update({
+        status:
+          'sending',
+        attempts:
+          Number(
+            recipient.attempts,
+          ) + 1,
+        attempted_at:
+          attemptedAt,
+        updated_at:
+          attemptedAt,
+        last_error:
+          null,
+      })
+      .eq(
+        'id',
+        recipient.id,
+      )
+      .in(
+        'status',
+        targetStatuses,
+      )
+      .select(
+        'id'
+      )
+      .maybeSingle();
+
+    if (
+      rewardClaimError ||
+      !claimedReward
+    ) {
+      continue;
+    }
+
+    const telegramUserId =
+      Number(
+        recipient.user_id,
+      );
+
+    if (
+      !Number.isSafeInteger(
+        telegramUserId,
+      ) ||
+      telegramUserId <= 0
+    ) {
+      await supabase
+        .from(
+          'weekly_game_rewards',
+        )
+        .update({
+          status:
+            'failed',
+          last_error:
+            'Invalid Telegram user ID',
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          'id',
+          recipient.id,
+        );
+
+      continue;
+    }
+
+    const delivery =
+      await callTelegramBotApi(
+        env,
+        'sendGift',
+        {
+          user_id:
+            telegramUserId,
+          gift_id:
+            String(
+              currentGift.id,
+            ),
+          text:
+            `🏆 ${recipient.position} место в недельном рейтинге Chumi Jump!`,
+        },
+      );
+
+    if (delivery.ok) {
+      const sentAt =
+        new Date().toISOString();
+
+      await supabase
+        .from(
+          'weekly_game_rewards',
+        )
+        .update({
+          status:
+            'sent',
+          gift_id:
+            String(
+              currentGift.id,
+            ),
+          gift_star_count:
+            giftPrice,
+          sent_at:
+            sentAt,
+          updated_at:
+            sentAt,
+          last_error:
+            null,
+        })
+        .eq(
+          'id',
+          recipient.id,
+        );
+
+      continue;
+    }
+
+    /*
+     * При сетевой ошибке результат неизвестен:
+     * Telegram мог принять подарок, но ответ не дошёл.
+     * Автоматически такой подарок не повторяем.
+     */
+    const failedStatus =
+      delivery.networkError
+        ? 'unknown'
+        : 'failed';
+
+    await supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .update({
+        status:
+          failedStatus,
+        last_error:
+          String(
+            delivery.description ||
+            'Unknown Telegram error',
+          ).slice(
+            0,
+            1000,
+          ),
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        'id',
+        recipient.id,
+      );
+  }
+
+  const {
+    data: finalRewards,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    );
+
+  const statusCounts = {
+    sent: 0,
+    failed: 0,
+    unknown: 0,
+    pending: 0,
+    selected: 0,
+    sending: 0,
+  };
+
+  for (const reward of (
+    finalRewards || []
+  )) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        statusCounts,
+        reward.status,
+      )
+    ) {
+      statusCounts[
+        reward.status
+      ] += 1;
+    }
+  }
+
+  const totalCount =
+    (finalRewards || []).length;
+
+  const completed =
+    totalCount > 0 &&
+    statusCounts.sent ===
+      totalCount;
+
+  const completedAt =
+    completed
+      ? new Date().toISOString()
+      : null;
+
+  await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .update({
+      status:
+        completed
+          ? 'completed'
+          : 'partial',
+      selected_gift_id:
+        String(
+          currentGift.id,
+        ),
+      selected_gift_star_count:
+        giftPrice,
+      total_star_cost:
+        giftPrice *
+        totalCount,
+      updated_at:
+        new Date().toISOString(),
+      completed_at:
+        completedAt,
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      'sending',
+    );
+
+  const keyboard = [];
+
+  if (statusCounts.failed > 0) {
+    keyboard.push([
+      {
+        text:
+          '🔁 Повторить ошибки',
+        callback_data:
+          `admin_reward_retry_${rewardWeekToKey(weekStart)}`,
+      },
+    ]);
+  }
+
+  keyboard.push([
+    {
+      text:
+        '⬅️ В админ-панель',
+      callback_data:
+        'admin_menu',
+    },
+  ]);
+
+  await sendMessage(
+    env,
+    chatId,
+    `🎁 *Выдача недельных наград завершена*\n\n` +
+      `✅ Отправлено: *${statusCounts.sent}*\n` +
+      `❌ Ошибки Telegram: *${statusCounts.failed}*\n` +
+      `❓ Неизвестный результат: *${statusCounts.unknown}*\n\n` +
+      (
+        statusCounts.unknown > 0
+          ? `Подарки со статусом unknown не повторяются автоматически, чтобы исключить двойную выдачу.`
+          : `Все безопасные попытки обработаны.`
+      ),
+    {
+      reply_markup: {
+        inline_keyboard:
+          keyboard,
+      },
+    },
+  );
+}
+
+async function getActiveBusinessConnection(
+  supabase,
+  adminUserId,
+) {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from(
+      'telegram_business_connections',
+    )
+    .select(
+      'connection_id, owner_user_id, user_chat_id, is_enabled, can_transfer_stars'
+    )
+    .eq(
+      'owner_user_id',
+      String(adminUserId),
+    )
+    .eq(
+      'is_enabled',
+      true,
+    )
+    .order(
+      'updated_at',
+      {
+        ascending: false,
+      },
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      'Business connection query failed:',
+      error,
+    );
+
+    return null;
+  }
+
+  return data || null;
+}
+
+async function sendStarsBalancePanel(
+  env,
+  supabase,
+  chatId,
+  adminUserId,
+) {
+  const balance =
+    await getTelegramBotStarBalance(
+      env,
+    );
+
+  const connection =
+    await getActiveBusinessConnection(
+      supabase,
+      adminUserId,
+    );
+
+  const balanceText =
+    balance.ok
+      ? `${balance.amount} Stars`
+      : 'не удалось получить';
+
+  let connectionText =
+    'Business-аккаунт не подключён.';
+
+  if (connection) {
+    connectionText =
+      connection.can_transfer_stars
+        ? 'подключён, перевод Stars разрешён'
+        : 'подключён, но нет разрешения can_transfer_stars';
+  }
+
+  const keyboard = [
+    [
+      {
+        text:
+          '🔄 Обновить баланс',
+        callback_data:
+          'admin_stars_balance',
+      },
+    ],
+  ];
+
+  if (
+    connection?.can_transfer_stars
+  ) {
+    keyboard.unshift([
+      {
+        text:
+          '➕ Пополнить баланс',
+        callback_data:
+          'admin_stars_topup',
+      },
+    ]);
+  }
+
+  keyboard.push([
+    {
+      text:
+        '⬅️ В админ-панель',
+      callback_data:
+        'admin_menu',
+    },
+  ]);
+
+  await sendMessage(
+    env,
+    chatId,
+    `⭐ *Баланс бота*\n\n` +
+      `Текущий баланс: *${escapeMd(balanceText)}*\n\n` +
+      `Business-подключение: ${escapeMd(connectionText)}`,
+    {
+      reply_markup: {
+        inline_keyboard:
+          keyboard,
+      },
+    },
+  );
+}
+
+function getRewardPlaceLabel(
+  position,
+) {
+  if (position === 1) {
+    return '🥇 1 место';
+  }
+
+  if (position === 2) {
+    return '🥈 2 место';
+  }
+
+  if (position === 3) {
+    return '🥉 3 место';
+  }
+
+  if (position === 0) {
+    return 'все места';
+  }
+
+  return `${position} место`;
+}
+
+async function sendWeeklyRewardSummaryV2(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+) {
+  const {
+    data: batch,
+    error: batchError,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'week_start, status, winner_count'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  if (
+    batchError ||
+    !batch
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Награждение этой недели не найдено.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const {
+    data: rewards,
+    error: rewardsError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'position, user_id, display_name, username, best_score, gift_id, gift_star_count, status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .order(
+      'position',
+      {
+        ascending: true,
+      },
+    );
+
+  if (rewardsError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось загрузить награды:\n` +
+        `${escapeMd(rewardsError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const weekKey =
+    rewardWeekToKey(
+      weekStart,
+    );
+
+  const lines =
+    (rewards || []).map(
+      reward => {
+        const name =
+          escapeMd(
+            reward.display_name ||
+            'Игрок',
+          );
+
+        const giftText =
+          reward.gift_id
+            ? `🎁 ${reward.gift_star_count || 0} ⭐`
+            : '🎁 не выбран';
+
+        return (
+          `${getRewardPlaceLabel(reward.position)} — ${name}\n` +
+          `ID: \`${reward.user_id}\` · ` +
+          `${reward.best_score} очков · ` +
+          `${giftText} · ${escapeMd(reward.status)}`
+        );
+      },
+    );
+
+  const totalCost =
+    (rewards || []).reduce(
+      (
+        sum,
+        reward,
+      ) =>
+        sum +
+        (
+          Number(
+            reward.gift_star_count,
+          ) || 0
+        ),
+      0,
+    );
+
+  const allSelected =
+    (rewards || []).length > 0 &&
+    (rewards || []).every(
+      reward =>
+        Boolean(
+          reward.gift_id,
+        ),
+    );
+
+  const keyboard = [];
+
+  if (batch.status === 'draft') {
+    for (const reward of (
+      rewards || []
+    )) {
+      keyboard.push([
+        {
+          text:
+            `${getRewardPlaceLabel(reward.position)} — ` +
+            (
+              reward.gift_id
+                ? `${reward.gift_star_count || 0} ⭐`
+                : 'выбрать подарок'
+            ),
+          callback_data:
+            `admin_reward2_place_${weekKey}_${reward.position}`,
+        },
+      ]);
+    }
+
+    keyboard.push([
+      {
+        text:
+          '🎁 Один подарок всем',
+        callback_data:
+          `admin_reward2_place_${weekKey}_0`,
+      },
+    ]);
+
+    keyboard.push([
+      {
+        text:
+          '⭐ Баланс и пополнение',
+        callback_data:
+          'admin_stars_balance',
+      },
+    ]);
+
+    if (allSelected) {
+      keyboard.push([
+        {
+          text:
+            `✅ Проверить и отправить · ${totalCost} ⭐`,
+          callback_data:
+            `admin_reward2_send_${weekKey}`,
+        },
+      ]);
+    }
+  }
+
+  if (batch.status === 'partial') {
+    keyboard.push([
+      {
+        text:
+          '🔁 Повторить подтверждённые ошибки',
+        callback_data:
+          `admin_reward2_retry_${weekKey}`,
+      },
+    ]);
+
+    keyboard.push([
+      {
+        text:
+          '⭐ Баланс и пополнение',
+        callback_data:
+          'admin_stars_balance',
+      },
+    ]);
+  }
+
+  keyboard.push([
+    {
+      text:
+        '⬅️ В админ-панель',
+      callback_data:
+        'admin_menu',
+    },
+  ]);
+
+  await sendMessage(
+    env,
+    chatId,
+    `🏆 *Награды Chumi Jump*\n\n` +
+      `📅 Неделя: \`${weekStart}\`\n` +
+      `📌 Статус: *${escapeMd(batch.status)}*\n` +
+      `👥 Победителей: *${batch.winner_count}*\n` +
+      `⭐ Выбрано подарков на: *${totalCost} Stars*\n\n` +
+      `${lines.join('\n\n') || 'Победителей нет.'}`,
+    {
+      reply_markup: {
+        inline_keyboard:
+          keyboard,
+      },
+    },
+  );
+}
+
+async function sendWeeklyGiftCatalogPageV2(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  position,
+  requestedIndex,
+) {
+  const {
+    data: batch,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'status, winner_count'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  if (
+    !batch ||
+    batch.status !== 'draft'
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Выбор подарков уже закрыт.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (position !== 0) {
+    const {
+      data: reward,
+    } = await supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .select(
+        'position'
+      )
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .eq(
+        'position',
+        position,
+      )
+      .maybeSingle();
+
+    if (!reward) {
+      await sendMessage(
+        env,
+        chatId,
+        '❌ Призовое место не найдено.',
+        adminMenuButtons(),
+      );
+
+      return;
+    }
+  }
+
+  const catalog =
+    await getAvailableTelegramGifts(
+      env,
+    );
+
+  if (!catalog.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось получить каталог:\n` +
+        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const gifts =
+    catalog.gifts.filter(
+      gift =>
+        gift?.id &&
+        Number(
+          gift.star_count,
+        ) > 0 &&
+        (
+          gift.remaining_count ===
+            undefined ||
+          gift.remaining_count ===
+            null ||
+          Number(
+            gift.remaining_count,
+          ) > 0
+        ),
+    );
+
+  if (gifts.length === 0) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Сейчас нет доступных подарков.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const index =
+    Math.min(
+      Math.max(
+        Number(
+          requestedIndex,
+        ) || 0,
+        0,
+      ),
+      gifts.length - 1,
+    );
+
+  const gift =
+    gifts[index];
+
+  await sendTelegramGiftPreview(
+    env,
+    chatId,
+    gift,
+  );
+
+  const balance =
+    await getTelegramBotStarBalance(
+      env,
+    );
+
+  const recipientCount =
+    position === 0
+      ? Number(
+          batch.winner_count,
+        )
+      : 1;
+
+  const totalCost =
+    Number(
+      gift.star_count,
+    ) *
+    recipientCount;
+
+  const remainingText =
+    gift.remaining_count ===
+      undefined ||
+    gift.remaining_count ===
+      null
+      ? 'без указанного лимита'
+      : String(
+          gift.remaining_count,
+        );
+
+  const previousIndex =
+    index > 0
+      ? index - 1
+      : gifts.length - 1;
+
+  const nextIndex =
+    index < gifts.length - 1
+      ? index + 1
+      : 0;
+
+  const weekKey =
+    rewardWeekToKey(
+      weekStart,
+    );
+
+  await sendMessage(
+    env,
+    chatId,
+    `🎁 *Подарок для ${escapeMd(getRewardPlaceLabel(position))}*\n\n` +
+      `Подарок: *${index + 1} из ${gifts.length}*\n` +
+      `ID: \`${escapeMd(String(gift.id))}\`\n` +
+      `⭐ Цена одного: *${gift.star_count}*\n` +
+      `👥 Получателей: *${recipientCount}*\n` +
+      `💰 Общая стоимость: *${totalCost} ⭐*\n` +
+      `📦 Осталось: *${escapeMd(remainingText)}*\n` +
+      `🏦 Баланс бота: *${balance.ok ? balance.amount : 'неизвестен'} ⭐*`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '⬅️',
+              callback_data:
+                `admin_reward2_page_${weekKey}_${position}_${previousIndex}`,
+            },
+            {
+              text:
+                `${index + 1}/${gifts.length}`,
+              callback_data:
+                `admin_reward2_page_${weekKey}_${position}_${index}`,
+            },
+            {
+              text:
+                '➡️',
+              callback_data:
+                `admin_reward2_page_${weekKey}_${position}_${nextIndex}`,
+            },
+          ],
+          [
+            {
+              text:
+                `✅ Выбрать за ${gift.star_count} ⭐`,
+              callback_data:
+                `admin_reward2_pick_${weekKey}_${position}_${index}`,
+            },
+          ],
+          [
+            {
+              text:
+                '📋 К наградам',
+              callback_data:
+                `admin_reward_open_${weekKey}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function selectWeeklyGiftV2(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  position,
+  giftIndex,
+) {
+  const catalog =
+    await getAvailableTelegramGifts(
+      env,
+    );
+
+  if (!catalog.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось проверить каталог:\n` +
+        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const gifts =
+    catalog.gifts.filter(
+      gift =>
+        gift?.id &&
+        Number(
+          gift.star_count,
+        ) > 0 &&
+        (
+          gift.remaining_count ===
+            undefined ||
+          gift.remaining_count ===
+            null ||
+          Number(
+            gift.remaining_count,
+          ) > 0
+        ),
+    );
+
+  const gift =
+    gifts[
+      Number(
+        giftIndex,
+      )
+    ];
+
+  if (!gift) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Каталог изменился. Выберите подарок заново.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  let updateQuery =
+    supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .update({
+        gift_id:
+          String(gift.id),
+        gift_star_count:
+          Number(
+            gift.star_count,
+          ),
+        status:
+          'selected',
+        last_error:
+          null,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .in(
+        'status',
+        [
+          'pending',
+          'selected',
+          'failed',
+        ],
+      );
+
+  if (position !== 0) {
+    updateQuery =
+      updateQuery.eq(
+        'position',
+        position,
+      );
+  }
+
+  const {
+    data: updatedRewards,
+    error: updateError,
+  } = await updateQuery.select(
+    'id'
+  );
+
+  if (
+    updateError ||
+    !updatedRewards?.length
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось сохранить подарок.` +
+        (
+          updateError?.message
+            ? `\n${escapeMd(updateError.message)}`
+            : ''
+        ),
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendWeeklyRewardSummaryV2(
+    env,
+    supabase,
+    chatId,
+    weekStart,
+  );
+}
+
+async function processWeeklyGiftsV2(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  retryFailed,
+) {
+  const expectedBatchStatus =
+    retryFailed
+      ? 'partial'
+      : 'draft';
+
+  const targetStatuses =
+    retryFailed
+      ? [
+          'failed',
+        ]
+      : [
+          'selected',
+        ];
+
+  const {
+    data: batch,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'week_start, status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      expectedBatchStatus,
+    )
+    .maybeSingle();
+
+  if (!batch) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Награждение уже запущено или завершено.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const {
+    data: recipients,
+    error: recipientsError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'id, position, user_id, display_name, best_score, gift_id, gift_star_count, status, attempts'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .in(
+      'status',
+      targetStatuses,
+    )
+    .order(
+      'position',
+      {
+        ascending: true,
+      },
+    );
+
+  if (
+    recipientsError ||
+    !recipients?.length
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      retryFailed
+        ? 'ℹ️ Нет подтверждённых ошибок для повторной отправки.'
+        : '⚠️ Сначала выберите подарок для каждого места.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (!retryFailed) {
+    const {
+      count: totalRewardCount,
+    } = await supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .select(
+        '*',
+        {
+          count: 'exact',
+          head: true,
+        },
+      )
+      .eq(
+        'week_start',
+        weekStart,
+      );
+
+    if (
+      recipients.length !==
+      Number(
+        totalRewardCount,
+      )
+    ) {
+      await sendMessage(
+        env,
+        chatId,
+        '⚠️ Подарок выбран не для каждого победителя.',
+        adminMenuButtons(),
+      );
+
+      return;
+    }
+  }
+
+  const catalog =
+    await getAvailableTelegramGifts(
+      env,
+    );
+
+  if (!catalog.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось проверить каталог:\n` +
+        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const giftsById =
+    new Map(
+      catalog.gifts.map(
+        gift => [
+          String(gift.id),
+          gift,
+        ],
+      ),
+    );
+
+  const requiredByGift =
+    new Map();
+
+  let totalCost = 0;
+
+  for (const recipient of recipients) {
+    const currentGift =
+      giftsById.get(
+        String(
+          recipient.gift_id,
+        ),
+      );
+
+    if (!currentGift) {
+      await sendMessage(
+        env,
+        chatId,
+        `⚠️ Подарок для ${getRewardPlaceLabel(recipient.position)} больше не доступен.`,
+        adminMenuButtons(),
+      );
+
+      return;
+    }
+
+    if (
+      Number(
+        currentGift.star_count,
+      ) !==
+      Number(
+        recipient.gift_star_count,
+      )
+    ) {
+      await sendMessage(
+        env,
+        chatId,
+        `⚠️ Цена подарка для ${getRewardPlaceLabel(recipient.position)} изменилась. Выберите подарок заново.`,
+        adminMenuButtons(),
+      );
+
+      return;
+    }
+
+    totalCost +=
+      Number(
+        currentGift.star_count,
+      );
+
+    const giftId =
+      String(
+        currentGift.id,
+      );
+
+    requiredByGift.set(
+      giftId,
+      (
+        requiredByGift.get(
+          giftId,
+        ) || 0
+      ) + 1,
+    );
+  }
+
+  for (const [
+    giftId,
+    requiredCount,
+  ] of requiredByGift) {
+    const gift =
+      giftsById.get(
+        giftId,
+      );
+
+    if (
+      gift.remaining_count !==
+        undefined &&
+      gift.remaining_count !==
+        null &&
+      Number(
+        gift.remaining_count,
+      ) < requiredCount
+    ) {
+      await sendMessage(
+        env,
+        chatId,
+        `⚠️ Недостаточно подарков \`${escapeMd(giftId)}\`.\n` +
+          `Нужно: *${requiredCount}*\n` +
+          `Осталось: *${gift.remaining_count}*`,
+        adminMenuButtons(),
+      );
+
+      return;
+    }
+  }
+
+  const balance =
+    await getTelegramBotStarBalance(
+      env,
+    );
+
+  if (!balance.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось проверить баланс:\n` +
+        `${escapeMd(balance.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (
+    balance.amount <
+    totalCost
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      `⚠️ *Недостаточно Stars*\n\n` +
+        `Баланс: *${balance.amount} ⭐*\n` +
+        `Нужно: *${totalCost} ⭐*\n` +
+        `Не хватает: *${totalCost - balance.amount} ⭐*`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '➕ Пополнить баланс',
+                callback_data:
+                  'admin_stars_topup',
+              },
+            ],
+            [
+              {
+                text:
+                  '📋 Вернуться к наградам',
+                callback_data:
+                  `admin_reward_open_${rewardWeekToKey(weekStart)}`,
+              },
+            ],
+          ],
+        },
+      },
+    );
+
+    return;
+  }
+
+  const {
+    data: claimedBatch,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .update({
+      status:
+        'sending',
+      sending_started_at:
+        new Date().toISOString(),
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      expectedBatchStatus,
+    )
+    .select(
+      'week_start'
+    )
+    .maybeSingle();
+
+  if (!claimedBatch) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Награждение уже запущено другим запросом.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    `⏳ Отправляю подарки топ-10.\n\n` +
+      `Получателей: *${recipients.length}*\n` +
+      `Стоимость: *${totalCost} ⭐*`,
+    {
+      reply_markup: {
+        inline_keyboard: [],
+      },
+    },
+  );
+
+  for (const recipient of recipients) {
+    const attemptedAt =
+      new Date().toISOString();
+
+    const {
+      data: claimedReward,
+    } = await supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .update({
+        status:
+          'sending',
+        attempts:
+          Number(
+            recipient.attempts,
+          ) + 1,
+        attempted_at:
+          attemptedAt,
+        updated_at:
+          attemptedAt,
+        last_error:
+          null,
+      })
+      .eq(
+        'id',
+        recipient.id,
+      )
+      .in(
+        'status',
+        targetStatuses,
+      )
+      .select(
+        'id'
+      )
+      .maybeSingle();
+
+    if (!claimedReward) {
+      continue;
+    }
+
+    const delivery =
+      await callTelegramBotApi(
+        env,
+        'sendGift',
+        {
+          user_id:
+            String(
+              recipient.user_id,
+            ),
+          gift_id:
+            String(
+              recipient.gift_id,
+            ),
+          text:
+            `🏆 ${recipient.position} место в недельном рейтинге Chumi Jump!`,
+        },
+      );
+
+    if (delivery.ok) {
+      const sentAt =
+        new Date().toISOString();
+
+      await supabase
+        .from(
+          'weekly_game_rewards',
+        )
+        .update({
+          status:
+            'sent',
+          sent_at:
+            sentAt,
+          updated_at:
+            sentAt,
+          last_error:
+            null,
+        })
+        .eq(
+          'id',
+          recipient.id,
+        );
+
+      continue;
+    }
+
+    await supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .update({
+        status:
+          delivery.networkError
+            ? 'unknown'
+            : 'failed',
+        last_error:
+          String(
+            delivery.description ||
+            'Unknown Telegram error',
+          ).slice(
+            0,
+            1000,
+          ),
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        'id',
+        recipient.id,
+      );
+  }
+
+  const {
+    data: finalRewards,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    );
+
+  const sentCount =
+    (finalRewards || []).filter(
+      reward =>
+        reward.status === 'sent',
+    ).length;
+
+  const failedCount =
+    (finalRewards || []).filter(
+      reward =>
+        reward.status === 'failed',
+    ).length;
+
+  const unknownCount =
+    (finalRewards || []).filter(
+      reward =>
+        reward.status === 'unknown',
+    ).length;
+
+  const completed =
+    finalRewards?.length > 0 &&
+    sentCount ===
+      finalRewards.length;
+
+  await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .update({
+      status:
+        completed
+          ? 'completed'
+          : 'partial',
+      total_star_cost:
+        totalCost,
+      updated_at:
+        new Date().toISOString(),
+      completed_at:
+        completed
+          ? new Date().toISOString()
+          : null,
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      'sending',
+    );
+
+  await sendMessage(
+    env,
+    chatId,
+    `🎁 *Выдача наград завершена*\n\n` +
+      `✅ Отправлено: *${sentCount}*\n` +
+      `❌ Ошибки Telegram: *${failedCount}*\n` +
+      `❓ Неизвестный результат: *${unknownCount}*\n\n` +
+      (
+        unknownCount > 0
+          ? 'Статусы unknown не повторяются автоматически.'
+          : 'Все безопасные попытки обработаны.'
+      ),
+    {
+      reply_markup: {
+        inline_keyboard: [
+          ...(failedCount > 0
+            ? [
+                [
+                  {
+                    text:
+                      '🔁 Повторить ошибки',
+                    callback_data:
+                      `admin_reward2_retry_${rewardWeekToKey(weekStart)}`,
+                  },
+                ],
+              ]
+            : []),
+          [
+            {
+              text:
+                '📋 Открыть награды',
+              callback_data:
+                `admin_reward_open_${rewardWeekToKey(weekStart)}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
 function parseBroadcastButtons(input) {
   const normalized =
     String(input || '').trim();
@@ -852,6 +3541,16 @@ function adminMenuButtons() {
         ],
         [
           {
+            text: '🎁 Награды топ-10',
+            callback_data: 'admin_weekly_rewards',
+          },
+          {
+            text: '⭐ Баланс',
+            callback_data: 'admin_stars_balance',
+          },
+        ],
+        [
+          {
             text: '📣 Создать рассылку',
             callback_data: 'admin_broadcast',
           },
@@ -1015,6 +3714,7 @@ export async function onRequestPost(context) {
       update.chosen_inline_result?.from ||
       update.pre_checkout_query?.from ||
       update.shipping_query?.from ||
+      update.business_connection?.user ||
       null;
 
     if (telegramUser) {
@@ -1022,6 +3722,72 @@ export async function onRequestPost(context) {
         supabase,
         telegramUser,
       );
+    }
+
+    if (
+      update.business_connection
+    ) {
+      const businessConnection =
+        update.business_connection;
+
+      const ownerUserId =
+        String(
+          businessConnection.user?.id ||
+          '',
+        );
+
+      if (
+        ownerUserId &&
+        ADMIN_IDS.includes(
+          ownerUserId,
+        )
+      ) {
+        const rights =
+          businessConnection.rights ||
+          {};
+
+        const {
+          error: connectionError,
+        } = await supabase
+          .from(
+            'telegram_business_connections',
+          )
+          .upsert(
+            {
+              connection_id:
+                String(
+                  businessConnection.id,
+                ),
+              owner_user_id:
+                ownerUserId,
+              user_chat_id:
+                businessConnection.user_chat_id
+                  ? String(
+                      businessConnection.user_chat_id,
+                    )
+                  : null,
+              is_enabled:
+                businessConnection.is_enabled !==
+                false,
+              can_transfer_stars:
+                rights.can_transfer_stars ===
+                true,
+              updated_at:
+                new Date().toISOString(),
+            },
+            {
+              onConflict:
+                'connection_id',
+            },
+          );
+
+        if (connectionError) {
+          console.error(
+            'Business connection save failed:',
+            connectionError,
+          );
+        }
+      }
     }
 
     // ═══ CALLBACK QUERY ═══
@@ -1097,6 +3863,720 @@ export async function onRequestPost(context) {
           env,
           cb.id,
         );
+
+        if (
+          cbData ===
+          'admin_weekly_rewards'
+        ) {
+          const previousWeekStart =
+            getPreviousUtcWeekStart();
+
+          const {
+            data: preparedRewards,
+            error: prepareError,
+          } = await supabase.rpc(
+            'prepare_weekly_game_rewards',
+            {
+              p_week_start:
+                previousWeekStart,
+              p_admin_chat_id:
+                String(cbChatId),
+              p_created_by:
+                cbUserId,
+            },
+          );
+
+          if (prepareError) {
+            await sendMessage(
+              env,
+              cbChatId,
+              `❌ Не удалось подготовить награды:\n` +
+                `${escapeMd(prepareError.message)}`,
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          const preparedReward =
+            Array.isArray(
+              preparedRewards,
+            )
+              ? preparedRewards[0]
+              : preparedRewards;
+
+          if (
+            Number(
+              preparedReward?.reward_winner_count,
+            ) === 0
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              `ℹ️ За неделю \`${previousWeekStart}\` нет результатов для награждения.`,
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendWeeklyRewardSummaryV2(
+            env,
+            supabase,
+            cbChatId,
+            previousWeekStart,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardOpenMatch =
+          cbData.match(
+            /^admin_reward_open_(\d{8})$/,
+          );
+
+        if (rewardOpenMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardOpenMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendWeeklyRewardSummaryV2(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardPageMatch =
+          cbData.match(
+            /^admin_reward_page_(\d{8})_(\d+)$/,
+          );
+
+        if (rewardPageMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardPageMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendWeeklyGiftCatalogPage(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            Number(
+              rewardPageMatch[2],
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardSelectMatch =
+          cbData.match(
+            /^admin_reward_select_(\d{8})_(.+)$/,
+          );
+
+        if (rewardSelectMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardSelectMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await selectWeeklyTelegramGift(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            rewardSelectMatch[2],
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardConfirmMatch =
+          cbData.match(
+            /^admin_reward_confirm_(\d{8})$/,
+          );
+
+        if (rewardConfirmMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardConfirmMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await processWeeklyTelegramGifts(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            false,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardRetryMatch =
+          cbData.match(
+            /^admin_reward_retry_(\d{8})$/,
+          );
+
+        if (rewardRetryMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardRetryMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await processWeeklyTelegramGifts(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            true,
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData ===
+          'admin_stars_balance'
+        ) {
+          await sendStarsBalancePanel(
+            env,
+            supabase,
+            cbChatId,
+            cbUserId,
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData ===
+          'admin_stars_topup'
+        ) {
+          const connection =
+            await getActiveBusinessConnection(
+              supabase,
+              cbUserId,
+            );
+
+          if (
+            !connection ||
+            !connection.can_transfer_stars
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              `⚠️ Нельзя выполнить перевод.\n\n` +
+                `Подключите бота в настройках Telegram Business и разрешите ему перевод Stars.`,
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendMessage(
+            env,
+            cbChatId,
+            `CHUMI-STARS-TOPUP\n\n` +
+              `⭐ *Пополнение баланса бота*\n\n` +
+              `Введите количество Stars от 1 до 10000.`,
+            adminForceReply(
+              'От 1 до 10000 Stars',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const starsConfirmMatch =
+          cbData.match(
+            /^admin_stars_confirm_(\d{1,5})_([a-z0-9]+)$/,
+          );
+
+        if (starsConfirmMatch) {
+          const starCount =
+            Number(
+              starsConfirmMatch[1],
+            );
+
+          const operationId =
+            starsConfirmMatch[2];
+
+          if (
+            !Number.isInteger(
+              starCount,
+            ) ||
+            starCount < 1 ||
+            starCount > 10000
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректное количество Stars.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          const connection =
+            await getActiveBusinessConnection(
+              supabase,
+              cbUserId,
+            );
+
+          if (
+            !connection ||
+            !connection.can_transfer_stars
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '⚠️ Business-подключение отсутствует или не имеет права can_transfer_stars.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          const balanceBefore =
+            await getTelegramBotStarBalance(
+              env,
+            );
+
+          const {
+            error: operationError,
+          } = await supabase
+            .from(
+              'bot_star_topups',
+            )
+            .insert({
+              id:
+                operationId,
+              admin_user_id:
+                cbUserId,
+              admin_chat_id:
+                String(cbChatId),
+              business_connection_id:
+                connection.connection_id,
+              star_count:
+                starCount,
+              status:
+                'processing',
+              balance_before:
+                balanceBefore.ok
+                  ? balanceBefore.amount
+                  : null,
+            });
+
+          if (operationError) {
+            if (
+              operationError.code ===
+              '23505'
+            ) {
+              await sendMessage(
+                env,
+                cbChatId,
+                'ℹ️ Эта операция уже была обработана.',
+                adminMenuButtons(),
+              );
+            } else {
+              await sendMessage(
+                env,
+                cbChatId,
+                `❌ Не удалось сохранить операцию:\n` +
+                  `${escapeMd(operationError.message)}`,
+                adminMenuButtons(),
+              );
+            }
+
+            return new Response('OK');
+          }
+
+          const transfer =
+            await callTelegramBotApi(
+              env,
+              'transferBusinessAccountStars',
+              {
+                business_connection_id:
+                  connection.connection_id,
+                star_count:
+                  starCount,
+              },
+            );
+
+          if (!transfer.ok) {
+            const operationStatus =
+              transfer.networkError
+                ? 'unknown'
+                : 'failed';
+
+            await supabase
+              .from(
+                'bot_star_topups',
+              )
+              .update({
+                status:
+                  operationStatus,
+                telegram_error:
+                  String(
+                    transfer.description ||
+                    'Unknown Telegram error',
+                  ).slice(
+                    0,
+                    1000,
+                  ),
+                completed_at:
+                  new Date().toISOString(),
+              })
+              .eq(
+                'id',
+                operationId,
+              );
+
+            await sendMessage(
+              env,
+              cbChatId,
+              operationStatus === 'unknown'
+                ? `❓ Telegram не вернул однозначный результат.\n\nОбновите баланс перед повторной попыткой.`
+                : `❌ Перевод не выполнен:\n${escapeMd(transfer.description || 'Unknown Telegram error')}`,
+              {
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text:
+                          '🔄 Проверить баланс',
+                        callback_data:
+                          'admin_stars_balance',
+                      },
+                    ],
+                  ],
+                },
+              },
+            );
+
+            return new Response('OK');
+          }
+
+          const balanceAfter =
+            await getTelegramBotStarBalance(
+              env,
+            );
+
+          await supabase
+            .from(
+              'bot_star_topups',
+            )
+            .update({
+              status:
+                'completed',
+              balance_after:
+                balanceAfter.ok
+                  ? balanceAfter.amount
+                  : null,
+              completed_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              'id',
+              operationId,
+            );
+
+          await sendMessage(
+            env,
+            cbChatId,
+            `✅ *Баланс пополнен*\n\n` +
+              `Переведено: *${starCount} Stars*\n` +
+              `Баланс до: *${balanceBefore.ok ? balanceBefore.amount : 'неизвестен'}*\n` +
+              `Баланс после: *${balanceAfter.ok ? balanceAfter.amount : 'обновите вручную'}*`,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        '🔄 Обновить баланс',
+                      callback_data:
+                        'admin_stars_balance',
+                    },
+                  ],
+                  [
+                    {
+                      text:
+                        '🎁 К наградам',
+                      callback_data:
+                        'admin_weekly_rewards',
+                    },
+                  ],
+                ],
+              },
+            },
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardPlaceMatch =
+          cbData.match(
+            /^admin_reward2_place_(\d{8})_(\d{1,2})$/,
+          );
+
+        if (rewardPlaceMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardPlaceMatch[1],
+            );
+
+          const position =
+            Number(
+              rewardPlaceMatch[2],
+            );
+
+          if (
+            !weekStart ||
+            !Number.isInteger(
+              position,
+            ) ||
+            position < 0 ||
+            position > 10
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректные параметры награды.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendWeeklyGiftCatalogPageV2(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            position,
+            0,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardPageV2Match =
+          cbData.match(
+            /^admin_reward2_page_(\d{8})_(\d{1,2})_(\d+)$/,
+          );
+
+        if (rewardPageV2Match) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardPageV2Match[1],
+            );
+
+          const position =
+            Number(
+              rewardPageV2Match[2],
+            );
+
+          const giftIndex =
+            Number(
+              rewardPageV2Match[3],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendWeeklyGiftCatalogPageV2(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            position,
+            giftIndex,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardPickV2Match =
+          cbData.match(
+            /^admin_reward2_pick_(\d{8})_(\d{1,2})_(\d+)$/,
+          );
+
+        if (rewardPickV2Match) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardPickV2Match[1],
+            );
+
+          const position =
+            Number(
+              rewardPickV2Match[2],
+            );
+
+          const giftIndex =
+            Number(
+              rewardPickV2Match[3],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await selectWeeklyGiftV2(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            position,
+            giftIndex,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardSendV2Match =
+          cbData.match(
+            /^admin_reward2_send_(\d{8})$/,
+          );
+
+        if (rewardSendV2Match) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardSendV2Match[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await processWeeklyGiftsV2(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            false,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardRetryV2Match =
+          cbData.match(
+            /^admin_reward2_retry_(\d{8})$/,
+          );
+
+        if (rewardRetryV2Match) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardRetryV2Match[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await processWeeklyGiftsV2(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            true,
+          );
+
+          return new Response('OK');
+        }
 
         if (
           cbData.startsWith(
@@ -1261,18 +4741,26 @@ export async function onRequestPost(context) {
         }
 
         if (cbData === 'admin_broadcast') {
-          await sendMessage(
-            env,
-            cbChatId,
-            `ADMIN_BROADCAST_POST_PROMPT\n\n` +
-              `📣 *Создание рассылки*\n\n` +
-              `Ответьте на это сообщение любым постом, который нужно разослать.\n\n` +
-              `Поддерживаются текст, форматирование, фото, видео, GIF, документ, аудио, голосовое сообщение и стикер.\n\n` +
-              `После этого бот предложит добавить кнопки и выбрать время отправки.`,
-            adminForceReply(
-              'Отправьте готовый пост',
-            ),
-          );
+          const promptResult =
+            await sendMessage(
+              env,
+              cbChatId,
+              `CHUMI-BROADCAST-POST\n\n` +
+                `📣 *Создание рассылки*\n\n` +
+                `Ответьте на это сообщение любым постом, который нужно разослать.\n\n` +
+                `Поддерживаются текст, форматирование, фото, видео, GIF, документ, аудио, голосовое сообщение и стикер.\n\n` +
+                `После этого бот предложит добавить кнопки и выбрать время отправки.`,
+              adminForceReply(
+                'Отправьте готовый пост',
+              ),
+            );
+
+          if (!promptResult?.ok) {
+            console.error(
+              'Failed to open broadcast constructor:',
+              promptResult,
+            );
+          }
 
           return new Response('OK');
         }
@@ -1713,6 +5201,90 @@ export async function onRequestPost(context) {
       ADMIN_IDS.includes(userId) &&
       message.chat.type === 'private'
     ) {
+      if (
+        repliedBotText.startsWith(
+          'CHUMI-STARS-TOPUP',
+        )
+      ) {
+        const starCount =
+          Number(
+            messageText,
+          );
+
+        if (
+          !/^\d{1,5}$/.test(
+            messageText,
+          ) ||
+          !Number.isInteger(
+            starCount,
+          ) ||
+          starCount < 1 ||
+          starCount > 10000
+        ) {
+          await sendMessage(
+            env,
+            chatId,
+            `❌ Введите целое число от 1 до 10000.`,
+            adminForceReply(
+              'От 1 до 10000 Stars',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const balance =
+          await getTelegramBotStarBalance(
+            env,
+          );
+
+        const operationId =
+          (
+            Date.now().toString(36) +
+            userId.slice(-4)
+          ).toLowerCase();
+
+        const balanceAfter =
+          balance.ok
+            ? balance.amount +
+              starCount
+            : null;
+
+        await sendMessage(
+          env,
+          chatId,
+          `⭐ *Подтверждение пополнения*\n\n` +
+            `Будет переведено: *${starCount} Stars*\n` +
+            `Текущий баланс бота: *${balance.ok ? balance.amount : 'неизвестен'}*\n` +
+            `Ожидаемый баланс: *${balanceAfter ?? 'будет проверен после перевода'}*\n\n` +
+            `Stars будут списаны с подключённого Telegram Business-аккаунта.`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text:
+                      `✅ Перевести ${starCount} ⭐`,
+                    callback_data:
+                      `admin_stars_confirm_${starCount}_${operationId}`,
+                  },
+                ],
+                [
+                  {
+                    text:
+                      '❌ Отменить',
+                    callback_data:
+                      'admin_stars_balance',
+                  },
+                ],
+              ],
+            },
+          },
+        );
+
+        return new Response('OK');
+      }
+
       /*
        * Шаг 1: администратор ответил готовым постом.
        * Сохраняем только ссылку на исходное сообщение.
@@ -1721,7 +5293,7 @@ export async function onRequestPost(context) {
        */
       if (
         repliedBotText.startsWith(
-          'ADMIN_BROADCAST_POST_PROMPT',
+          'CHUMI-BROADCAST-POST',
         )
       ) {
         const {
@@ -1762,7 +5334,7 @@ export async function onRequestPost(context) {
         await sendMessage(
           env,
           chatId,
-          `ADMIN_BROADCAST_BUTTONS_PROMPT:${draft.id}\n\n` +
+          `CHUMI-BROADCAST-BUTTONS:${draft.id}\n\n` +
             `🔘 *Добавьте кнопки к посту*\n\n` +
             `Одна кнопка:\n` +
             `Название | https://example.com\n\n` +
@@ -1786,14 +5358,14 @@ export async function onRequestPost(context) {
        */
       if (
         repliedBotText.startsWith(
-          'ADMIN_BROADCAST_BUTTONS_PROMPT:'
+          'CHUMI-BROADCAST-BUTTONS:'
         )
       ) {
         const draftId =
           repliedBotText
             .split('\n')[0]
             .replace(
-              'ADMIN_BROADCAST_BUTTONS_PROMPT:',
+              'CHUMI-BROADCAST-BUTTONS:',
               '',
             )
             .trim();
@@ -1854,7 +5426,7 @@ export async function onRequestPost(context) {
         await sendMessage(
           env,
           chatId,
-          `ADMIN_BROADCAST_SCHEDULE_PROMPT:${draftId}\n\n` +
+          `CHUMI-BROADCAST-SCHEDULE:${draftId}\n\n` +
             `🕒 *Когда отправить пост?*\n\n` +
             `Для немедленной отправки:\n` +
             `сейчас\n\n` +
@@ -1875,14 +5447,14 @@ export async function onRequestPost(context) {
        */
       if (
         repliedBotText.startsWith(
-          'ADMIN_BROADCAST_SCHEDULE_PROMPT:'
+          'CHUMI-BROADCAST-SCHEDULE:'
         )
       ) {
         const draftId =
           repliedBotText
             .split('\n')[0]
             .replace(
-              'ADMIN_BROADCAST_SCHEDULE_PROMPT:',
+              'CHUMI-BROADCAST-SCHEDULE:',
               '',
             )
             .trim();
