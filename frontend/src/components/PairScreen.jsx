@@ -2143,7 +2143,17 @@ if (tab.key === 'game') {
       {pair.can_revive && hasPartner && showRevivePrompt && (
         <div className="sk-overlay" style={{ zIndex: 200 }}>
           <div className="sk-popup" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 64, textAlign: 'center', marginBottom: 12 }}>💀</div>
+            <img
+              src={`/pets/${petSrc?.idle || 'axolotl_idle'}_dead.png`}
+              alt={lang === 'ru' ? 'Питомец умер' : 'Pet has died'}
+              style={{
+                width: 180,
+                height: 180,
+                objectFit: 'contain',
+                display: 'block',
+                margin: '0 auto 12px',
+              }}
+            />
             <h3 style={{ textAlign: 'center', color: '#e53e3e' }}>
               {lang === 'ru' ? 'Питомец умер' : 'Your pet has died'}
             </h3>

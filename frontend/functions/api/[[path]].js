@@ -19,6 +19,49 @@ const TASK_POINTS = {
   pet_touch: 1,
 };
 
+const DEATH_STICKER_FILE_IDS = {
+  idle: 'CAACAgIAAxkBAAERkPlqXE_irAT4BXXq4Od5dNXT7vvrjQAC-qgAAikz4Uo70-N11x_ALT0E',
+  level_1: 'CAACAgIAAxkBAAERkPlqXE_irAT4BXXq4Od5dNXT7vvrjQAC-qgAAikz4Uo70-N11x_ALT0E',
+  level_2: 'CAACAgIAAxkBAAERkPtqXFAYESsW08t9K3hYxsj2caUBkgACu60AAhTA4Eo8GaDhcTINjz0E',
+  level_3: 'CAACAgIAAxkBAAERkP1qXFArikt9dNsrx0G895R7VhaWHgACgKMAAn_S4Eo2g1Kh5950mT0E',
+  level_4: 'CAACAgIAAxkBAAERkP9qXFA141QpqqdY0NF0b2HSUIRt7wAC9aAAAjdR4Epzqb4CT9GxAT0E',
+  level_5: 'CAACAgIAAxkBAAERkQFqXFBADdrrJbf8xLGjUwS64iTAMwACAq8AAvrf4EoNi95ZDS52Tz0E',
+  strawberry: 'CAACAgIAAxkBAAERkQNqXFBKXFbHbliYWErjeJbAGQp48gACK58AAmtj6EqWChGt5WzrGD0E',
+  bee: 'CAACAgIAAxkBAAERkQVqXFBVoykAATUtZc52CosqpBPtOB4AAmKoAAJF--BKToFDDUMV72k9BA',
+  floral: 'CAACAgIAAxkBAAERkQdqXFBi5PFKUJ3iPDbf5YOeFU-O6gACAqQAAgO24UowMds7NqVIID0E',
+  astronaut: 'CAACAgIAAxkBAAERkQlqXFBqt4fEh0TAAcWMZiR-mGjkOAACgqYAAtb24EqauuHhFsWioj0E',
+};
+
+function getDeathStickerFileId(pair) {
+  const activeSkin =
+    pair?.active_skin
+      ? String(pair.active_skin)
+      : null;
+
+  if (
+    activeSkin &&
+    DEATH_STICKER_FILE_IDS[activeSkin]
+  ) {
+    return DEATH_STICKER_FILE_IDS[
+      activeSkin
+    ];
+  }
+
+  const currentLevel =
+    Number(
+      getLevel(
+        pair?.growth_points || 0,
+      )?.level,
+    ) || 1;
+
+  return (
+    DEATH_STICKER_FILE_IDS[
+      `level_${currentLevel}`
+    ] ||
+    DEATH_STICKER_FILE_IDS.idle
+  );
+}
+
 async function isPremium(
   _supabase,
   userId
@@ -241,6 +284,69 @@ async function sendTelegramMessage(env, chatId, text, extra = {}) {
   } catch (e) {
     console.error('Telegram send error:', e);
     return { ok: false, error: String(e) };
+  }
+}
+
+async function sendTelegramSticker(
+  env,
+  chatId,
+  stickerFileId,
+) {
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${env.BOT_TOKEN}/sendSticker`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          sticker: stickerFileId,
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      let description = '';
+
+      try {
+        const data = await res.json();
+        description =
+          data.description || '';
+      } catch {}
+
+      const blocked =
+        res.status === 403 ||
+        /blocked|deactivated|chat not found/i.test(
+          description,
+        );
+
+      console.warn(
+        `Telegram sticker failed (chat ${chatId}, status ${res.status})` +
+        `${blocked ? ' [blocked]' : ''}: ${description}`,
+      );
+
+      return {
+        ok: false,
+        blocked,
+        status: res.status,
+        description,
+      };
+    }
+
+    return { ok: true };
+  } catch (e) {
+    console.error(
+      'Telegram sticker error:',
+      e,
+    );
+
+    return {
+      ok: false,
+      error: String(e),
+    };
   }
 }
 
@@ -4448,7 +4554,7 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       // ── Батч: тянем живые и мёртвые пары одним запросом каждую ──
       const { data: alivePairsRaw } = await supabase
         .from('pairs')
-        .select('code, last_streak_date, last_pair_streak_date, streak_days, is_dead, pet_name, timezone')
+        .select('code, last_streak_date, last_pair_streak_date, streak_days, growth_points, is_dead, pet_name, timezone, active_skin')
         .eq('is_dead', false);
       const { data: deadPairsRaw } = await supabase
         .from('pairs')
@@ -4548,8 +4654,45 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       // ── Выполняем убийства ──
       let killed = 0;
       for (const pair of toKill) {
-        await supabase.from('pairs').update({ is_dead: true }).eq('code', pair.code);
+        const {
+          data: killedPair,
+          error: killError,
+        } = await supabase
+          .from('pairs')
+          .update({
+            is_dead: true,
+          })
+          .eq('code', pair.code)
+          .eq('is_dead', false)
+          .select('code')
+          .maybeSingle();
+
+        if (killError) {
+          console.error(
+            'Failed to mark pet as dead:',
+            {
+              pairCode: pair.code,
+              error: killError,
+            },
+          );
+
+          continue;
+        }
+
+        /*
+         * Если cron запустился параллельно,
+         * уведомление отправляет только тот запуск,
+         * который действительно изменил is_dead
+         * с false на true.
+         */
+        if (!killedPair) {
+          continue;
+        }
+
         killed++;
+
+        const deathStickerFileId =
+          getDeathStickerFileId(pair);
 
         for (const uid of (membersByCode.get(pair.code) || [])) {
           const dLang = langByUser.get(String(uid)) || 'ru';
@@ -4559,6 +4702,13 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
             ? `💀 *${safePet}* умер... Серия (${pair.streak_days} дн.) под угрозой!\nЗайди в приложение и нажми «Воскресить», чтобы продолжить серию.\nОсталось воскрешений в этом месяце: до 5.`
             : `💀 *${safePet}* has died... Streak (${pair.streak_days} days) is at risk!\nOpen the app and tap "Revive" to continue.\nUp to 5 revivals per month available.`;
           const dBtnText = dLang === 'ru' ? '🐾 Открыть Chumi' : '🐾 Open Chumi';
+
+          await sendTelegramSticker(
+            env,
+            uid,
+            deathStickerFileId,
+          );
+
           await sendTelegramMessage(env, uid, text, {
             reply_markup: {
               inline_keyboard: [[{ text: dBtnText, web_app: { url: 'https://chumi.space' } }]],
