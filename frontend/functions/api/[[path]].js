@@ -1876,6 +1876,162 @@ export async function onRequest(context) {
       }
     }
 
+    // ── GET /api/app-settings ──
+    // Публично возвращает только безопасные настройки интерфейса.
+    if (
+      request.method === 'GET' &&
+      path === '/api/app-settings'
+    ) {
+      const {
+        data: announcementSetting,
+        error: announcementSettingError,
+      } = await supabase
+        .from('app_settings')
+        .select('enabled')
+        .eq(
+          'key',
+          'weekly_rating_announcement',
+        )
+        .maybeSingle();
+
+      if (announcementSettingError) {
+        console.error(
+          'App settings query failed:',
+          announcementSettingError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to load app settings',
+            weeklyRatingAnnouncementEnabled:
+              false,
+          },
+          500,
+          request,
+        );
+      }
+
+      return json(
+        {
+          weeklyRatingAnnouncementEnabled:
+            announcementSetting?.enabled === true,
+        },
+        200,
+        request,
+      );
+    }
+
+    // ── POST /api/admin/app-settings/weekly-rating-announcement ──
+    // Изменять глобальную настройку может только администратор.
+    if (
+      request.method === 'POST' &&
+      path ===
+        '/api/admin/app-settings/weekly-rating-announcement'
+    ) {
+      const adminUserId =
+        getAuthedUserId(
+          request,
+          env,
+        );
+
+      if (!adminUserId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request,
+        );
+      }
+
+      if (
+        !ADMIN_IDS.includes(
+          String(adminUserId),
+        )
+      ) {
+        return json(
+          { error: 'Forbidden' },
+          403,
+          request,
+        );
+      }
+
+      const body = await request
+        .json()
+        .catch(() => ({}));
+
+      if (
+        typeof body.enabled !==
+        'boolean'
+      ) {
+        return json(
+          {
+            error:
+              'enabled must be boolean',
+          },
+          400,
+          request,
+        );
+      }
+
+      const updatedAt =
+        new Date().toISOString();
+
+      const {
+        data: updatedSetting,
+        error: updateSettingError,
+      } = await supabase
+        .from('app_settings')
+        .upsert(
+          {
+            key:
+              'weekly_rating_announcement',
+            enabled:
+              body.enabled,
+            updated_at:
+              updatedAt,
+            updated_by:
+              String(adminUserId),
+          },
+          {
+            onConflict: 'key',
+          },
+        )
+        .select(
+          'enabled, updated_at, updated_by'
+        )
+        .single();
+
+      if (updateSettingError) {
+        console.error(
+          'App settings update failed:',
+          updateSettingError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to update app settings',
+          },
+          500,
+          request,
+        );
+      }
+
+      return json(
+        {
+          success: true,
+          weeklyRatingAnnouncementEnabled:
+            updatedSetting.enabled === true,
+          updatedAt:
+            updatedSetting.updated_at,
+          updatedBy:
+            updatedSetting.updated_by,
+        },
+        200,
+        request,
+      );
+    }
+
     // ── POST /api/admin-weekly-game-report ──
     if (
       request.method === 'POST' &&

@@ -173,6 +173,19 @@ export default function PairScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [
+    weeklyAnnouncementEnabled,
+    setWeeklyAnnouncementEnabled,
+  ] = useState(null);
+  const [
+    adminSettingsLoading,
+    setAdminSettingsLoading,
+  ] = useState(false);
+  const [
+    adminSettingsSaving,
+    setAdminSettingsSaving,
+  ] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState('');
   const [showLevels, setShowLevels] = useState(false);
@@ -518,6 +531,141 @@ useEffect(() => {
       }
     } catch (e) {}
   };
+
+  const loadAdminSettings = async () => {
+    if (
+      !isAdmin ||
+      adminSettingsLoading
+    ) {
+      return;
+    }
+
+    setAdminSettingsLoading(true);
+
+    try {
+      const response = await fetch(
+        `${API}/app-settings`,
+        {
+          headers:
+            authGetHeaders(),
+          cache: 'no-store',
+        },
+      );
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          `Failed to load settings: ${response.status}`,
+        );
+      }
+
+      setWeeklyAnnouncementEnabled(
+        data.weeklyRatingAnnouncementEnabled ===
+          true,
+      );
+    } catch (error) {
+      console.error(
+        'Failed to load admin settings:',
+        error,
+      );
+
+      setWeeklyAnnouncementEnabled(null);
+      haptic('error');
+    } finally {
+      setAdminSettingsLoading(false);
+    }
+  };
+
+  const handleWeeklyAnnouncementToggle =
+    async () => {
+      if (
+        !isAdmin ||
+        adminSettingsSaving ||
+        typeof weeklyAnnouncementEnabled !==
+          'boolean'
+      ) {
+        return;
+      }
+
+      const nextEnabled =
+        !weeklyAnnouncementEnabled;
+
+      setAdminSettingsSaving(true);
+
+      try {
+        const response = await fetch(
+          `${API}/admin/app-settings/weekly-rating-announcement`,
+          {
+            method: 'POST',
+            headers: {
+              ...authGetHeaders(),
+              'Content-Type':
+                'application/json',
+            },
+            body: JSON.stringify({
+              enabled:
+                nextEnabled,
+            }),
+          },
+        );
+
+        const data = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+            `Failed to update setting: ${response.status}`,
+          );
+        }
+
+        const enabled =
+          data.weeklyRatingAnnouncementEnabled ===
+            true;
+
+        setWeeklyAnnouncementEnabled(
+          enabled,
+        );
+
+        window.dispatchEvent(
+          new CustomEvent(
+            'chumi-weekly-rating-announcement-changed',
+            {
+              detail: {
+                enabled,
+              },
+            },
+          ),
+        );
+
+        haptic('success');
+      } catch (error) {
+        console.error(
+          'Failed to update announcement setting:',
+          error,
+        );
+
+        haptic('error');
+
+        const message =
+          lang === 'ru'
+            ? 'Не удалось изменить настройку. Попробуйте ещё раз.'
+            : 'Failed to update the setting. Please try again.';
+
+        if (tg?.showAlert) {
+          tg.showAlert(message);
+        } else {
+          alert(message);
+        }
+      } finally {
+        setAdminSettingsSaving(false);
+      }
+    };
 
 
 
@@ -2228,6 +2376,18 @@ if (tab.key === 'game') {
               ? (lang === 'ru' ? 'Светлая тема' : 'Light theme')
               : (lang === 'ru' ? 'Тёмная тема' : 'Dark theme')}
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setShowAdminPanel(true);
+                setShowMenu(false);
+                loadAdminSettings();
+              }}
+            >
+              <span className="lg-more-ico">🛠️</span>
+              {lang === 'ru' ? 'Админ-панель' : 'Admin panel'}
+            </button>
+          )}
           <button className="lg-more-danger" onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}>
             <span className="lg-more-ico"><IconTrash /></span>
             {lang === 'ru' ? 'Удалить пару' : 'Delete pair'}
@@ -2467,6 +2627,240 @@ if (tab.key === 'game') {
             ))}
           </div>
         </>
+      )}
+
+      {/* Admin panel */}
+      {isAdmin && showAdminPanel && (
+        <div
+          className="sk-overlay"
+          onClick={() => setShowAdminPanel(false)}
+        >
+          <div
+            className="sk-popup"
+            onClick={e => e.stopPropagation()}
+          >
+            <div
+              style={{
+                fontSize: 48,
+                textAlign: 'center',
+                marginBottom: 12,
+              }}
+            >
+              🛠️
+            </div>
+
+            <h3>
+              {lang === 'ru'
+                ? 'Админ-панель'
+                : 'Admin panel'}
+            </h3>
+
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 16,
+                background: isDark
+                  ? 'rgba(255,255,255,0.08)'
+                  : 'rgba(0,0,0,0.04)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                }}
+              >
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      color: isDark
+                        ? '#f2f2f5'
+                        : '#1a1a1a',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {lang === 'ru'
+                      ? 'Окно недельного розыгрыша'
+                      : 'Weekly giveaway popup'}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 5,
+                      color: isDark
+                        ? 'rgba(255,255,255,0.55)'
+                        : 'rgba(0,0,0,0.48)',
+                      fontSize: 12,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {lang === 'ru'
+                      ? 'Показывается пользователям при входе в приложение.'
+                      : 'Shown to users when they open the app.'}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={
+                    adminSettingsLoading ||
+                    adminSettingsSaving ||
+                    typeof weeklyAnnouncementEnabled !==
+                      'boolean'
+                  }
+                  onClick={
+                    handleWeeklyAnnouncementToggle
+                  }
+                  aria-label={
+                    weeklyAnnouncementEnabled
+                      ? 'Выключить уведомление'
+                      : 'Включить уведомление'
+                  }
+                  style={{
+                    position: 'relative',
+                    flexShrink: 0,
+                    width: 54,
+                    height: 32,
+                    padding: 0,
+                    border: 'none',
+                    borderRadius: 999,
+                    background:
+                      weeklyAnnouncementEnabled
+                        ? '#4CAF50'
+                        : isDark
+                          ? 'rgba(255,255,255,0.18)'
+                          : 'rgba(0,0,0,0.14)',
+                    cursor:
+                      adminSettingsLoading ||
+                      adminSettingsSaving ||
+                      typeof weeklyAnnouncementEnabled !==
+                        'boolean'
+                        ? 'default'
+                        : 'pointer',
+                    opacity:
+                      adminSettingsLoading ||
+                      adminSettingsSaving
+                        ? 0.6
+                        : 1,
+                    transition:
+                      'background 0.2s ease',
+                  }}
+                >
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 3,
+                      left:
+                        weeklyAnnouncementEnabled
+                          ? 25
+                          : 3,
+                      width: 26,
+                      height: 26,
+                      borderRadius: '50%',
+                      background: '#fff',
+                      boxShadow:
+                        '0 2px 6px rgba(0,0,0,0.2)',
+                      transition:
+                        'left 0.2s ease',
+                    }}
+                  />
+                </button>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 10,
+                  borderTop: isDark
+                    ? '1px solid rgba(255,255,255,0.08)'
+                    : '1px solid rgba(0,0,0,0.06)',
+                  color:
+                    weeklyAnnouncementEnabled
+                      ? '#4CAF50'
+                      : isDark
+                        ? 'rgba(255,255,255,0.55)'
+                        : '#777',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {adminSettingsLoading
+                  ? (
+                    lang === 'ru'
+                      ? 'Загружаем настройку...'
+                      : 'Loading setting...'
+                  )
+                  : adminSettingsSaving
+                    ? (
+                      lang === 'ru'
+                        ? 'Сохраняем...'
+                        : 'Saving...'
+                    )
+                    : typeof weeklyAnnouncementEnabled !==
+                        'boolean'
+                      ? (
+                        lang === 'ru'
+                          ? 'Не удалось загрузить настройку'
+                          : 'Failed to load setting'
+                      )
+                      : weeklyAnnouncementEnabled
+                        ? (
+                          lang === 'ru'
+                            ? '● Уведомление включено'
+                            : '● Notification enabled'
+                        )
+                        : (
+                          lang === 'ru'
+                            ? '○ Уведомление выключено'
+                            : '○ Notification disabled'
+                        )}
+              </div>
+
+              {(
+                !adminSettingsLoading &&
+                typeof weeklyAnnouncementEnabled !==
+                  'boolean'
+              ) && (
+                <button
+                  type="button"
+                  onClick={loadAdminSettings}
+                  style={{
+                    width: '100%',
+                    marginTop: 12,
+                    padding: '10px 14px',
+                    border: 'none',
+                    borderRadius: 12,
+                    color: '#fff',
+                    background: '#9B72CF',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {lang === 'ru'
+                    ? 'Повторить'
+                    : 'Retry'}
+                </button>
+              )}
+            </div>
+
+            <button
+              className="sk-popup-close"
+              onClick={() => setShowAdminPanel(false)}
+            >
+              {lang === 'ru' ? 'Закрыть' : 'Close'}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Delete confirm */}

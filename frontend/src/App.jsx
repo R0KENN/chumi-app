@@ -167,11 +167,119 @@ function FullScreenMessage({
   );
 }
 
+function WeeklyRatingAnnouncement({
+  onClose,
+}) {
+  return (
+    <div className="weekly-rating-overlay">
+      <section
+        className="weekly-rating-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="weekly-rating-title"
+        aria-describedby="weekly-rating-description"
+      >
+        <div
+          className="weekly-rating-icon"
+          aria-hidden="true"
+        >
+          🎁
+        </div>
+
+        <div className="weekly-rating-badge">
+          Недельный розыгрыш
+        </div>
+
+        <h2 id="weekly-rating-title">
+          Розыгрыш подарков начался!
+        </h2>
+
+        <p id="weekly-rating-description">
+          Попади в топ-10 недельного рейтинга в игре
+          и участвуй в розыгрыше подарков.
+        </p>
+
+        <button
+          type="button"
+          className="weekly-rating-button"
+          onClick={onClose}
+        >
+          Понятно, играю!
+        </button>
+      </section>
+    </div>
+  );
+}
+
 function AppContent() {
   const { pairs, loading } = usePairs();
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [
+    showWeeklyRatingAnnouncement,
+    setShowWeeklyRatingAnnouncement,
+  ] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAnnouncementSetting = async () => {
+      try {
+        const response = await fetch(
+          '/api/app-settings',
+          {
+            cache: 'no-store',
+          },
+        );
+
+        const data = await response
+          .json()
+          .catch(() => ({}));
+
+        if (
+          cancelled ||
+          !response.ok
+        ) {
+          return;
+        }
+
+        setShowWeeklyRatingAnnouncement(
+          data.weeklyRatingAnnouncementEnabled ===
+            true,
+        );
+      } catch (error) {
+        console.warn(
+          'Failed to load announcement setting:',
+          error,
+        );
+      }
+    };
+
+    const handleAnnouncementSettingChanged =
+      event => {
+        setShowWeeklyRatingAnnouncement(
+          event.detail?.enabled === true,
+        );
+      };
+
+    loadAnnouncementSetting();
+
+    window.addEventListener(
+      'chumi-weekly-rating-announcement-changed',
+      handleAnnouncementSettingChanged,
+    );
+
+    return () => {
+      cancelled = true;
+
+      window.removeEventListener(
+        'chumi-weekly-rating-announcement-changed',
+        handleAnnouncementSettingChanged,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (loading || !pairs || pairs.length === 0) {
@@ -198,12 +306,25 @@ function AppContent() {
   ]);
 
   return (
-    <Routes>
-      <Route path="/" element={<PairSelector />} />
-      <Route path="/pair/:pairId" element={<PairScreen />} />
-      <Route path="/game/:pairId" element={<JumpGame />} />
-      <Route path="*" element={<PairSelector />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<PairSelector />} />
+        <Route path="/pair/:pairId" element={<PairScreen />} />
+        <Route path="/game/:pairId" element={<JumpGame />} />
+        <Route path="*" element={<PairSelector />} />
+      </Routes>
+
+      {showWeeklyRatingAnnouncement && (
+        <WeeklyRatingAnnouncement
+          onClose={() => {
+            setShowWeeklyRatingAnnouncement(false);
+
+            window.Telegram?.WebApp?.HapticFeedback
+              ?.impactOccurred?.('light');
+          }}
+        />
+      )}
+    </>
   );
 }
 
