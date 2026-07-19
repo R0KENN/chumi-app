@@ -58,6 +58,14 @@ const clamp = (value, min, max) =>
 const random = (min, max) =>
   min + Math.random() * (max - min);
 
+function getLocalStorageItem(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 function wrappedDistance(from, to, width) {
   let distance = to - from;
 
@@ -791,25 +799,6 @@ function drawPlayer(ctx, game, image) {
   const scaleX = 1 + squash * 0.18;
   const scaleY = 1 - squash * 0.14;
 
-  const movementDirection = clamp(
-    player.vx / PHYSICS.maxSpeed,
-    -1,
-    1,
-  );
-
-  const jumpAmount = clamp(
-    Math.abs(player.vy) / Math.abs(PHYSICS.jump),
-    0,
-    1,
-  );
-
-  const targetRotation =
-    movementDirection *
-    (0.08 + jumpAmount * 0.16);
-
-  player.rotation +=
-    (targetRotation - player.rotation) * 0.14;
-
   ctx.save();
   ctx.translate(player.x, player.y);
   ctx.rotate(player.rotation);
@@ -895,6 +884,39 @@ function drawGame(ctx, game, image, dark) {
     image,
   );
 
+  const playerVisualRadius = 52;
+
+  if (
+    game.player.x - playerVisualRadius < 0
+  ) {
+    ctx.save();
+    ctx.translate(game.width, 0);
+
+    drawPlayer(
+      ctx,
+      game,
+      image,
+    );
+
+    ctx.restore();
+  }
+
+  if (
+    game.player.x + playerVisualRadius >
+    game.width
+  ) {
+    ctx.save();
+    ctx.translate(-game.width, 0);
+
+    drawPlayer(
+      ctx,
+      game,
+      image,
+    );
+
+    ctx.restore();
+  }
+
   ctx.restore();
 
   /*
@@ -926,6 +948,11 @@ export default function JumpGame() {
   const petImageRef = useRef(null);
   const gameSessionRef = useRef(null);
   const gameSessionLoadingRef = useRef(false);
+  const startLockRef = useRef(false);
+  const scoreSavingRef = useRef(false);
+  const pendingScoreRef = useRef(null);
+  const personalBestRef = useRef(0);
+  const pausedFromRef = useRef(null);
   const renderedScoreRef = useRef(-1);
   const leaderboardAbortRef = useRef(null);
 
@@ -966,6 +993,49 @@ export default function JumpGame() {
   const [personalRank, setPersonalRank] =
     useState(null);
 
+  const [saveStatus, setSaveStatus] =
+    useState('idle');
+
+  const [saveError, setSaveError] =
+    useState('');
+
+  const [canRetrySave, setCanRetrySave] =
+    useState(false);
+
+  useEffect(() => {
+    personalBestRef.current = personalBest;
+  }, [personalBest]);
+
+  const pauseForInterruption = useCallback(() => {
+    const game = gameRef.current;
+
+    if (
+      !game ||
+      (
+        game.state !== STATE.RUNNING &&
+        game.state !== STATE.COUNTDOWN
+      )
+    ) {
+      return;
+    }
+
+    pausedFromRef.current =
+      game.state === STATE.COUNTDOWN
+        ? STATE.COUNTDOWN
+        : STATE.RUNNING;
+
+    game.state = STATE.PAUSED;
+    game.accumulator = 0;
+    game.previousTime = 0;
+
+    game.pointer.active = false;
+    game.pointer.pointerId = null;
+    game.pointer.targetX = null;
+    game.player.vx = 0;
+
+    setScreen(STATE.PAUSED);
+  }, []);
+
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
 
@@ -974,15 +1044,14 @@ export default function JumpGame() {
     }
 
     const handleTelegramDeactivate = () => {
-      window.dispatchEvent(
-        new CustomEvent('chumi-game-deactivated'),
-      );
+      pauseForInterruption();
     };
 
     const handleTelegramActivate = () => {
-      window.dispatchEvent(
-        new CustomEvent('chumi-game-activated'),
-      );
+      /*
+       * Не продолжаем игру автоматически.
+       * Пользователь сам нажмёт кнопку продолжения.
+       */
     };
 
     try {
@@ -1045,15 +1114,6 @@ export default function JumpGame() {
       );
 
       try {
-        tg.enableVerticalSwipes?.();
-      } catch (error) {
-        console.warn(
-          'Telegram enableVerticalSwipes failed:',
-          error,
-        );
-      }
-
-      try {
         tg.unlockOrientation?.();
       } catch (error) {
         console.warn(
@@ -1061,33 +1121,19 @@ export default function JumpGame() {
           error,
         );
       }
-
-      try {
-        tg.exitFullscreen?.();
-      } catch (error) {
-        console.warn(
-          'Telegram exitFullscreen failed:',
-          error,
-        );
-      }
     };
-  }, []);
+  }, [pauseForInterruption]);
 
   const petName = searchParams.get('pet') || '';
 
   const userId = String(
     window.Telegram?.WebApp?.initDataUnsafe?.user?.id ||
-    localStorage.getItem('chumi_test_uid') ||
+    getLocalStorageItem('chumi_test_uid') ||
     'guest',
   );
 
-  const dark = (() => {
-    try {
-      return localStorage.getItem('chumi_theme') === 'night';
-    } catch {
-      return false;
-    }
-  })();
+  const dark =
+    getLocalStorageItem('chumi_theme') === 'night';
 
   const t = lang === 'ru'
     ? {
@@ -1114,6 +1160,11 @@ export default function JumpGame() {
         emptyLeaderboard: 'Пока никто не установил рекорд',
         close: 'Закрыть',
         player: 'Игрок',
+        savingScore: 'Сохраняем результат...',
+        scoreSaved: 'Результат сохранён',
+        scoreSaveError: 'Не удалось сохранить результат',
+        retrySave: 'Повторить сохранение',
+        waitForSaving: 'Подожди, пока сохранится предыдущий результат.',
       }
     : {
         title: 'Chumi Jump',
@@ -1139,6 +1190,11 @@ export default function JumpGame() {
         emptyLeaderboard: 'No records yet',
         close: 'Close',
         player: 'Player',
+        savingScore: 'Saving result...',
+        scoreSaved: 'Result saved',
+        scoreSaveError: 'Failed to save result',
+        retrySave: 'Retry saving',
+        waitForSaving: 'Wait until the previous result is saved.',
       };
 
   const authHeaders = useCallback(() => {
@@ -1341,6 +1397,126 @@ export default function JumpGame() {
     }
   }, []);
 
+  const submitScore = useCallback(async submission => {
+    if (
+      !submission ||
+      scoreSavingRef.current
+    ) {
+      return false;
+    }
+
+    scoreSavingRef.current = true;
+    setSaveStatus('saving');
+    setSaveError('');
+    setCanRetrySave(false);
+
+    try {
+      const response = await fetch('/api/game-score', {
+        method: 'POST',
+        headers: authHeaders(),
+        keepalive: true,
+        body: JSON.stringify({
+          userId,
+          pairCode: submission.pairCode,
+          sessionId: submission.sessionId,
+          score: submission.score,
+        }),
+      });
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          'Failed to save game score',
+        );
+      }
+
+      if (
+        pendingScoreRef.current?.sessionId !==
+        submission.sessionId
+      ) {
+        return true;
+      }
+
+      pendingScoreRef.current = null;
+      setSaveStatus('saved');
+      setSaveError('');
+      setCanRetrySave(false);
+
+      if (
+        typeof data.isPersonalRecord === 'boolean'
+      ) {
+        setIsNewRecord(
+          data.isPersonalRecord,
+        );
+
+        if (data.isPersonalRecord) {
+          haptic('success');
+        }
+      }
+
+      if (
+        typeof data.personalBest === 'number'
+      ) {
+        personalBestRef.current =
+          data.personalBest;
+
+        setPersonalBest(
+          data.personalBest,
+        );
+      }
+
+      if (
+        typeof data.rank === 'number'
+      ) {
+        setPersonalRank(
+          data.rank,
+        );
+      }
+
+      return true;
+    } catch (error) {
+      console.error(
+        'Game score saving failed:',
+        error,
+      );
+
+      if (
+        pendingScoreRef.current?.sessionId ===
+        submission.sessionId
+      ) {
+        setSaveStatus('error');
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to save game score',
+        );
+
+        setCanRetrySave(true);
+      }
+
+      return false;
+    } finally {
+      scoreSavingRef.current = false;
+    }
+  }, [
+    authHeaders,
+    haptic,
+    userId,
+  ]);
+
+  const retryScoreSave = useCallback(() => {
+    const submission =
+      pendingScoreRef.current;
+
+    if (submission) {
+      submitScore(submission);
+    }
+  }, [submitScore]);
+
   const finishGame = useCallback((finalScore) => {
     const game = gameRef.current;
 
@@ -1352,122 +1528,69 @@ export default function JumpGame() {
     }
 
     game.state = STATE.OVER;
-
-    /*
-     * Почти незаметное короткое колебание.
-     * Если тряска вообще не нужна — поставь 0.
-     */
     game.shake = 1.4;
-
-    /*
-     * После смерти не делаем полноэкранную вспышку.
-     */
     game.flash = 0;
 
-    /*
-     * Отключаем управление, чтобы сохранённый pointer
-     * не влиял на следующий запуск.
-     */
-      game.pointer.active = false;
-      game.pointer.pointerId = null;
-      game.pointer.targetX = null;
-      game.player.vx = 0;
+    game.pointer.active = false;
+    game.pointer.pointerId = null;
+    game.pointer.targetX = null;
+    game.player.vx = 0;
+
+    pausedFromRef.current = null;
 
     setScreen(STATE.OVER);
     setScore(finalScore);
 
-    /*
-     * Локальная предварительная оценка нового личного рекорда
-     * (до ответа сервера). Точный результат придёт из RPC
-     * в поле isPersonalRecord ниже.
-     */
     const localRecord =
-      finalScore > personalBest &&
+      finalScore > personalBestRef.current &&
       finalScore > 0;
 
     setIsNewRecord(localRecord);
-
     haptic('error');
-
-    if (!pairId || finalScore <= 0) return;
 
     const sessionId =
       gameSessionRef.current;
 
     gameSessionRef.current = null;
 
+    if (
+      !pairId ||
+      finalScore <= 0
+    ) {
+      pendingScoreRef.current = null;
+      setSaveStatus('idle');
+      setSaveError('');
+      setCanRetrySave(false);
+      return;
+    }
+
     if (!sessionId) {
       console.error(
         'Score was not saved: game session is missing'
       );
 
+      setSaveStatus('error');
+      setSaveError(
+        'Game session is missing',
+      );
+      setCanRetrySave(false);
+
       return;
     }
 
-    fetch('/api/game-score', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        userId,
-        pairCode: pairId,
-        sessionId,
-        score: finalScore,
-      }),
-    })
-      .then(async response => {
-        const data = await response
-          .json()
-          .catch(() => ({}));
+    const submission = {
+      pairCode: pairId,
+      sessionId,
+      score: finalScore,
+    };
 
-        if (!response.ok) {
-          throw new Error(
-            data.error ||
-            'Failed to save game score',
-          );
-        }
-
-        return data;
-      })
-      .then(data => {
-        if (
-          typeof data.isPersonalRecord === 'boolean'
-        ) {
-          setIsNewRecord(
-            data.isPersonalRecord,
-          );
-
-          if (data.isPersonalRecord) {
-            haptic('success');
-          }
-        }
-
-        if (
-          typeof data.personalBest === 'number'
-        ) {
-          setPersonalBest(
-            data.personalBest,
-          );
-        }
-
-        if (
-          typeof data.rank === 'number'
-        ) {
-          setPersonalRank(
-            data.rank,
-          );
-        }
-      })
-      .catch(error => {
-        console.error(
-          'Game score saving failed:',
-          error,
-        );
-      });
+    pendingScoreRef.current = submission;
+    setCanRetrySave(false);
+    submitScore(submission);
   }, [
-    authHeaders,
     haptic,
     pairId,
-    userId,
+    submitScore,
   ]);
 
   useEffect(() => {
@@ -1711,21 +1834,10 @@ export default function JumpGame() {
     };
 
     const visibilityChange = () => {
-      const game = gameRef.current;
-
       if (
-        document.visibilityState === 'hidden' &&
-        game?.state === STATE.RUNNING
+        document.visibilityState === 'hidden'
       ) {
-        game.state = STATE.PAUSED;
-        game.accumulator = 0;
-
-        game.pointer.active = false;
-        game.pointer.pointerId = null;
-        game.pointer.targetX = null;
-        game.player.vx = 0;
-
-        setScreen(STATE.PAUSED);
+        pauseForInterruption();
       }
     };
 
@@ -1750,6 +1862,29 @@ export default function JumpGame() {
         0,
         player.squash - dt * 4.8,
       );
+
+      const movementDirection = clamp(
+        player.vx / PHYSICS.maxSpeed,
+        -1,
+        1,
+      );
+
+      const jumpAmount = clamp(
+        Math.abs(player.vy) / Math.abs(PHYSICS.jump),
+        0,
+        1,
+      );
+
+      const targetRotation =
+        movementDirection *
+        (0.08 + jumpAmount * 0.16);
+
+      const rotationSmoothing =
+        1 - Math.exp(-9 * dt);
+
+      player.rotation +=
+        (targetRotation - player.rotation) *
+        rotationSmoothing;
 
       /*
        * Продолжительный полёт на ракете.
@@ -2438,7 +2573,12 @@ export default function JumpGame() {
         visibilityChange,
       );
     };
-  }, [dark, finishGame, haptic]);
+  }, [
+    dark,
+    finishGame,
+    haptic,
+    pauseForInterruption,
+  ]);
 
   useEffect(() => {
     if (screen !== STATE.COUNTDOWN) {
@@ -2498,10 +2638,25 @@ export default function JumpGame() {
   }, [navigate, pairId]);
 
   const startGame = useCallback(async () => {
-    if (gameStarting) {
+    if (
+      startLockRef.current ||
+      gameStarting
+    ) {
       return;
     }
 
+    if (
+      scoreSavingRef.current ||
+      pendingScoreRef.current
+    ) {
+      window.Telegram?.WebApp?.showAlert?.(
+        t.waitForSaving,
+      );
+
+      return;
+    }
+
+    startLockRef.current = true;
     setGameStarting(true);
 
     try {
@@ -2535,13 +2690,24 @@ export default function JumpGame() {
         ),
       );
 
-      gameRef.current = makeGame(
+      const nextGame = makeGame(
         width,
         height,
       );
 
+      nextGame.state = STATE.COUNTDOWN;
+      nextGame.accumulator = 0;
+      nextGame.previousTime = 0;
+
+      gameRef.current = nextGame;
+
+      pausedFromRef.current = null;
+      pendingScoreRef.current = null;
       renderedScoreRef.current = 0;
 
+      setSaveStatus('idle');
+      setSaveError('');
+      setCanRetrySave(false);
       setScore(0);
       setIsNewRecord(false);
       setCountdown(3);
@@ -2554,12 +2720,15 @@ export default function JumpGame() {
         error,
       );
 
+      gameSessionRef.current = null;
+
       window.Telegram?.WebApp?.showAlert?.(
         lang === 'ru'
           ? 'Не удалось начать игру. Попробуй ещё раз.'
           : 'Failed to start the game. Please try again.',
       );
     } finally {
+      startLockRef.current = false;
       setGameStarting(false);
     }
   }, [
@@ -2567,6 +2736,7 @@ export default function JumpGame() {
     gameStarting,
     haptic,
     lang,
+    t.waitForSaving,
   ]);
 
   const pauseGame = () => {
@@ -2576,19 +2746,8 @@ export default function JumpGame() {
       return;
     }
 
-    game.state = STATE.PAUSED;
-    game.accumulator = 0;
-
-    /*
-     * После паузы пользователь должен
-     * заново приложить палец к экрану.
-     */
-    game.pointer.active = false;
-    game.pointer.pointerId = null;
-    game.pointer.targetX = null;
-    game.player.vx = 0;
-
-    setScreen(STATE.PAUSED);
+    pausedFromRef.current = STATE.RUNNING;
+    pauseForInterruption();
     haptic('light');
   };
 
@@ -2599,11 +2758,23 @@ export default function JumpGame() {
       return;
     }
 
-    game.state = STATE.RUNNING;
+    const pausedFrom =
+      pausedFromRef.current;
+
+    pausedFromRef.current = null;
     game.accumulator = 0;
     game.previousTime = performance.now();
 
-    setScreen(STATE.RUNNING);
+    if (pausedFrom === STATE.COUNTDOWN) {
+      game.state = STATE.COUNTDOWN;
+
+      setCountdown(3);
+      setScreen(STATE.COUNTDOWN);
+    } else {
+      game.state = STATE.RUNNING;
+      setScreen(STATE.RUNNING);
+    }
+
     haptic('light');
   };
 
@@ -2936,14 +3107,55 @@ export default function JumpGame() {
               <strong>🏆 {personalBest}</strong>
             </div>
 
+            {saveStatus === 'saving' && (
+              <div className="jump-game-save-status">
+                {t.savingScore}
+              </div>
+            )}
+
+            {saveStatus === 'saved' && (
+              <div className="jump-game-save-status">
+                ✅ {t.scoreSaved}
+              </div>
+            )}
+
+            {saveStatus === 'error' && (
+              <div className="jump-game-save-status jump-game-save-status-error">
+                <span>
+                  ⚠️ {t.scoreSaveError}
+                </span>
+
+                {saveError && (
+                  <small>
+                    {saveError}
+                  </small>
+                )}
+
+                {canRetrySave && (
+                  <button
+                    className="jump-game-secondary-button"
+                    onClick={retryScoreSave}
+                  >
+                    ↻ {t.retrySave}
+                  </button>
+                )}
+              </div>
+            )}
+
             <button
               className="jump-game-primary-button"
               onClick={startGame}
-              disabled={gameStarting}
+              disabled={
+                gameStarting ||
+                saveStatus === 'saving' ||
+                saveStatus === 'error'
+              }
             >
               {gameStarting
                 ? t.loading
-                : `↻ ${t.again}`}
+                : saveStatus === 'saving'
+                  ? t.savingScore
+                  : `↻ ${t.again}`}
             </button>
 
             <button
