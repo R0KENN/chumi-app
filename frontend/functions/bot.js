@@ -1017,6 +1017,8 @@ async function selectWeeklyTelegramGift(
   );
 }
 
+// Старая версия выдачи сохранена для обработки устаревших данных.
+// eslint-disable-next-line no-unused-vars
 async function processWeeklyTelegramGifts(
   env,
   supabase,
@@ -1773,7 +1775,7 @@ async function sendWeeklyRewardSummaryV2(
       'weekly_game_rewards',
     )
     .select(
-      'position, user_id, display_name, username, best_score, gift_id, gift_star_count, status'
+      'position, user_id, display_name, username, best_score, gift_id, gift_star_count, status, delivery_method'
     )
     .eq(
       'week_start',
@@ -1817,11 +1819,21 @@ async function sendWeeklyRewardSummaryV2(
             ? `🎁 ${reward.gift_star_count || 0} ⭐`
             : '🎁 не выбран';
 
+        const deliveryText =
+          reward.status === 'sent'
+            ? (
+                reward.delivery_method ===
+                'manual'
+                  ? 'вручную'
+                  : 'автоматически'
+              )
+            : reward.status;
+
         return (
           `${getRewardPlaceLabel(reward.position)} — ${name}\n` +
           `ID: \`${reward.user_id}\` · ` +
           `${reward.best_score} очков · ` +
-          `${giftText} · ${escapeMd(reward.status)}`
+          `${giftText} · ${escapeMd(deliveryText)}`
         );
       },
     );
@@ -1883,9 +1895,18 @@ async function sendWeeklyRewardSummaryV2(
     keyboard.push([
       {
         text:
-          '⭐ Баланс и пополнение',
+          '⭐ Проверить баланс',
         callback_data:
           'admin_stars_balance',
+      },
+    ]);
+
+    keyboard.push([
+      {
+        text:
+          '👤 Ручная выдача',
+        callback_data:
+          `admin_reward_manual_${weekKey}`,
       },
     ]);
 
@@ -1914,7 +1935,16 @@ async function sendWeeklyRewardSummaryV2(
     keyboard.push([
       {
         text:
-          '⭐ Баланс и пополнение',
+          '👤 Ручная выдача',
+        callback_data:
+          `admin_reward_manual_${weekKey}`,
+      },
+    ]);
+
+    keyboard.push([
+      {
+        text:
+          '⭐ Проверить баланс',
         callback_data:
           'admin_stars_balance',
       },
@@ -2741,6 +2771,12 @@ async function processWeeklyGiftsV2(
         .update({
           status:
             'sent',
+          delivery_method:
+            'automatic',
+          manual_sent_by:
+            null,
+          manual_sent_at:
+            null,
           sent_at:
             sentAt,
           updated_at:
@@ -2877,6 +2913,573 @@ async function processWeeklyGiftsV2(
             {
               text:
                 '📋 Открыть награды',
+              callback_data:
+                `admin_reward_open_${rewardWeekToKey(weekStart)}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+function getManualRewardProfileUrl(
+  reward,
+) {
+  const username =
+    String(
+      reward?.username ||
+      '',
+    )
+      .replace(
+        /^@/,
+        '',
+      )
+      .trim();
+
+  if (
+    /^[a-zA-Z0-9_]{5,32}$/.test(
+      username,
+    )
+  ) {
+    return (
+      `https://t.me/${username}`
+    );
+  }
+
+  return (
+    `tg://user?id=${encodeURIComponent(
+      String(
+        reward?.user_id ||
+        '',
+      ),
+    )}`
+  );
+}
+
+async function sendManualRewardsPanel(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+) {
+  const {
+    data: batch,
+    error: batchError,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'week_start, status, winner_count'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  if (
+    batchError ||
+    !batch
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Награждение этой недели не найдено.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const {
+    data: rewards,
+    error: rewardsError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'id, position, user_id, display_name, username, best_score, gift_id, gift_star_count, status, delivery_method'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .order(
+      'position',
+      {
+        ascending: true,
+      },
+    );
+
+  if (rewardsError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось загрузить награды:\n` +
+        `${escapeMd(rewardsError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const weekKey =
+    rewardWeekToKey(
+      weekStart,
+    );
+
+  const lines = [];
+  const keyboard = [];
+
+  for (const reward of (
+    rewards || []
+  )) {
+    const name =
+      escapeMd(
+        reward.display_name ||
+        'Игрок',
+      );
+
+    let statusText;
+
+    if (
+      reward.status === 'sent'
+    ) {
+      statusText =
+        reward.delivery_method ===
+          'manual'
+          ? '✅ выдан вручную'
+          : '✅ выдан автоматически';
+    } else if (
+      reward.status === 'unknown'
+    ) {
+      statusText =
+        '❓ неизвестный результат — сначала проверьте профиль';
+    } else if (
+      reward.gift_id
+    ) {
+      statusText =
+        '⏳ ожидает ручной выдачи';
+    } else {
+      statusText =
+        '⚠️ подарок не выбран';
+    }
+
+    lines.push(
+      `${getRewardPlaceLabel(reward.position)} — ${name}\n` +
+      `ID: \`${reward.user_id}\`\n` +
+      (
+        reward.username
+          ? `Username: @${escapeMd(reward.username)}\n`
+          : ''
+      ) +
+      (
+        reward.gift_id
+          ? (
+              `Подарок: \`${escapeMd(reward.gift_id)}\` · ` +
+              `${reward.gift_star_count || 0} ⭐\n`
+            )
+          : ''
+      ) +
+      `Статус: ${statusText}`,
+    );
+
+    if (
+      reward.status !== 'sent' &&
+      reward.gift_id
+    ) {
+      keyboard.push([
+        {
+          text:
+            `👤 Открыть профиль · ${reward.position} место`,
+          url:
+            getManualRewardProfileUrl(
+              reward,
+            ),
+        },
+        {
+          text:
+            '✅ Уже отправил',
+          callback_data:
+            `admin_reward_manual_mark_${weekKey}_${reward.position}`,
+        },
+      ]);
+    }
+  }
+
+  keyboard.push([
+    {
+      text:
+        '🔄 Обновить',
+      callback_data:
+        `admin_reward_manual_${weekKey}`,
+    },
+  ]);
+
+  keyboard.push([
+    {
+      text:
+        '📋 К наградам',
+      callback_data:
+        `admin_reward_open_${weekKey}`,
+    },
+  ]);
+
+  await sendMessage(
+    env,
+    chatId,
+    `👤 *Ручная выдача подарков*\n\n` +
+      `📅 Неделя: \`${weekStart}\`\n\n` +
+      `1. Откройте профиль победителя.\n` +
+      `2. Отправьте выбранный подарок со своего аккаунта.\n` +
+      `3. Вернитесь и нажмите «Уже отправил».\n\n` +
+      `Бот не может проверить ручную отправку, поэтому внимательно сверяйте получателя и подарок.\n\n` +
+      `${lines.join('\n\n') || 'Наград нет.'}`,
+    {
+      reply_markup: {
+        inline_keyboard:
+          keyboard,
+      },
+    },
+  );
+}
+
+async function sendManualRewardConfirmation(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  position,
+) {
+  const {
+    data: reward,
+    error,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      'position, user_id, display_name, username, gift_id, gift_star_count, status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'position',
+      position,
+    )
+    .maybeSingle();
+
+  if (
+    error ||
+    !reward
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Награда не найдена.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const weekKey =
+    rewardWeekToKey(
+      weekStart,
+    );
+
+  if (
+    reward.status === 'sent'
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      'ℹ️ Эта награда уже отмечена как отправленная.',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '👤 К ручной выдаче',
+                callback_data:
+                  `admin_reward_manual_${weekKey}`,
+              },
+            ],
+          ],
+        },
+      },
+    );
+
+    return;
+  }
+
+  if (!reward.gift_id) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Для этого места сначала нужно выбрать подарок.',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '📋 К наградам',
+                callback_data:
+                  `admin_reward_open_${weekKey}`,
+              },
+            ],
+          ],
+        },
+      },
+    );
+
+    return;
+  }
+
+  const warningText =
+    reward.status === 'unknown'
+      ? (
+          `\n\n⚠️ У автоматической отправки был неизвестный результат. ` +
+          `Перед подтверждением убедитесь, что подарок не был выдан дважды.`
+        )
+      : '';
+
+  await sendMessage(
+    env,
+    chatId,
+    `✅ *Подтверждение ручной выдачи*\n\n` +
+      `Место: *${position}*\n` +
+      `Получатель: *${escapeMd(reward.display_name || 'Игрок')}*\n` +
+      (
+        reward.username
+          ? `Username: @${escapeMd(reward.username)}\n`
+          : ''
+      ) +
+      `Telegram ID: \`${reward.user_id}\`\n` +
+      `Подарок: \`${escapeMd(reward.gift_id)}\`\n` +
+      `Стоимость: *${reward.gift_star_count || 0} ⭐*\n\n` +
+      `Подтвердите только после фактической отправки подарка со своего аккаунта.` +
+      warningText,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '✅ Подтверждаю отправку',
+              callback_data:
+                `admin_reward_manual_confirm_${weekKey}_${position}`,
+            },
+          ],
+          [
+            {
+              text:
+                '👤 Открыть профиль',
+              url:
+                getManualRewardProfileUrl(
+                  reward,
+                ),
+            },
+          ],
+          [
+            {
+              text:
+                '⬅️ Назад',
+              callback_data:
+                `admin_reward_manual_${weekKey}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function markManualRewardAsSent(
+  env,
+  supabase,
+  chatId,
+  adminUserId,
+  weekStart,
+  position,
+) {
+  const sentAt =
+    new Date().toISOString();
+
+  const {
+    data: updatedReward,
+    error: updateError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .update({
+      status:
+        'sent',
+      delivery_method:
+        'manual',
+      manual_sent_by:
+        String(
+          adminUserId,
+        ),
+      manual_sent_at:
+        sentAt,
+      sent_at:
+        sentAt,
+      updated_at:
+        sentAt,
+      last_error:
+        null,
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'position',
+      position,
+    )
+    .neq(
+      'status',
+      'sent',
+    )
+    .not(
+      'gift_id',
+      'is',
+      null,
+    )
+    .select(
+      'position, user_id, display_name, gift_id'
+    )
+    .maybeSingle();
+
+  if (updateError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось сохранить ручную выдачу:\n` +
+        `${escapeMd(updateError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (!updatedReward) {
+    await sendMessage(
+      env,
+      chatId,
+      'ℹ️ Награда уже была отмечена отправленной или подарок не выбран.',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '👤 К ручной выдаче',
+                callback_data:
+                  `admin_reward_manual_${rewardWeekToKey(weekStart)}`,
+              },
+            ],
+          ],
+        },
+      },
+    );
+
+    return;
+  }
+
+  const {
+    count: remainingCount,
+    error: countError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      '*',
+      {
+        count: 'exact',
+        head: true,
+      },
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .neq(
+      'status',
+      'sent',
+    );
+
+  if (countError) {
+    console.error(
+      'Manual rewards remaining count failed:',
+      countError,
+    );
+  }
+
+  if (
+    !countError &&
+    Number(
+      remainingCount,
+    ) === 0
+  ) {
+    await supabase
+      .from(
+        'weekly_game_reward_batches',
+      )
+      .update({
+        status:
+          'completed',
+        completed_at:
+          sentAt,
+        updated_at:
+          sentAt,
+      })
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .in(
+        'status',
+        [
+          'draft',
+          'partial',
+        ],
+      );
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    `✅ *Ручная выдача сохранена*\n\n` +
+      `Место: *${position}*\n` +
+      `Получатель: *${escapeMd(updatedReward.display_name || 'Игрок')}*\n` +
+      `Подарок: \`${escapeMd(updatedReward.gift_id)}\`\n` +
+      `Осталось выдать: *${countError ? 'не удалось определить' : remainingCount}*`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '👤 Продолжить ручную выдачу',
+              callback_data:
+                `admin_reward_manual_${rewardWeekToKey(weekStart)}`,
+            },
+          ],
+          [
+            {
+              text:
+                '📋 К наградам',
               callback_data:
                 `admin_reward_open_${rewardWeekToKey(weekStart)}`,
             },
@@ -4052,12 +4655,24 @@ export async function onRequestPost(context) {
             return new Response('OK');
           }
 
-          await processWeeklyTelegramGifts(
+          await sendMessage(
             env,
-            supabase,
             cbChatId,
-            weekStart,
-            false,
+            'ℹ️ Эта кнопка относится к старой версии награждения. Откройте актуальный список наград.',
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        '🎁 Открыть актуальные награды',
+                      callback_data:
+                        `admin_reward_open_${rewardWeekToKey(weekStart)}`,
+                    },
+                  ],
+                ],
+              },
+            },
           );
 
           return new Response('OK');
@@ -4085,12 +4700,24 @@ export async function onRequestPost(context) {
             return new Response('OK');
           }
 
-          await processWeeklyTelegramGifts(
+          await sendMessage(
             env,
-            supabase,
             cbChatId,
-            weekStart,
-            true,
+            'ℹ️ Эта кнопка относится к старой версии награждения. Откройте актуальный список наград.',
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text:
+                        '🎁 Открыть актуальные награды',
+                      callback_data:
+                        `admin_reward_open_${rewardWeekToKey(weekStart)}`,
+                    },
+                  ],
+                ],
+              },
+            },
           );
 
           return new Response('OK');
@@ -4573,6 +5200,129 @@ export async function onRequestPost(context) {
             cbChatId,
             weekStart,
             true,
+          );
+
+          return new Response('OK');
+        }
+
+        const manualRewardsMatch =
+          cbData.match(
+            /^admin_reward_manual_(\d{8})$/,
+          );
+
+        if (manualRewardsMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              manualRewardsMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendManualRewardsPanel(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+          );
+
+          return new Response('OK');
+        }
+
+        const manualRewardMarkMatch =
+          cbData.match(
+            /^admin_reward_manual_mark_(\d{8})_(\d{1,2})$/,
+          );
+
+        if (manualRewardMarkMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              manualRewardMarkMatch[1],
+            );
+
+          const position =
+            Number(
+              manualRewardMarkMatch[2],
+            );
+
+          if (
+            !weekStart ||
+            !Number.isInteger(
+              position,
+            ) ||
+            position < 1 ||
+            position > 10
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректные параметры награды.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await sendManualRewardConfirmation(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            position,
+          );
+
+          return new Response('OK');
+        }
+
+        const manualRewardConfirmMatch =
+          cbData.match(
+            /^admin_reward_manual_confirm_(\d{8})_(\d{1,2})$/,
+          );
+
+        if (manualRewardConfirmMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              manualRewardConfirmMatch[1],
+            );
+
+          const position =
+            Number(
+              manualRewardConfirmMatch[2],
+            );
+
+          if (
+            !weekStart ||
+            !Number.isInteger(
+              position,
+            ) ||
+            position < 1 ||
+            position > 10
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректные параметры награды.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await markManualRewardAsSent(
+            env,
+            supabase,
+            cbChatId,
+            cbUserId,
+            weekStart,
+            position,
           );
 
           return new Response('OK');
