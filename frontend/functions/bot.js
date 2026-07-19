@@ -165,6 +165,10 @@ const ADMIN_COMMANDS = [
     command: 'admin',
     description: '🛠 Панель администратора',
   },
+  {
+    command: 'activeusers',
+    description: '🟢 Активные пользователи за 48 часов',
+  },
 ];
 
 async function setBotCommands(env) {
@@ -283,6 +287,125 @@ async function syncTelegramProfile(
   }
 }
 
+async function refreshTelegramProfiles(
+  env,
+  supabase,
+  userIds,
+) {
+  const uniqueUserIds = [
+    ...new Set(
+      (userIds || [])
+        .filter(Boolean)
+        .map(userId => String(userId)),
+    ),
+  ];
+
+  const profiles = new Map();
+  const batchSize = 5;
+
+  for (
+    let index = 0;
+    index < uniqueUserIds.length;
+    index += batchSize
+  ) {
+    const batch =
+      uniqueUserIds.slice(
+        index,
+        index + batchSize,
+      );
+
+    await Promise.all(
+      batch.map(async userId => {
+        try {
+          const response = await fetch(
+            `https://api.telegram.org/bot${env.BOT_TOKEN}/getChat?chat_id=${encodeURIComponent(userId)}`,
+          );
+
+          const data = await response
+            .json()
+            .catch(() => ({}));
+
+          if (
+            !response.ok ||
+            data.ok === false ||
+            !data.result
+          ) {
+            console.warn(
+              'Failed to refresh Telegram profile:',
+              {
+                userId,
+                status: response.status,
+                description:
+                  data.description || '',
+              },
+            );
+
+            return;
+          }
+
+          const telegramUser = {
+            id: data.result.id,
+            first_name:
+              data.result.first_name ||
+              'User',
+            last_name:
+              data.result.last_name ||
+              null,
+            username:
+              data.result.username ||
+              null,
+          };
+
+          await syncTelegramProfile(
+            supabase,
+            telegramUser,
+          );
+
+          const displayName =
+            [
+              telegramUser.first_name,
+              telegramUser.last_name,
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, 100) ||
+            'User';
+
+          profiles.set(
+            userId,
+            {
+              display_name:
+                displayName,
+              username:
+                telegramUser.username
+                  ? String(
+                      telegramUser.username,
+                    ).slice(0, 100)
+                  : null,
+            },
+          );
+        } catch (error) {
+          console.warn(
+            'Telegram profile refresh failed:',
+            {
+              userId,
+              error:
+                String(
+                  error?.message ||
+                  error,
+                ),
+            },
+          );
+        }
+      }),
+    );
+  }
+
+  return profiles;
+}
+
 
 // ─── Определить язык из Telegram при первом запуске ───
 function detectLangFromTelegram(from) {
@@ -391,6 +514,12 @@ function adminMenuButtons() {
           {
             text: '👥 Пользователи',
             callback_data: 'admin_users',
+          },
+        ],
+        [
+          {
+            text: '🟢 Активные за 48 часов',
+            callback_data: 'admin_active_users',
           },
         ],
         [
@@ -700,6 +829,8 @@ export async function onRequestPost(context) {
         const adminCommandMap = {
           admin_stats: '/stats',
           admin_users: '/users',
+          admin_active_users:
+            '/activeusers',
           admin_summary: '/summary',
           admin_setcommands:
             '/setcommands',
@@ -1691,49 +1822,438 @@ if (startParam.startsWith('ref_')) {
         return new Response('OK');
       }
 
-      // Подтягиваем имена/username из pair_users (у кого они есть)
+      /*
+       * Перед формированием списка запрашиваем
+       * актуальные имена и username через Telegram.
+       * Одновременно обновляются pair_users
+       * и jump_game_scores.
+       */
+      const freshProfiles =
+        await refreshTelegramProfiles(
+          env,
+          supabase,
+          list.map(
+            item =>
+              item.telegram_user_id,
+          ),
+        );
+
+      // Подтягиваем сохранённые имена/username из pair_users.
       const { data: named } = await supabase
         .from('pair_users')
         .select('user_id, display_name, username');
 
       const nameMap = new Map();
       for (const n of (named || [])) {
-        if (!nameMap.has(n.user_id)) {
-          nameMap.set(n.user_id, {
-            display_name: n.display_name || null,
-            username: n.username || null,
-          });
+        const normalizedUserId =
+          String(n.user_id);
+
+        if (!nameMap.has(normalizedUserId)) {
+          nameMap.set(
+            normalizedUserId,
+            {
+              display_name:
+                n.display_name || null,
+              username:
+                n.username || null,
+            },
+          );
         }
       }
 
-      // Формируем строки
+      // Формируем строки.
       const lines = list.map((u, i) => {
-        const info = nameMap.get(u.telegram_user_id) || {};
-        const name = info.display_name ? escapeMd(info.display_name) : '—';
-        const uname = info.username ? '@' + escapeMd(info.username) : 'no username';
+        const normalizedUserId =
+          String(
+            u.telegram_user_id,
+          );
+
+        const info =
+          freshProfiles.get(
+            normalizedUserId,
+          ) ||
+          nameMap.get(
+            normalizedUserId,
+          ) ||
+          {};
+
+        const name =
+          info.display_name
+            ? escapeMd(
+                info.display_name,
+              )
+            : '—';
+
+        const uname =
+          info.username
+            ? '@' +
+              escapeMd(
+                info.username,
+              )
+            : 'no username';
+
         const date = u.created_at
-          ? new Date(u.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
+          ? new Date(
+              u.created_at,
+            ).toLocaleDateString(
+              'ru-RU',
+              {
+                day: '2-digit',
+                month: '2-digit',
+                year: '2-digit',
+              },
+            )
           : '—';
-        return `${i + 1}. ${name} (${uname}) \`${u.telegram_user_id}\` [${u.lang || '—'}] ${date}`;
+
+        return (
+          `${i + 1}. ${name} (${uname}) ` +
+          `\`${normalizedUserId}\` ` +
+          `[${u.lang || '—'}] ${date}`
+        );
       });
 
-      // Разбиваем на части по ~3500 символов, чтобы влезть в лимит Telegram
-      const header = `👥 *Всего пользователей: ${list.length}*\n\n`;
+      // Разбиваем на части по ~3500 символов, чтобы влезть в лимит Telegram.
+      const header =
+        `👥 *Всего пользователей: ${list.length}*\n\n`;
+
       let chunk = header;
       const chunks = [];
+
       for (const line of lines) {
-        if ((chunk + line + '\n').length > 3500) {
+        if (
+          (
+            chunk +
+            line +
+            '\n'
+          ).length > 3500
+        ) {
           chunks.push(chunk);
           chunk = '';
         }
+
         chunk += line + '\n';
       }
-      if (chunk.trim()) chunks.push(chunk);
 
-      // Отправляем по частям
-      for (const part of chunks) {
-        await sendMessage(env, chatId, part);
+      if (chunk.trim()) {
+        chunks.push(chunk);
       }
+
+      // Отправляем по частям.
+      for (const part of chunks) {
+        await sendMessage(
+          env,
+          chatId,
+          part,
+        );
+      }
+
+      return new Response('OK');
+    }
+
+    // /activeusers — активные пользователи за последние 48 часов
+    if (text === '/activeusers') {
+      if (!ADMIN_IDS.includes(userId)) {
+        return new Response('OK');
+      }
+
+      const activeSince =
+        new Date(
+          Date.now() -
+          48 * 60 * 60 * 1000,
+        ).toISOString();
+
+      /*
+       * Получаем все действия постранично,
+       * поскольку Supabase обычно возвращает
+       * не более 1000 строк за один запрос.
+       */
+      const activeByUser = new Map();
+      const pageSize = 1000;
+      let pageOffset = 0;
+
+      while (true) {
+        const {
+          data: activityRows,
+          error: activityError,
+        } = await supabase
+          .from('daily_tasks')
+          .select(
+            'user_id, completed_at'
+          )
+          .gte(
+            'completed_at',
+            activeSince,
+          )
+          .order(
+            'completed_at',
+            {
+              ascending: false,
+            },
+          )
+          .range(
+            pageOffset,
+            pageOffset +
+            pageSize - 1,
+          );
+
+        if (activityError) {
+          console.error(
+            'Failed to load active users:',
+            activityError,
+          );
+
+          await sendMessage(
+            env,
+            chatId,
+            `❌ Не удалось загрузить активных пользователей:\n` +
+            `\`${escapeMd(activityError.message || 'Unknown error')}\``,
+          );
+
+          return new Response('OK');
+        }
+
+        const currentPage =
+          activityRows || [];
+
+        for (const activity of currentPage) {
+          const activeUserId =
+            String(activity.user_id);
+
+          /*
+           * Строки идут от новых к старым,
+           * поэтому первая запись пользователя
+           * является его последней активностью.
+           */
+          if (
+            !activeByUser.has(
+              activeUserId,
+            )
+          ) {
+            activeByUser.set(
+              activeUserId,
+              activity.completed_at,
+            );
+          }
+        }
+
+        if (
+          currentPage.length <
+          pageSize
+        ) {
+          break;
+        }
+
+        pageOffset += pageSize;
+      }
+
+      const activeUsers =
+        [...activeByUser.entries()]
+          .map(
+            ([
+              activeUserId,
+              lastActivity,
+            ]) => ({
+              userId:
+                activeUserId,
+              lastActivity,
+            }),
+          )
+          .sort(
+            (
+              firstUser,
+              secondUser,
+            ) =>
+              new Date(
+                secondUser.lastActivity,
+              ).getTime() -
+              new Date(
+                firstUser.lastActivity,
+              ).getTime(),
+          );
+
+      if (activeUsers.length === 0) {
+        await sendMessage(
+          env,
+          chatId,
+          '🟢 За последние 48 часов активных пользователей нет.',
+        );
+
+        return new Response('OK');
+      }
+
+      /*
+       * Обновляем имена и username через Telegram.
+       * Эти же данные записываются в pair_users
+       * и jump_game_scores.
+       */
+      const freshProfiles =
+        await refreshTelegramProfiles(
+          env,
+          supabase,
+          activeUsers.map(
+            item => item.userId,
+          ),
+        );
+
+      const {
+        data: savedProfiles,
+      } = await supabase
+        .from('pair_users')
+        .select(
+          'user_id, display_name, username'
+        );
+
+      const savedProfileMap =
+        new Map();
+
+      for (const profile of (
+        savedProfiles || []
+      )) {
+        const profileUserId =
+          String(profile.user_id);
+
+        if (
+          !savedProfileMap.has(
+            profileUserId,
+          )
+        ) {
+          savedProfileMap.set(
+            profileUserId,
+            {
+              display_name:
+                profile.display_name ||
+                null,
+              username:
+                profile.username ||
+                null,
+            },
+          );
+        }
+      }
+
+      const {
+        data: settings,
+      } = await supabase
+        .from('user_settings')
+        .select(
+          'telegram_user_id, lang'
+        );
+
+      const languageMap =
+        new Map();
+
+      for (const setting of (
+        settings || []
+      )) {
+        languageMap.set(
+          String(
+            setting.telegram_user_id,
+          ),
+          setting.lang || '—',
+        );
+      }
+
+      const lines =
+        activeUsers.map(
+          (
+            activeUser,
+            index,
+          ) => {
+            const profile =
+              freshProfiles.get(
+                activeUser.userId,
+              ) ||
+              savedProfileMap.get(
+                activeUser.userId,
+              ) ||
+              {};
+
+            const displayName =
+              profile.display_name
+                ? escapeMd(
+                    profile.display_name,
+                  )
+                : '—';
+
+            const usernameText =
+              profile.username
+                ? '@' +
+                  escapeMd(
+                    profile.username,
+                  )
+                : 'no username';
+
+            const activityDate =
+              activeUser.lastActivity
+                ? new Date(
+                    activeUser.lastActivity,
+                  ).toLocaleString(
+                    'ru-RU',
+                    {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    },
+                  )
+                : '—';
+
+            const userLanguage =
+              languageMap.get(
+                activeUser.userId,
+              ) || '—';
+
+            return (
+              `${index + 1}. ${displayName} ` +
+              `(${usernameText})\n` +
+              `   ID: \`${activeUser.userId}\` ` +
+              `[${userLanguage}]\n` +
+              `   Активность: ${activityDate}`
+            );
+          },
+        );
+
+      const chunks = [];
+      let chunk =
+        `🟢 *Активные пользователи за 48 часов: ` +
+        `${activeUsers.length}*\n\n`;
+
+      for (const line of lines) {
+        const nextLine =
+          line + '\n\n';
+
+        if (
+          (
+            chunk +
+            nextLine
+          ).length > 3500
+        ) {
+          chunks.push(
+            chunk.trimEnd(),
+          );
+
+          chunk =
+            `🟢 *Продолжение списка активных пользователей*\n\n`;
+        }
+
+        chunk += nextLine;
+      }
+
+      if (chunk.trim()) {
+        chunks.push(
+          chunk.trimEnd(),
+        );
+      }
+
+      for (const part of chunks) {
+        await sendMessage(
+          env,
+          chatId,
+          part,
+        );
+      }
+
       return new Response('OK');
     }
 

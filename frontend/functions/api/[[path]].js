@@ -1322,6 +1322,77 @@ function validateInitData(
   }
 }
 
+async function syncAuthenticatedTelegramProfile(
+  supabase,
+  telegramUser,
+) {
+  if (!telegramUser?.id) {
+    return;
+  }
+
+  const userId =
+    String(telegramUser.id);
+
+  const displayName =
+    [
+      telegramUser.first_name,
+      telegramUser.last_name,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100) ||
+    'User';
+
+  const username =
+    telegramUser.username
+      ? String(
+          telegramUser.username,
+        ).slice(0, 100)
+      : null;
+
+  const {
+    error: pairUsersError,
+  } = await supabase
+    .from('pair_users')
+    .update({
+      display_name:
+        displayName,
+      username,
+    })
+    .eq('user_id', userId);
+
+  if (pairUsersError) {
+    console.error(
+      'Failed to sync Mini App profile in pair_users:',
+      pairUsersError,
+    );
+  }
+
+  /*
+   * updated_at не меняем: поле используется
+   * для порядка при одинаковых результатах.
+   */
+  const {
+    error: gameScoresError,
+  } = await supabase
+    .from('jump_game_scores')
+    .update({
+      display_name:
+        displayName,
+      username,
+    })
+    .eq('user_id', userId);
+
+  if (gameScoresError) {
+    console.error(
+      'Failed to sync Mini App profile in jump_game_scores:',
+      gameScoresError,
+    );
+  }
+}
+
 // Разрешаем dev-обход авторизации ТОЛЬКО когда запрос реально с localhost.
 // Это страхует от случайно выставленной ALLOW_DEV_AUTH=1 в продакшене.
 function isLocalDev(request, env) {
@@ -1588,6 +1659,32 @@ export async function onRequest(context) {
     const url = new URL(request.url);
     const path = url.pathname;
     const supabase = getSupabase(env);
+
+    /*
+     * Telegram не отправляет отдельное событие
+     * при изменении имени или username.
+     * Поэтому подхватываем актуальный профиль
+     * из подписанного initData при запросах Mini App.
+     */
+    const initDataForProfile =
+      request.headers.get(
+        'X-Telegram-Init-Data',
+      );
+
+    if (initDataForProfile) {
+      const authenticatedProfile =
+        validateInitData(
+          initDataForProfile,
+          env.BOT_TOKEN,
+        );
+
+      if (authenticatedProfile?.user) {
+        await syncAuthenticatedTelegramProfile(
+          supabase,
+          authenticatedProfile.user,
+        );
+      }
+    }
 
     // ── POST /api/admin-weekly-game-report ──
     if (
