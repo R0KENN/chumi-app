@@ -2742,15 +2742,44 @@ async function processWeeklyGiftsV2(
       continue;
     }
 
+    const telegramUserId =
+      Number(
+        recipient.user_id,
+      );
+
+    if (
+      !Number.isSafeInteger(
+        telegramUserId,
+      ) ||
+      telegramUserId <= 0
+    ) {
+      await supabase
+        .from(
+          'weekly_game_rewards',
+        )
+        .update({
+          status:
+            'failed',
+          last_error:
+            'Invalid Telegram user ID',
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          'id',
+          recipient.id,
+        );
+
+      continue;
+    }
+
     const delivery =
       await callTelegramBotApi(
         env,
         'sendGift',
         {
           user_id:
-            String(
-              recipient.user_id,
-            ),
+            telegramUserId,
           gift_id:
             String(
               recipient.gift_id,
@@ -2855,24 +2884,31 @@ async function processWeeklyGiftsV2(
     sentCount ===
       finalRewards.length;
 
+  const batchUpdate = {
+    status:
+      completed
+        ? 'completed'
+        : 'partial',
+    updated_at:
+      new Date().toISOString(),
+    completed_at:
+      completed
+        ? new Date().toISOString()
+        : null,
+  };
+
+  if (!retryFailed) {
+    batchUpdate.total_star_cost =
+      totalCost;
+  }
+
   await supabase
     .from(
       'weekly_game_reward_batches',
     )
-    .update({
-      status:
-        completed
-          ? 'completed'
-          : 'partial',
-      total_star_cost:
-        totalCost,
-      updated_at:
-        new Date().toISOString(),
-      completed_at:
-        completed
-          ? new Date().toISOString()
-          : null,
-    })
+    .update(
+      batchUpdate,
+    )
     .eq(
       'week_start',
       weekStart,
@@ -3686,10 +3722,24 @@ function parseBroadcastSchedule(input) {
       `${year}-${month}-${day}T${hour}:${minute}:00+03:00`,
     );
 
-  if (
-    !Number.isFinite(
+  const normalizedMoscowDate =
+    Number.isFinite(
       date.getTime(),
     )
+      ? new Date(
+          date.getTime() +
+          3 * 60 * 60 * 1000,
+        )
+          .toISOString()
+          .slice(0, 16)
+      : null;
+
+  const expectedMoscowDate =
+    `${year}-${month}-${day}T${hour}:${minute}`;
+
+  if (
+    normalizedMoscowDate !==
+    expectedMoscowDate
   ) {
     return {
       scheduledAt: null,
@@ -6179,18 +6229,28 @@ export async function onRequestPost(context) {
         return new Response('OK');
       }
 
-            // ── Sanity-check: payload должен относиться к этому же userId ──
-      if (payload.userId && String(payload.userId) !== userId) {
-        console.error('Payment payload userId mismatch:', payload.userId, 'vs', userId);
-        return new Response('OK');
-      }
-
-      // ── Единое чтение полей payload (поддержка короткого формата t/s/u/r
-      // и длинного type/skinId/userId/recipientId) ──
+      // ── Единое чтение полей payload (поддержка короткого формата t/s/u/r/p
+      // и длинного type/skinId/userId/recipientId/productId) ──
       const pType = payload.type || payload.t || null;          // 'skin' | 'skin_gift' | undefined
       const pSkinId = payload.skinId || payload.s || null;
+      const pUserId = payload.userId || payload.u || null;
       const pRecipientId = payload.recipientId || payload.r || null;
-      const pProductId = payload.productId || null;             // 'extra_slot' | 'premium_monthly'
+      const pProductId = payload.productId || payload.p || null; // 'extra_slot' | 'premium_monthly'
+
+      // ── Sanity-check: payload должен относиться к этому же userId ──
+      if (
+        pUserId !== null &&
+        String(pUserId) !== userId
+      ) {
+        console.error(
+          'Payment payload userId mismatch:',
+          pUserId,
+          'vs',
+          userId,
+        );
+
+        return new Response('OK');
+      }
 
       // ── Sanity-check: проверяем что заплатили правильную сумму ──
       // productKey определяется ОДИН раз и используется и для проверки суммы,
@@ -6205,8 +6265,23 @@ export async function onRequestPost(context) {
       // Как и в pre_checkout: неизвестный продукт (expected === undefined)
       // считаем невалидным и товар не выдаём — иначе сумма не проверяется вообще.
       const expected = expectedAmount(productKey, pSkinId);
-      if (!Number.isFinite(expected) || payment.total_amount !== expected) {
-        console.error(`Payment amount mismatch: got ${payment.total_amount}, expected ${expected}`);
+
+      if (
+        payment.currency !== 'XTR' ||
+        !Number.isFinite(expected) ||
+        payment.total_amount !== expected
+      ) {
+        console.error(
+          'Payment validation failed:',
+          {
+            currency: payment.currency,
+            totalAmount: payment.total_amount,
+            expected,
+            productKey,
+            skinId: pSkinId,
+          },
+        );
+
         return new Response('OK');
       }
 
@@ -6329,22 +6404,70 @@ export async function onRequestPost(context) {
           return new Response('OK');
         }
 
-        const { data: existing } = await supabase
-          .from('user_slots')
-          .select('extra_slots')
-          .eq('telegram_user_id', userId)
-          .maybeSingle();
-        if (existing) {
-          await supabase
-            .from('user_slots')
-            .update({ extra_slots: (existing.extra_slots || 0) + 1 })
-            .eq('telegram_user_id', userId);
-        } else {
-          await supabase
-            .from('user_slots')
-            .insert({ telegram_user_id: userId, extra_slots: 1 });
+        const {
+          data: updatedExtraSlots,
+          error: slotGrantError,
+        } = await supabase.rpc(
+          'increment_user_slots',
+          {
+            p_telegram_user_id:
+              userId,
+            p_amount:
+              1,
+          },
+        );
+
+        const normalizedExtraSlots =
+          Number(
+            updatedExtraSlots,
+          );
+
+        if (
+          slotGrantError ||
+          !Number.isInteger(
+            normalizedExtraSlots,
+          ) ||
+          normalizedExtraSlots < 1
+        ) {
+          console.error(
+            'Paid slot fulfillment failed:',
+            {
+              userId,
+              chargeId,
+              updatedExtraSlots,
+              error:
+                slotGrantError,
+            },
+          );
+
+          await notifyAdmins(
+            env,
+            `⚠️ *Оплаченный слот не выдан*\n\n` +
+              `Требуется ручная проверка и выдача!\n\n` +
+              `Пользователь ID: \`${userId}\`\n` +
+              `Сумма: ⭐ ${payment.total_amount} Stars\n` +
+              `Charge: \`${chargeId || '—'}\`\n` +
+              `Ошибка: ${escapeMd(slotGrantError?.message || 'RPC returned invalid result')}`,
+          );
+
+          await sendMessage(
+            env,
+            update.message.chat.id,
+            lang === 'ru'
+              ? `⚠️ Оплата прошла, но слот пока не был добавлен.\n\nОбратись в поддержку: @ROKENN`
+              : `⚠️ The payment succeeded, but the slot hasn't been added yet.\n\nPlease contact support: @ROKENN`,
+            webAppButton,
+          );
+
+          return new Response('OK');
         }
-        await sendMessage(env, update.message.chat.id, T[lang].slotBought, webAppButton);
+
+        await sendMessage(
+          env,
+          update.message.chat.id,
+          T[lang].slotBought,
+          webAppButton,
+        );
 
         // Уведомление админу
         const slotBuyer = update.message.from.first_name || 'User';
@@ -6772,7 +6895,56 @@ if (startParam.startsWith('ref_')) {
         const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', joinCode);
         if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
         if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
-        await supabase.from('pair_users').insert({ pair_code: joinCode, user_id: userId, display_name: firstName, username, timezone: null });
+        const {
+          error: joinError,
+        } = await supabase
+          .from('pair_users')
+          .insert({
+            pair_code: joinCode,
+            user_id: userId,
+            display_name: firstName,
+            username,
+            timezone: null,
+          });
+
+        if (joinError) {
+          console.error(
+            'Failed to join pair from start parameter:',
+            {
+              userId,
+              joinCode,
+              error: joinError,
+            },
+          );
+
+          if (joinError.code === '23505') {
+            await sendMessage(
+              env,
+              chatId,
+              T[lang].alreadyInPair,
+              webAppButton,
+            );
+          } else if (joinError.code === '23514') {
+            await sendMessage(
+              env,
+              chatId,
+              T[lang].pairFull,
+              webAppButton,
+            );
+          } else {
+            await sendMessage(
+              env,
+              chatId,
+              lang === 'ru'
+                ? '❌ Не удалось вступить в пару. Попробуй позже.'
+                : '❌ Failed to join the pair. Please try again later.',
+              webAppButton,
+            );
+          }
+
+          return new Response('OK');
+        }
+
         // ── Засчитываем pending-реферал, если он есть ──
         const { data: pending } = await supabase
           .from('pending_referrals')
@@ -7080,8 +7252,57 @@ if (startParam.startsWith('ref_')) {
       const { data: members } = await supabase.from('pair_users').select('user_id').eq('pair_code', code);
       if (members?.some(m => m.user_id === userId)) { await sendMessage(env, chatId, T[lang].alreadyInPair, webAppButton); return new Response('OK'); }
       if (members && members.length >= 2) { await sendMessage(env, chatId, T[lang].pairFull); return new Response('OK'); }
-      await supabase.from('pair_users').insert({ pair_code: code, user_id: userId, display_name: firstName, username, timezone: null });
-            // ── Засчитываем pending-реферал, если он есть ──
+      const {
+        error: joinError,
+      } = await supabase
+        .from('pair_users')
+        .insert({
+          pair_code: code,
+          user_id: userId,
+          display_name: firstName,
+          username,
+          timezone: null,
+        });
+
+      if (joinError) {
+        console.error(
+          'Failed to join pair:',
+          {
+            userId,
+            code,
+            error: joinError,
+          },
+        );
+
+        if (joinError.code === '23505') {
+          await sendMessage(
+            env,
+            chatId,
+            T[lang].alreadyInPair,
+            webAppButton,
+          );
+        } else if (joinError.code === '23514') {
+          await sendMessage(
+            env,
+            chatId,
+            T[lang].pairFull,
+            webAppButton,
+          );
+        } else {
+          await sendMessage(
+            env,
+            chatId,
+            lang === 'ru'
+              ? '❌ Не удалось вступить в пару. Попробуй позже.'
+              : '❌ Failed to join the pair. Please try again later.',
+            webAppButton,
+          );
+        }
+
+        return new Response('OK');
+      }
+
+      // ── Засчитываем pending-реферал, если он есть ──
       const { data: pending } = await supabase
         .from('pending_referrals')
         .select('inviter_user_id')
@@ -7763,33 +7984,53 @@ if (startParam.startsWith('ref_')) {
         return new Response('OK');
       }
 
-      // Прибавляем один слот: если запись есть — инкремент, иначе создаём
-      const { data: existing } = await supabase
-        .from('user_slots')
-        .select('extra_slots')
-        .eq('telegram_user_id', targetId)
-        .maybeSingle();
+      // Атомарно прибавляем один дополнительный слот.
+      const {
+        data: updatedExtraSlots,
+        error: slotGrantError,
+      } = await supabase.rpc(
+        'increment_user_slots',
+        {
+          p_telegram_user_id:
+            targetId,
+          p_amount:
+            1,
+        },
+      );
 
-      let newTotal;
-      if (existing) {
-        newTotal = (existing.extra_slots || 0) + 1;
-        const { error: updErr } = await supabase
-          .from('user_slots')
-          .update({ extra_slots: newTotal })
-          .eq('telegram_user_id', targetId);
-        if (updErr) {
-          await sendMessage(env, chatId, `❌ Ошибка: \`${updErr.message}\``);
-          return new Response('OK');
-        }
-      } else {
-        newTotal = 1;
-        const { error: insErr } = await supabase
-          .from('user_slots')
-          .insert({ telegram_user_id: targetId, extra_slots: 1 });
-        if (insErr) {
-          await sendMessage(env, chatId, `❌ Ошибка: \`${insErr.message}\``);
-          return new Response('OK');
-        }
+      const newTotal =
+        Number(
+          updatedExtraSlots,
+        );
+
+      if (
+        slotGrantError ||
+        !Number.isInteger(
+          newTotal,
+        ) ||
+        newTotal < 1
+      ) {
+        console.error(
+          'Manual slot grant failed:',
+          {
+            adminUserId:
+              userId,
+            targetId,
+            updatedExtraSlots,
+            error:
+              slotGrantError,
+          },
+        );
+
+        await sendMessage(
+          env,
+          chatId,
+          `❌ Не удалось выдать слот:\n` +
+            `\`${escapeMd(slotGrantError?.message || 'RPC returned invalid result')}\``,
+          adminMenuButtons(),
+        );
+
+        return new Response('OK');
       }
 
       // Уведомляем получателя на его языке
@@ -7798,15 +8039,35 @@ if (startParam.startsWith('ref_')) {
         ? `🎁 Тебе подарили дополнительный слот для пары!\n\nТеперь у тебя на 1 пару больше. Открой Chumi и создай новую пару 🐾`
         : `🎁 You've been gifted an extra pair slot!\n\nYou can now create one more pair. Open Chumi and start a new one 🐾`;
 
-      try {
-        await sendMessage(env, targetId, notifyText, webAppButton);
-      } catch (e) {
-        await sendMessage(env, chatId, `⚠️ Слот выдан, но не удалось отправить уведомление: \`${e.message}\``);
+      const notificationResult =
+        await sendMessage(
+          env,
+          targetId,
+          notifyText,
+          webAppButton,
+        );
+
+      if (!notificationResult.ok) {
+        await sendMessage(
+          env,
+          chatId,
+          `⚠️ Слот выдан, но уведомление пользователю отправить не удалось.\n\n` +
+            `Пользователь: \`${targetId}\`\n` +
+            `Всего доп. слотов: *${newTotal}*\n` +
+            `Ошибка: ${escapeMd(notificationResult.description || notificationResult.error || 'Unknown Telegram error')}`,
+          adminMenuButtons(),
+        );
+
         return new Response('OK');
       }
 
-      await sendMessage(env, chatId,
-        `✅ Дополнительный слот выдан пользователю \`${targetId}\`.\nВсего доп. слотов у него теперь: *${newTotal}*.`);
+      await sendMessage(
+        env,
+        chatId,
+        `✅ Дополнительный слот выдан пользователю \`${targetId}\`.\n` +
+          `Всего доп. слотов у него теперь: *${newTotal}*.`,
+        adminMenuButtons(),
+      );
       return new Response('OK');
     }
 
