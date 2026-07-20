@@ -7,7 +7,10 @@ import {
   useNavigate,
 } from 'react-router-dom';
 
-import { LangProvider } from './context/LangContext';
+import {
+  LangProvider,
+  useLang,
+} from './context/LangContext';
 import { PairsProvider, usePairs } from './context/PairsContext';
 
 import PairSelector from './components/PairSelector';
@@ -170,6 +173,13 @@ function FullScreenMessage({
 function WeeklyRatingAnnouncement({
   onClose,
 }) {
+  const {
+    lang,
+  } = useLang();
+
+  const isRussian =
+    lang === 'ru';
+
   return (
     <div className="weekly-rating-overlay">
       <section
@@ -183,20 +193,37 @@ function WeeklyRatingAnnouncement({
           className="weekly-rating-icon"
           aria-hidden="true"
         >
-          🎁
+          🏆
         </div>
 
         <div className="weekly-rating-badge">
-          Недельный розыгрыш
+          {isRussian
+            ? 'Еженедельные награды'
+            : 'Weekly rewards'}
         </div>
 
         <h2 id="weekly-rating-title">
-          Розыгрыш подарков начался!
+          {isRussian
+            ? 'Подарки лучшим игрокам!'
+            : 'Gifts for the top players!'}
         </h2>
 
         <p id="weekly-rating-description">
-          Попади в топ-10 недельного рейтинга в игре
-          и участвуй в розыгрыше подарков.
+          {isRussian
+            ? (
+              <>
+                Играй в Chumi Jump и попади в топ-10
+                недельного рейтинга. После подведения
+                итогов лучшие игроки получат подарки.
+              </>
+            )
+            : (
+              <>
+                Play Chumi Jump and finish in the weekly
+                top 10. After the results are finalized,
+                the best players will receive gifts.
+              </>
+            )}
         </p>
 
         <button
@@ -204,7 +231,9 @@ function WeeklyRatingAnnouncement({
           className="weekly-rating-button"
           onClick={onClose}
         >
-          Понятно, играю!
+          {isRussian
+            ? 'Вперёд в топ-10!'
+            : 'Go for the top 10!'}
         </button>
       </section>
     </div>

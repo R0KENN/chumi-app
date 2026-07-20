@@ -2689,8 +2689,8 @@ if (tab.key === 'game') {
                     }}
                   >
                     {lang === 'ru'
-                      ? 'Окно недельного розыгрыша'
-                      : 'Weekly giveaway popup'}
+                      ? 'Окно недельных наград'
+                      : 'Weekly rewards popup'}
                   </div>
 
                   <div
@@ -3421,7 +3421,7 @@ calendarData.days.forEach(d => {
                 cursor: diaryText.trim() && diaryCanCreate ? 'pointer' : 'default',
               }}
             >
-              {diarySaving ? '...' : (lang === 'ru' ? 'Сохранить навсегда' : 'Save permanently')}
+              {diarySaving ? '...' : (lang === 'ru' ? 'Записать' : 'Write')}
             </button>
           </div>
         </div>
