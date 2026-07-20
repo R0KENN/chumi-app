@@ -1,5 +1,6 @@
 import {
   createHmac,
+  randomInt,
   timingSafeEqual,
 } from 'node:crypto';
 import { LEVELS, getLevel } from '../_levels.js';
@@ -18,6 +19,9 @@ const TASK_POINTS = {
   send_media: 4,
   pet_touch: 1,
 };
+
+const JUMP_GAME_RULES_VERSION = 2;
+const JUMP_GAME_CLIENT_VERSION = 'jump-2';
 
 const DEATH_STICKER_FILE_IDS = {
   egg: 'CAACAgIAAxkBAAERkSNqXF8oMQdvSDAzuH40k4Zhv9jNtgACVpsAAu8b6EpIcX6Y4NlIwD0E',
@@ -229,6 +233,142 @@ function getUtcWeekStart(date = new Date()) {
     .slice(0, 10);
 }
 
+function getUtcWeekEnd(
+  weekStart = getUtcWeekStart(),
+) {
+  const weekEnd =
+    new Date(
+      `${weekStart}T00:00:00.000Z`,
+    );
+
+  weekEnd.setUTCDate(
+    weekEnd.getUTCDate() + 7,
+  );
+
+  return weekEnd.toISOString();
+}
+
+async function getWeeklyScoreRank(
+  supabase,
+  userId,
+  weekStart,
+  bestScore,
+  bestScoreAchievedAt,
+) {
+  if (
+    !Number.isInteger(bestScore) ||
+    bestScore <= 0 ||
+    !bestScoreAchievedAt
+  ) {
+    return null;
+  }
+
+  const [
+    higherResult,
+    earlierEqualResult,
+    stableEqualResult,
+  ] = await Promise.all([
+    supabase
+      .from('jump_game_scores')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      })
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .gt(
+        'best_score',
+        bestScore,
+      ),
+
+    supabase
+      .from('jump_game_scores')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      })
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .eq(
+        'best_score',
+        bestScore,
+      )
+      .lt(
+        'best_score_achieved_at',
+        bestScoreAchievedAt,
+      ),
+
+    supabase
+      .from('jump_game_scores')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      })
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .eq(
+        'best_score',
+        bestScore,
+      )
+      .eq(
+        'best_score_achieved_at',
+        bestScoreAchievedAt,
+      )
+      .lt(
+        'user_id',
+        String(userId),
+      ),
+  ]);
+
+  const rankError =
+    higherResult.error ||
+    earlierEqualResult.error ||
+    stableEqualResult.error;
+
+  if (rankError) {
+    throw rankError;
+  }
+
+  return (
+    Number(
+      higherResult.count,
+    ) +
+    Number(
+      earlierEqualResult.count,
+    ) +
+    Number(
+      stableEqualResult.count,
+    ) +
+    1
+  );
+}
+
+function isPlainObject(value) {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value)
+  );
+}
+
+function getJsonByteLength(value) {
+  try {
+    return new TextEncoder()
+      .encode(
+        JSON.stringify(value),
+      )
+      .byteLength;
+  } catch {
+    return Infinity;
+  }
+}
+
 const ALLOWED_ORIGINS = [
   'https://chumi.space',
   'https://www.chumi.space',
@@ -245,7 +385,8 @@ function corsHeaders(request) {
   return {
     'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,X-Telegram-Init-Data',
+    'Access-Control-Allow-Headers':
+      'Content-Type,X-Telegram-Init-Data,X-Dev-User-Id',
     'Vary': 'Origin',
   };
 }
@@ -1546,8 +1687,9 @@ async function syncAuthenticatedTelegramProfile(
   }
 
   /*
-   * updated_at не меняем: поле используется
-   * для порядка при одинаковых результатах.
+   * updated_at не меняем без необходимости.
+   * Время достижения рекорда хранится отдельно
+   * в best_score_achieved_at.
    */
   const {
     error: gameScoresError,
@@ -1674,6 +1816,1163 @@ async function _usersSharePair(
   }
 
   return Boolean(sharedMembership);
+}
+
+function getJumpAnalyticsPeriod(
+  period,
+  now = new Date(),
+) {
+  const normalizedPeriod =
+    period === 'today' ||
+    period === '7d' ||
+    period === 'week'
+      ? period
+      : 'today';
+
+  const end =
+    new Date(now);
+
+  let start;
+
+  if (normalizedPeriod === 'today') {
+    start =
+      new Date(end);
+
+    start.setUTCHours(
+      0,
+      0,
+      0,
+      0,
+    );
+  } else if (
+    normalizedPeriod === '7d'
+  ) {
+    start =
+      new Date(
+        end.getTime() -
+        7 * 24 * 60 * 60 * 1000,
+      );
+  } else {
+    start =
+      new Date(
+        `${getUtcWeekStart(end)}T00:00:00.000Z`,
+      );
+  }
+
+  return {
+    period:
+      normalizedPeriod,
+
+    start:
+      start.toISOString(),
+
+    end:
+      end.toISOString(),
+  };
+}
+
+function getFiniteNumbers(
+  values,
+  options = {},
+) {
+  const minimum =
+    Number.isFinite(
+      options.minimum,
+    )
+      ? options.minimum
+      : -Infinity;
+
+  const maximum =
+    Number.isFinite(
+      options.maximum,
+    )
+      ? options.maximum
+      : Infinity;
+
+  return (values || [])
+    .map(value =>
+      Number(value)
+    )
+    .filter(value =>
+      Number.isFinite(value) &&
+      value >= minimum &&
+      value <= maximum
+    );
+}
+
+function getAverage(
+  values,
+) {
+  const numbers =
+    getFiniteNumbers(
+      values,
+    );
+
+  if (numbers.length === 0) {
+    return 0;
+  }
+
+  return (
+    numbers.reduce(
+      (
+        sum,
+        value,
+      ) =>
+        sum + value,
+      0,
+    ) /
+    numbers.length
+  );
+}
+
+function getMedian(
+  values,
+) {
+  const numbers =
+    getFiniteNumbers(
+      values,
+    ).sort(
+      (
+        firstValue,
+        secondValue,
+      ) =>
+        firstValue -
+        secondValue,
+    );
+
+  if (numbers.length === 0) {
+    return 0;
+  }
+
+  const middleIndex =
+    Math.floor(
+      numbers.length / 2,
+    );
+
+  if (
+    numbers.length % 2 === 1
+  ) {
+    return numbers[
+      middleIndex
+    ];
+  }
+
+  return (
+    numbers[
+      middleIndex - 1
+    ] +
+    numbers[
+      middleIndex
+    ]
+  ) / 2;
+}
+
+function roundAnalyticsNumber(
+  value,
+  fractionDigits = 2,
+) {
+  const numericValue =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      numericValue,
+    )
+  ) {
+    return 0;
+  }
+
+  return Number(
+    numericValue.toFixed(
+      fractionDigits,
+    ),
+  );
+}
+
+function countAnalyticsValues(
+  values,
+  options = {},
+) {
+  const fallbackKey =
+    options.fallbackKey ||
+    'unknown';
+
+  const limit =
+    Number.isSafeInteger(
+      options.limit,
+    )
+      ? options.limit
+      : 50;
+
+  const counts =
+    new Map();
+
+  for (const value of (
+    values || []
+  )) {
+    const normalizedValue =
+      String(
+        value ??
+        fallbackKey,
+      )
+        .trim()
+        .slice(
+          0,
+          160,
+        ) ||
+      fallbackKey;
+
+    counts.set(
+      normalizedValue,
+      (
+        counts.get(
+          normalizedValue,
+        ) || 0
+      ) + 1,
+    );
+  }
+
+  return [
+    ...counts.entries(),
+  ]
+    .map(
+      ([
+        key,
+        count,
+      ]) => ({
+        key,
+        count,
+      }),
+    )
+    .sort(
+      (
+        firstItem,
+        secondItem,
+      ) =>
+        secondItem.count -
+          firstItem.count ||
+        firstItem.key.localeCompare(
+          secondItem.key,
+        ),
+    )
+    .slice(
+      0,
+      limit,
+    );
+}
+
+function normalizeVerificationReasons(
+  value,
+) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(reason =>
+      typeof reason ===
+      'string'
+    )
+    .map(reason =>
+      reason
+        .trim()
+        .slice(
+          0,
+          200,
+        )
+    )
+    .filter(Boolean)
+    .slice(
+      0,
+      64,
+    );
+}
+
+async function loadJumpAnalyticsSessions(
+  supabase,
+  start,
+  end,
+) {
+  const rows = [];
+  const pageSize = 1000;
+  const maximumRows = 20_000;
+
+  for (
+    let offset = 0;
+    offset < maximumRows;
+    offset += pageSize
+  ) {
+    const {
+      data: page,
+      error,
+    } = await supabase
+      .from(
+        'jump_game_sessions',
+      )
+      .select(
+        'id, user_id, pair_code, created_at, started_at, expires_at, verified_at, abandoned_at, game_seed, rules_version, client_version, active_duration_ms, paused_duration_ms, frame_count, max_frame_gap_ms, average_fps, minimum_fps, landing_count, normal_landings, cloud_landings, moving_landings, spring_landings, rockets_collected, rockets_missed, maximum_score, death_reason, screen_width, screen_height, telegram_platform, telegram_webapp_version, language, checkpoints, client_metrics, verification_status, verification_reasons, save_duration_ms'
+      )
+      .gte(
+        'created_at',
+        start,
+      )
+      .lt(
+        'created_at',
+        end,
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        },
+      )
+      .range(
+        offset,
+        offset +
+        pageSize -
+        1,
+      );
+
+    if (error) {
+      throw error;
+    }
+
+    const currentPage =
+      page || [];
+
+    rows.push(
+      ...currentPage,
+    );
+
+    if (
+      currentPage.length <
+      pageSize
+    ) {
+      return {
+        rows,
+        truncated: false,
+      };
+    }
+  }
+
+  return {
+    rows,
+    truncated: true,
+  };
+}
+
+function buildJumpAnalyticsSummary(
+  rows,
+) {
+  const sessions =
+    rows || [];
+
+  const completedStatuses =
+    new Set([
+      'accepted',
+      'suspicious',
+      'rejected',
+    ]);
+
+  const completedSessions =
+    sessions.filter(
+      session =>
+        completedStatuses.has(
+          session.verification_status,
+        ),
+    );
+
+  const abandonedSessions =
+    sessions.filter(
+      session =>
+        session.verification_status ===
+          'abandoned',
+    );
+
+  const pendingSessions =
+    sessions.filter(
+      session =>
+        session.verification_status ===
+          'pending',
+    );
+
+  const uniquePlayers =
+    new Set(
+      sessions
+        .map(session =>
+          String(
+            session.user_id ||
+            '',
+          )
+        )
+        .filter(Boolean),
+    );
+
+  const runsByPlayer =
+    new Map();
+
+  for (const session of sessions) {
+    const sessionUserId =
+      String(
+        session.user_id ||
+        '',
+      );
+
+    if (!sessionUserId) {
+      continue;
+    }
+
+    runsByPlayer.set(
+      sessionUserId,
+      (
+        runsByPlayer.get(
+          sessionUserId,
+        ) || 0
+      ) + 1,
+    );
+  }
+
+  const repeatPlayers =
+    [
+      ...runsByPlayer.values(),
+    ].filter(
+      runCount =>
+        runCount > 1,
+    ).length;
+
+  const scores =
+    completedSessions.map(
+      session =>
+        Number(
+          session.maximum_score,
+        ) || 0,
+    );
+
+  const activeDurations =
+    completedSessions.map(
+      session =>
+        Number(
+          session.active_duration_ms,
+        ) || 0,
+    );
+
+  const pausedDurations =
+    completedSessions.map(
+      session =>
+        Number(
+          session.paused_duration_ms,
+        ) || 0,
+    );
+
+  const saveDurations =
+    completedSessions
+      .map(session =>
+        Number(
+          session.save_duration_ms,
+        )
+      )
+      .filter(value =>
+        Number.isFinite(value) &&
+        value >= 0
+      );
+
+  const averageFpsValues =
+    completedSessions
+      .map(session =>
+        Number(
+          session.average_fps,
+        )
+      )
+      .filter(value =>
+        Number.isFinite(value) &&
+        value > 0 &&
+        value <= 240
+      );
+
+  const minimumFpsValues =
+    completedSessions
+      .map(session =>
+        Number(
+          session.minimum_fps,
+        )
+      )
+      .filter(value =>
+        Number.isFinite(value) &&
+        value > 0 &&
+        value <= 240
+      );
+
+  const longFrameGapSessions =
+    completedSessions.filter(
+      session =>
+        Number(
+          session.max_frame_gap_ms,
+        ) >= 250,
+    );
+
+  const pausedSessions =
+    completedSessions.filter(
+      session =>
+        Number(
+          session.paused_duration_ms,
+        ) > 0,
+    );
+
+  const checkpointScores = [
+    25,
+    50,
+    100,
+    200,
+    300,
+    500,
+  ];
+
+  const checkpointDistribution =
+    checkpointScores.map(
+      checkpointScore => {
+        const count =
+          completedSessions.filter(
+            session => {
+              const checkpoints =
+                Array.isArray(
+                  session.checkpoints,
+                )
+                  ? session.checkpoints
+                  : [];
+
+              return checkpoints.some(
+                checkpoint =>
+                  Number(
+                    checkpoint?.score,
+                  ) ===
+                  checkpointScore,
+              );
+            },
+          ).length;
+
+        return {
+          score:
+            checkpointScore,
+
+          count,
+
+          share:
+            completedSessions.length > 0
+              ? roundAnalyticsNumber(
+                  count /
+                  completedSessions.length,
+                  4,
+                )
+              : 0,
+        };
+      },
+    );
+
+  const verificationReasons = [];
+
+  let saveErrorCount = 0;
+
+  for (const session of sessions) {
+    const reasons =
+      normalizeVerificationReasons(
+        session.verification_reasons,
+      );
+
+    verificationReasons.push(
+      ...reasons,
+    );
+
+    if (
+      reasons.some(reason =>
+        /save|database|rpc|timeout|network/i.test(
+          reason,
+        )
+      )
+    ) {
+      saveErrorCount += 1;
+    }
+  }
+
+  const screenSizes =
+    completedSessions.map(
+      session => {
+        const width =
+          Number(
+            session.screen_width,
+          );
+
+        const height =
+          Number(
+            session.screen_height,
+          );
+
+        if (
+          !Number.isSafeInteger(
+            width,
+          ) ||
+          !Number.isSafeInteger(
+            height,
+          ) ||
+          width <= 0 ||
+          height <= 0
+        ) {
+          return 'unknown';
+        }
+
+        return (
+          `${width}x${height}`
+        );
+      },
+    );
+
+  const platformUsage = {
+    landings:
+      completedSessions.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.landing_count,
+            ) || 0
+          ),
+        0,
+      ),
+
+    normal:
+      completedSessions.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.normal_landings,
+            ) || 0
+          ),
+        0,
+      ),
+
+    cloud:
+      completedSessions.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.cloud_landings,
+            ) || 0
+          ),
+        0,
+      ),
+
+    moving:
+      completedSessions.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.moving_landings,
+            ) || 0
+          ),
+        0,
+      ),
+
+    spring:
+      completedSessions.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.spring_landings,
+            ) || 0
+          ),
+        0,
+      ),
+  };
+
+  const rocketsCollected =
+    completedSessions.reduce(
+      (
+        sum,
+        session,
+      ) =>
+        sum +
+        (
+          Number(
+            session.rockets_collected,
+          ) || 0
+        ),
+      0,
+    );
+
+  const rocketsMissed =
+    completedSessions.reduce(
+      (
+        sum,
+        session,
+      ) =>
+        sum +
+        (
+          Number(
+            session.rockets_missed,
+          ) || 0
+        ),
+      0,
+    );
+
+  const acceptedCount =
+    completedSessions.filter(
+      session =>
+        session.verification_status ===
+          'accepted',
+    ).length;
+
+  const suspiciousCount =
+    completedSessions.filter(
+      session =>
+        session.verification_status ===
+          'suspicious',
+    ).length;
+
+  const rejectedCount =
+    completedSessions.filter(
+      session =>
+        session.verification_status ===
+          'rejected',
+    ).length;
+
+  return {
+    uniquePlayers:
+      uniquePlayers.size,
+
+    sessions:
+      sessions.length,
+
+    completed:
+      completedSessions.length,
+
+    abandoned:
+      abandonedSessions.length,
+
+    pending:
+      pendingSessions.length,
+
+    accepted:
+      acceptedCount,
+
+    suspicious:
+      suspiciousCount,
+
+    rejected:
+      rejectedCount,
+
+    zeroScoreRuns:
+      completedSessions.filter(
+        session =>
+          Number(
+            session.maximum_score,
+          ) === 0,
+      ).length,
+
+    score: {
+      average:
+        roundAnalyticsNumber(
+          getAverage(
+            scores,
+          ),
+        ),
+
+      median:
+        roundAnalyticsNumber(
+          getMedian(
+            scores,
+          ),
+        ),
+
+      maximum:
+        scores.length > 0
+          ? Math.max(
+              ...scores,
+            )
+          : 0,
+    },
+
+    activeDurationMs: {
+      average:
+        roundAnalyticsNumber(
+          getAverage(
+            activeDurations,
+          ),
+        ),
+
+      median:
+        roundAnalyticsNumber(
+          getMedian(
+            activeDurations,
+          ),
+        ),
+
+      maximum:
+        activeDurations.length > 0
+          ? Math.max(
+              ...activeDurations,
+            )
+          : 0,
+    },
+
+    runsPerPlayer:
+      uniquePlayers.size > 0
+        ? roundAnalyticsNumber(
+            sessions.length /
+            uniquePlayers.size,
+          )
+        : 0,
+
+    repeatPlayers,
+
+    repeatPlayerShare:
+      uniquePlayers.size > 0
+        ? roundAnalyticsNumber(
+            repeatPlayers /
+            uniquePlayers.size,
+            4,
+          )
+        : 0,
+
+    checkpointDistribution,
+
+    deathReasons:
+      countAnalyticsValues(
+        completedSessions.map(
+          session =>
+            session.death_reason ||
+            'unknown',
+        ),
+        {
+          limit: 20,
+        },
+      ),
+
+    platformUsage,
+
+    rockets: {
+      collected:
+        rocketsCollected,
+
+      missed:
+        rocketsMissed,
+
+      collectionShare:
+        rocketsCollected +
+          rocketsMissed >
+        0
+          ? roundAnalyticsNumber(
+              rocketsCollected /
+              (
+                rocketsCollected +
+                rocketsMissed
+              ),
+              4,
+            )
+          : 0,
+    },
+
+    screenSizes:
+      countAnalyticsValues(
+        screenSizes,
+        {
+          limit: 20,
+        },
+      ),
+
+    telegramPlatforms:
+      countAnalyticsValues(
+        completedSessions.map(
+          session =>
+            session.telegram_platform ||
+            'unknown',
+        ),
+        {
+          limit: 20,
+        },
+      ),
+
+    telegramWebAppVersions:
+      countAnalyticsValues(
+        completedSessions.map(
+          session =>
+            session.telegram_webapp_version ||
+            'unknown',
+        ),
+        {
+          limit: 20,
+        },
+      ),
+
+    languages:
+      countAnalyticsValues(
+        completedSessions.map(
+          session =>
+            session.language ||
+            'unknown',
+        ),
+        {
+          limit: 20,
+        },
+      ),
+
+    rulesVersions:
+      countAnalyticsValues(
+        sessions.map(
+          session =>
+            session.rules_version ??
+            'unknown',
+        ),
+        {
+          limit: 20,
+        },
+      ),
+
+    clientVersions:
+      countAnalyticsValues(
+        sessions.map(
+          session =>
+            session.client_version ||
+            'unknown',
+        ),
+        {
+          limit: 20,
+        },
+      ),
+
+    fps: {
+      average:
+        roundAnalyticsNumber(
+          getAverage(
+            averageFpsValues,
+          ),
+        ),
+
+      minimum:
+        minimumFpsValues.length > 0
+          ? roundAnalyticsNumber(
+              Math.min(
+                ...minimumFpsValues,
+              ),
+            )
+          : 0,
+
+      longFrameGapSessions:
+        longFrameGapSessions.length,
+
+      longFrameGapShare:
+        completedSessions.length > 0
+          ? roundAnalyticsNumber(
+              longFrameGapSessions.length /
+              completedSessions.length,
+              4,
+            )
+          : 0,
+
+      averageMaximumFrameGapMs:
+        roundAnalyticsNumber(
+          getAverage(
+            completedSessions.map(
+              session =>
+                Number(
+                  session.max_frame_gap_ms,
+                ) || 0,
+            ),
+          ),
+        ),
+    },
+
+    pauses: {
+      sessions:
+        pausedSessions.length,
+
+      share:
+        completedSessions.length > 0
+          ? roundAnalyticsNumber(
+              pausedSessions.length /
+              completedSessions.length,
+              4,
+            )
+          : 0,
+
+      averageDurationMs:
+        roundAnalyticsNumber(
+          getAverage(
+            pausedDurations,
+          ),
+        ),
+
+      medianDurationMs:
+        roundAnalyticsNumber(
+          getMedian(
+            pausedDurations,
+          ),
+        ),
+    },
+
+    saving: {
+      errors:
+        saveErrorCount,
+
+      averageDurationMs:
+        roundAnalyticsNumber(
+          getAverage(
+            saveDurations,
+          ),
+        ),
+
+      medianDurationMs:
+        roundAnalyticsNumber(
+          getMedian(
+            saveDurations,
+          ),
+        ),
+
+      maximumDurationMs:
+        saveDurations.length > 0
+          ? Math.max(
+              ...saveDurations,
+            )
+          : 0,
+    },
+
+    antiCheatReasons:
+      countAnalyticsValues(
+        verificationReasons,
+        {
+          limit: 50,
+        },
+      ),
+  };
+}
+
+function buildFlaggedJumpRuns(
+  rows,
+  limit = 50,
+) {
+  return (rows || [])
+    .filter(
+      session =>
+        session.verification_status ===
+          'suspicious' ||
+        session.verification_status ===
+          'rejected',
+    )
+    .sort(
+      (
+        firstSession,
+        secondSession,
+      ) =>
+        Date.parse(
+          secondSession.verified_at ||
+          secondSession.created_at ||
+          0,
+        ) -
+        Date.parse(
+          firstSession.verified_at ||
+          firstSession.created_at ||
+          0,
+        ),
+    )
+    .slice(
+      0,
+      limit,
+    )
+    .map(
+      session => ({
+        sessionId:
+          String(
+            session.id,
+          ),
+
+        userId:
+          String(
+            session.user_id,
+          ),
+
+        pairCode:
+          session.pair_code
+            ? String(
+                session.pair_code,
+              )
+            : null,
+
+        score:
+          Number(
+            session.maximum_score,
+          ) || 0,
+
+        status:
+          session.verification_status,
+
+        reasons:
+          normalizeVerificationReasons(
+            session.verification_reasons,
+          ),
+
+        createdAt:
+          session.created_at,
+
+        verifiedAt:
+          session.verified_at,
+
+        rulesVersion:
+          Number(
+            session.rules_version,
+          ) || null,
+
+        clientVersion:
+          session.client_version ||
+          null,
+
+        activeDurationMs:
+          Number(
+            session.active_duration_ms,
+          ) || 0,
+
+        landingCount:
+          Number(
+            session.landing_count,
+          ) || 0,
+
+        rocketsCollected:
+          Number(
+            session.rockets_collected,
+          ) || 0,
+
+        averageFps:
+          roundAnalyticsNumber(
+            session.average_fps,
+          ),
+
+        minimumFps:
+          roundAnalyticsNumber(
+            session.minimum_fps,
+          ),
+
+        maxFrameGapMs:
+          Number(
+            session.max_frame_gap_ms,
+          ) || 0,
+      }),
+    );
 }
 
 function isCronAuthorized(request, env) {
@@ -1874,6 +3173,166 @@ export async function onRequest(context) {
           authenticatedProfile.user,
         );
       }
+    }
+
+    // ── GET /api/admin/jump-analytics ──
+    if (
+      request.method === 'GET' &&
+      path ===
+        '/api/admin/jump-analytics'
+    ) {
+      const adminUserId =
+        getAuthedUserId(
+          request,
+          env,
+        );
+
+      if (!adminUserId) {
+        return json(
+          {
+            error:
+              'Unauthorized',
+          },
+          401,
+          request,
+        );
+      }
+
+      if (
+        !ADMIN_IDS.includes(
+          String(
+            adminUserId,
+          ),
+        )
+      ) {
+        return json(
+          {
+            error:
+              'Forbidden',
+          },
+          403,
+          request,
+        );
+      }
+
+      const requestedPeriod =
+        url.searchParams.get(
+          'period',
+        ) ||
+        'today';
+
+      const requestedMode =
+        url.searchParams.get(
+          'mode',
+        ) === 'suspicious'
+          ? 'suspicious'
+          : 'summary';
+
+      const period =
+        getJumpAnalyticsPeriod(
+          requestedPeriod,
+        );
+
+      let loadedSessions;
+
+      try {
+        loadedSessions =
+          await loadJumpAnalyticsSessions(
+            supabase,
+            period.start,
+            period.end,
+          );
+      } catch (analyticsError) {
+        console.error(
+          'Jump analytics query failed:',
+          analyticsError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to load Jump analytics',
+          },
+          500,
+          request,
+        );
+      }
+
+      const summary =
+        buildJumpAnalyticsSummary(
+          loadedSessions.rows,
+        );
+
+      if (
+        requestedMode ===
+        'suspicious'
+      ) {
+        return json(
+          {
+            period:
+              period.period,
+
+            periodStart:
+              period.start,
+
+            periodEnd:
+              period.end,
+
+            serverTime:
+              new Date()
+                .toISOString(),
+
+            truncated:
+              loadedSessions.truncated,
+
+            summary: {
+              sessions:
+                summary.sessions,
+
+              suspicious:
+                summary.suspicious,
+
+              rejected:
+                summary.rejected,
+
+              antiCheatReasons:
+                summary.antiCheatReasons,
+            },
+
+            runs:
+              buildFlaggedJumpRuns(
+                loadedSessions.rows,
+                50,
+              ),
+          },
+          200,
+          request,
+        );
+      }
+
+      return json(
+        {
+          period:
+            period.period,
+
+          periodStart:
+            period.start,
+
+          periodEnd:
+            period.end,
+
+          serverTime:
+            new Date()
+              .toISOString(),
+
+          truncated:
+            loadedSessions.truncated,
+
+          summary,
+        },
+        200,
+        request,
+      );
     }
 
     // ── GET /api/app-settings ──
@@ -2200,7 +3659,7 @@ export async function onRequest(context) {
         } = await supabase
           .from('jump_game_scores')
           .select(
-            'user_id, display_name, username, best_score, updated_at'
+            'user_id, display_name, username, best_score, best_score_achieved_at'
           )
           .eq(
             'week_start',
@@ -2217,7 +3676,7 @@ export async function onRequest(context) {
             },
           )
           .order(
-            'updated_at',
+            'best_score_achieved_at',
             {
               ascending: true,
             },
@@ -2237,9 +3696,6 @@ export async function onRequest(context) {
           );
         }
 
-        let previousScore = null;
-        let previousRank = 0;
-
         const rankedRows =
           (scoreRows || []).map(
             (row, index) => {
@@ -2248,20 +3704,10 @@ export async function onRequest(context) {
                   row.best_score,
                 ) || 0;
 
-              const rank =
-                rowScore === previousScore
-                  ? previousRank
-                  : index + 1;
-
-              previousScore =
-                rowScore;
-
-              previousRank =
-                rank;
-
               return {
                 ...row,
-                rank,
+                rank:
+                  index + 1,
                 best_score:
                   rowScore,
               };
@@ -2447,10 +3893,9 @@ export async function onRequest(context) {
         .json()
         .catch(() => ({}));
 
-      const userId = extractUserId(
+      const userId = getAuthedUserId(
         request,
         env,
-        body.userId
       );
 
       if (!userId) {
@@ -2488,20 +3933,126 @@ export async function onRequest(context) {
         );
       }
 
+      const oneMinuteAgo =
+        new Date(
+          Date.now() - 60 * 1000,
+        ).toISOString();
+
+      const {
+        count: recentSessionCount,
+        error: recentSessionError,
+      } = await supabase
+        .from('jump_game_sessions')
+        .select('id', {
+          count: 'exact',
+          head: true,
+        })
+        .eq(
+          'user_id',
+          userId,
+        )
+        .gte(
+          'created_at',
+          oneMinuteAgo,
+        );
+
+      if (recentSessionError) {
+        console.error(
+          'Recent game sessions query failed:',
+          recentSessionError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to check game session limit',
+          },
+          500,
+          request,
+        );
+      }
+
+      if (
+        Number(
+          recentSessionCount,
+        ) >= 10
+      ) {
+        return json(
+          {
+            error:
+              'Too many game sessions',
+            retryAfter: 60,
+          },
+          429,
+          request,
+        );
+      }
+
+      const sessionSeed =
+        randomInt(
+          1,
+          2147483647,
+        );
+
+      const startedAt =
+        new Date();
+
+      const expiresAt =
+        new Date(
+          startedAt.getTime() +
+          30 * 60 * 1000,
+        );
+
+      const requestedClientVersion =
+        typeof body.clientVersion ===
+          'string'
+          ? body.clientVersion
+              .trim()
+              .slice(0, 64)
+          : null;
+
+      const protectedClient =
+        requestedClientVersion ===
+        JUMP_GAME_CLIENT_VERSION;
+
+      const sessionRulesVersion =
+        protectedClient
+          ? JUMP_GAME_RULES_VERSION
+          : 1;
+
+      const sessionClientVersion =
+        protectedClient
+          ? JUMP_GAME_CLIENT_VERSION
+          : 'legacy';
+
       const {
         data: session,
         error: sessionError,
       } = await supabase
         .from('jump_game_sessions')
         .insert({
-          user_id: userId,
-          pair_code: pairCode,
-          started_at: new Date().toISOString(),
-          expires_at: new Date(
-            Date.now() + 30 * 60 * 1000
-          ).toISOString(),
+          user_id:
+            userId,
+          pair_code:
+            pairCode,
+          started_at:
+            startedAt.toISOString(),
+          expires_at:
+            expiresAt.toISOString(),
+          game_seed:
+            sessionSeed,
+          rules_version:
+            sessionRulesVersion,
+          client_version:
+            sessionClientVersion,
+          verification_status:
+            'pending',
+          verification_reasons:
+            [],
         })
-        .select('id, expires_at')
+        .select(
+          'id, started_at, expires_at, game_seed, rules_version'
+        )
         .single();
 
       if (sessionError) {
@@ -2519,8 +4070,24 @@ export async function onRequest(context) {
 
       return json(
         {
-          sessionId: session.id,
-          expiresAt: session.expires_at,
+          sessionId:
+            session.id,
+          startedAt:
+            session.started_at,
+          expiresAt:
+            session.expires_at,
+          seed:
+            Number(
+              session.game_seed,
+            ),
+          rulesVersion:
+            Number(
+              session.rules_version,
+            ),
+          clientVersion:
+            sessionClientVersion,
+          serverTime:
+            new Date().toISOString(),
         },
         201,
         request
@@ -2572,7 +4139,9 @@ export async function onRequest(context) {
         error: personalError,
       } = await supabase
         .from('jump_game_scores')
-        .select('best_score')
+        .select(
+          'best_score, best_score_achieved_at'
+        )
         .eq('user_id', userId)
         .eq(
           'week_start',
@@ -2598,32 +4167,24 @@ export async function onRequest(context) {
 
       let rank = null;
 
-      if (personalBest > 0) {
-        const {
-          count,
-          error: rankError,
-        } = await supabase
-          .from('jump_game_scores')
-          .select('*', {
-            count: 'exact',
-            head: true,
-          })
-          .eq(
-            'week_start',
-            currentWeekStart,
-          )
-          .gt(
-            'best_score',
-            personalBest,
-          );
-
-        if (rankError) {
+      if (
+        personalBest > 0 &&
+        personal?.best_score_achieved_at
+      ) {
+        try {
+          rank =
+            await getWeeklyScoreRank(
+              supabase,
+              userId,
+              currentWeekStart,
+              personalBest,
+              personal.best_score_achieved_at,
+            );
+        } catch (rankError) {
           console.error(
             'Rank query failed:',
-            rankError
+            rankError,
           );
-        } else {
-          rank = (count || 0) + 1;
         }
       }
 
@@ -2631,6 +4192,14 @@ export async function onRequest(context) {
         {
           personalBest,
           rank,
+          weekStart:
+            currentWeekStart,
+          weekEndsAt:
+            getUtcWeekEnd(
+              currentWeekStart,
+            ),
+          serverTime:
+            new Date().toISOString(),
         },
         200,
         request
@@ -2664,7 +4233,7 @@ export async function onRequest(context) {
       } = await supabase
         .from('jump_game_scores')
         .select(
-          'user_id, display_name, username, best_score, updated_at'
+          'user_id, display_name, username, best_score, best_score_achieved_at'
         )
         .eq(
           'week_start',
@@ -2674,7 +4243,7 @@ export async function onRequest(context) {
         .order('best_score', {
           ascending: false,
         })
-        .order('updated_at', {
+        .order('best_score_achieved_at', {
           ascending: true,
         })
         .order('user_id', {
@@ -2695,29 +4264,19 @@ export async function onRequest(context) {
         );
       }
 
-      let previousScore = null;
-      let previousRank = 0;
-
       /*
-       * Сначала рассчитываем места синхронно.
-       * Пользователи с одинаковым количеством очков
-       * получают одинаковое место.
+       * Место всегда уникально.
+       * При одинаковых очках выше пользователь,
+       * который раньше установил результат.
        */
       const rankedLeaders = (rows || []).map(
         (row, index) => {
           const rowScore =
             Number(row.best_score) || 0;
 
-          const rank =
-            previousScore === rowScore
-              ? previousRank
-              : index + 1;
-
-          previousScore = rowScore;
-          previousRank = rank;
-
           return {
-            rank,
+            rank:
+              index + 1,
             userId:
               String(row.user_id),
             displayName:
@@ -2725,7 +4284,10 @@ export async function onRequest(context) {
               'Player',
             username:
               row.username || null,
-            score: rowScore,
+            score:
+              rowScore,
+            achievedAt:
+              row.best_score_achieved_at,
             isMe:
               String(row.user_id) ===
               String(userId),
@@ -2774,7 +4336,9 @@ export async function onRequest(context) {
         error: personalError,
       } = await supabase
         .from('jump_game_scores')
-        .select('best_score')
+        .select(
+          'best_score, best_score_achieved_at'
+        )
         .eq('user_id', userId)
         .eq(
           'week_start',
@@ -2794,32 +4358,24 @@ export async function onRequest(context) {
 
       let personalRank = null;
 
-      if (personalBest > 0) {
-        const {
-          count,
-          error: rankError,
-        } = await supabase
-          .from('jump_game_scores')
-          .select('*', {
-            count: 'exact',
-            head: true,
-          })
-          .eq(
-            'week_start',
-            currentWeekStart,
-          )
-          .gt(
-            'best_score',
-            personalBest,
-          );
-
-        if (rankError) {
+      if (
+        personalBest > 0 &&
+        personal?.best_score_achieved_at
+      ) {
+        try {
+          personalRank =
+            await getWeeklyScoreRank(
+              supabase,
+              userId,
+              currentWeekStart,
+              personalBest,
+              personal.best_score_achieved_at,
+            );
+        } catch (rankError) {
           console.error(
             'Personal rank query failed:',
-            rankError
+            rankError,
           );
-        } else {
-          personalRank = (count || 0) + 1;
         }
       }
 
@@ -2828,13 +4384,305 @@ export async function onRequest(context) {
           leaders,
           me: personalBest > 0
             ? {
-                rank: personalRank,
-                score: personalBest,
+                rank:
+                  personalRank,
+                score:
+                  personalBest,
+                achievedAt:
+                  personal.best_score_achieved_at,
               }
             : null,
+          weekStart:
+            currentWeekStart,
+          weekEndsAt:
+            getUtcWeekEnd(
+              currentWeekStart,
+            ),
+          serverTime:
+            new Date().toISOString(),
         },
         200,
         request
+      );
+    }
+
+    // ── GET /api/game-pair-leaderboard ──
+    if (
+      request.method === 'GET' &&
+      path ===
+        '/api/game-pair-leaderboard'
+    ) {
+      const userId =
+        getAuthedUserId(
+          request,
+          env,
+        );
+
+      if (!userId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request,
+        );
+      }
+
+      const currentWeekStart =
+        getUtcWeekStart();
+
+      const {
+        data: rows,
+        error: pairLeadersError,
+      } = await supabase
+        .from(
+          'jump_game_pair_weekly_leaderboard',
+        )
+        .select(
+          'week_start, pair_code, pair_name, pet_type, scoring_member_count, total_score, total_score_achieved_at'
+        )
+        .eq(
+          'week_start',
+          currentWeekStart,
+        )
+        .gt(
+          'total_score',
+          0,
+        )
+        .order(
+          'total_score',
+          {
+            ascending: false,
+          },
+        )
+        .order(
+          'total_score_achieved_at',
+          {
+            ascending: true,
+          },
+        )
+        .order(
+          'pair_code',
+          {
+            ascending: true,
+          },
+        )
+        .limit(50);
+
+      if (pairLeadersError) {
+        console.error(
+          'Pair leaderboard query failed:',
+          pairLeadersError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to load pair leaderboard',
+          },
+          500,
+          request,
+        );
+      }
+
+      const pairCodes =
+        (rows || []).map(
+          row =>
+            String(
+              row.pair_code,
+            ),
+        );
+
+      let memberRows = [];
+
+      if (pairCodes.length > 0) {
+        const {
+          data: loadedMembers,
+          error: membersError,
+        } = await supabase
+          .from('pair_users')
+          .select(
+            'pair_code, user_id, display_name, username'
+          )
+          .in(
+            'pair_code',
+            pairCodes,
+          )
+          .order(
+            'pair_code',
+            {
+              ascending: true,
+            },
+          )
+          .order(
+            'user_id',
+            {
+              ascending: true,
+            },
+          );
+
+        if (membersError) {
+          console.error(
+            'Pair leaderboard members query failed:',
+            membersError,
+          );
+        } else {
+          memberRows =
+            loadedMembers || [];
+        }
+      }
+
+      const {
+        data: myMemberships,
+        error: myMembershipsError,
+      } = await supabase
+        .from('pair_users')
+        .select('pair_code')
+        .eq(
+          'user_id',
+          userId,
+        );
+
+      if (myMembershipsError) {
+        console.error(
+          'Pair leaderboard membership query failed:',
+          myMembershipsError,
+        );
+      }
+
+      const myPairCodes =
+        new Set(
+          (myMemberships || []).map(
+            membership =>
+              String(
+                membership.pair_code,
+              ),
+          ),
+        );
+
+      const membersByPair =
+        new Map();
+
+      for (const member of memberRows) {
+        const memberPairCode =
+          String(
+            member.pair_code,
+          );
+
+        if (
+          !membersByPair.has(
+            memberPairCode,
+          )
+        ) {
+          membersByPair.set(
+            memberPairCode,
+            [],
+          );
+        }
+
+        membersByPair
+          .get(memberPairCode)
+          .push(member);
+      }
+
+      const avatarExpiresAt =
+        Date.now() +
+        60 * 60 * 1000;
+
+      const leaders = [];
+
+      for (
+        let index = 0;
+        index < (rows || []).length;
+        index += 1
+      ) {
+        const row =
+          rows[index];
+
+        const pairCode =
+          String(
+            row.pair_code,
+          );
+
+        const members = [];
+
+        for (
+          const member of
+          membersByPair.get(
+            pairCode,
+          ) || []
+        ) {
+          const memberUserId =
+            String(
+              member.user_id,
+            );
+
+          const avatarSignature =
+            await makeAvatarToken(
+              env.BOT_TOKEN,
+              memberUserId,
+              avatarExpiresAt,
+            );
+
+          members.push({
+            userId:
+              memberUserId,
+            displayName:
+              member.display_name ||
+              'Player',
+            username:
+              member.username ||
+              null,
+            avatarUrl:
+              `/api/avatar/${encodeURIComponent(
+                memberUserId,
+              )}` +
+              `?proxy=1` +
+              `&exp=${avatarExpiresAt}` +
+              `&sig=${avatarSignature}`,
+          });
+        }
+
+        leaders.push({
+          rank:
+            index + 1,
+          pairCode,
+          pairName:
+            row.pair_name ||
+            'Chumi',
+          petType:
+            row.pet_type ||
+            null,
+          score:
+            Number(
+              row.total_score,
+            ) || 0,
+          scoringMemberCount:
+            Number(
+              row.scoring_member_count,
+            ) || 0,
+          achievedAt:
+            row.total_score_achieved_at,
+          members,
+          isMyPair:
+            myPairCodes.has(
+              pairCode,
+            ),
+        });
+      }
+
+      return json(
+        {
+          leaders,
+          weekStart:
+            currentWeekStart,
+          weekEndsAt:
+            getUtcWeekEnd(
+              currentWeekStart,
+            ),
+          serverTime:
+            new Date().toISOString(),
+        },
+        200,
+        request,
       );
     }
 
@@ -2858,10 +4706,9 @@ export async function onRequest(context) {
           )
         : null;
 
-      const userId = extractUserId(
+      const userId = getAuthedUserId(
         request,
         env,
-        body.userId
       );
 
       if (!userId) {
@@ -2882,7 +4729,8 @@ export async function onRequest(context) {
           ? body.sessionId.trim()
           : '';
 
-      const score = Number(body.score);
+      const score =
+        body.score;
 
       if (!pairCode) {
         return json(
@@ -2912,6 +4760,814 @@ export async function onRequest(context) {
         );
       }
 
+      const submittedRulesVersion =
+        body.rulesVersion;
+
+      const {
+        data: gameSession,
+        error: gameSessionError,
+      } = await supabase
+        .from(
+          'jump_game_sessions',
+        )
+        .select(
+          'id, user_id, pair_code, game_seed, rules_version, client_version, verification_status, verification_reasons, expires_at'
+        )
+        .eq(
+          'id',
+          sessionId,
+        )
+        .eq(
+          'user_id',
+          userId,
+        )
+        .eq(
+          'pair_code',
+          pairCode,
+        )
+        .maybeSingle();
+
+      if (gameSessionError) {
+        console.error(
+          'Game session validation failed:',
+          gameSessionError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to validate game session',
+          },
+          500,
+          request,
+        );
+      }
+
+      if (!gameSession) {
+        return json(
+          {
+            error:
+              'Game session not found',
+          },
+          400,
+          request,
+        );
+      }
+
+      if (
+        gameSession.verification_status !==
+        'pending'
+      ) {
+        const previousStatus =
+          gameSession.verification_status;
+
+        return json(
+          {
+            success: true,
+            alreadyFinished: true,
+            accepted:
+              previousStatus ===
+              'accepted',
+            verificationStatus:
+              previousStatus,
+          },
+          200,
+          request,
+        );
+      }
+
+      const sessionExpiresAt =
+        Date.parse(
+          gameSession.expires_at ||
+          '',
+        );
+
+      if (
+        !Number.isFinite(
+          sessionExpiresAt,
+        ) ||
+        sessionExpiresAt <=
+          Date.now()
+      ) {
+        return json(
+          {
+            error:
+              'Game session has expired',
+            code:
+              'GAME_SESSION_EXPIRED',
+          },
+          409,
+          request,
+        );
+      }
+
+      const sessionRulesVersion =
+        Number(
+          gameSession.rules_version,
+        );
+
+      const useVerifiedSubmission =
+        sessionRulesVersion ===
+        JUMP_GAME_RULES_VERSION;
+
+      if (
+        useVerifiedSubmission &&
+        gameSession.client_version !==
+          JUMP_GAME_CLIENT_VERSION
+      ) {
+        return json(
+          {
+            error:
+              'Protected game client version mismatch',
+            code:
+              'GAME_CLIENT_VERSION_MISMATCH',
+          },
+          409,
+          request,
+        );
+      }
+
+      if (
+        useVerifiedSubmission &&
+        submittedRulesVersion !==
+          JUMP_GAME_RULES_VERSION
+      ) {
+        return json(
+          {
+            error:
+              'Protected game metrics are required',
+            code:
+              'PROTECTED_GAME_METRICS_REQUIRED',
+          },
+          409,
+          request,
+        );
+      }
+
+      if (
+        !useVerifiedSubmission &&
+        submittedRulesVersion ===
+          JUMP_GAME_RULES_VERSION
+      ) {
+        return json(
+          {
+            error:
+              'Game rules version mismatch',
+            code:
+              'GAME_RULES_VERSION_MISMATCH',
+          },
+          409,
+          request,
+        );
+      }
+
+      let verifiedMetrics = null;
+
+      if (useVerifiedSubmission) {
+        const protectedSeed =
+          Number(
+            gameSession.game_seed,
+          );
+
+        if (
+          !Number.isSafeInteger(
+            protectedSeed,
+          ) ||
+          protectedSeed < 1 ||
+          protectedSeed > 2147483646
+        ) {
+          return json(
+            {
+              error:
+                'Game session seed is invalid',
+            },
+            409,
+            request,
+          );
+        }
+
+        const metrics =
+          body.metrics;
+
+        const checkpoints =
+          metrics?.checkpoints ??
+          body.checkpoints;
+
+        const clientMetrics =
+          metrics?.clientMetrics ??
+          body.clientMetrics;
+
+        const integerMetrics = {
+          activeDurationMs:
+            24 * 60 * 60 * 1000,
+          pausedDurationMs:
+            24 * 60 * 60 * 1000,
+          frameCount:
+            10_000_000,
+          maxFrameGapMs:
+            24 * 60 * 60 * 1000,
+          landingCount:
+            1_000_000,
+          normalLandings:
+            1_000_000,
+          cloudLandings:
+            1_000_000,
+          movingLandings:
+            1_000_000,
+          springLandings:
+            1_000_000,
+          rocketsCollected:
+            100_000,
+          rocketsMissed:
+            100_000,
+          maximumScore:
+            100_000,
+          screenWidth:
+            10_000,
+          screenHeight:
+            10_000,
+        };
+
+        if (
+          !isPlainObject(
+            metrics,
+          )
+        ) {
+          return json(
+            {
+              error:
+                'Game metrics are required',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          getJsonByteLength(
+            metrics,
+          ) > 64 * 1024
+        ) {
+          return json(
+            {
+              error:
+                'Game metrics are too large',
+            },
+            413,
+            request,
+          );
+        }
+
+        for (
+          const [
+            metricName,
+            maximumValue,
+          ] of Object.entries(
+            integerMetrics,
+          )
+        ) {
+          const metricValue =
+            metrics[metricName];
+
+          const minimumValue =
+            metricName ===
+              'screenWidth' ||
+            metricName ===
+              'screenHeight'
+              ? 1
+              : 0;
+
+          if (
+            typeof metricValue !==
+              'number' ||
+            !Number.isSafeInteger(
+              metricValue,
+            ) ||
+            metricValue <
+              minimumValue ||
+            metricValue >
+              maximumValue
+          ) {
+            return json(
+              {
+                error:
+                  `Invalid game metric: ${metricName}`,
+              },
+              400,
+              request,
+            );
+          }
+        }
+
+        const typedLandingCount =
+          metrics.normalLandings +
+          metrics.cloudLandings +
+          metrics.movingLandings +
+          metrics.springLandings;
+
+        if (
+          typedLandingCount !==
+          metrics.landingCount
+        ) {
+          return json(
+            {
+              error:
+                'Landing metrics mismatch',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          metrics.rocketsCollected >
+            metrics.landingCount +
+            1000
+        ) {
+          return json(
+            {
+              error:
+                'Rocket metrics mismatch',
+            },
+            400,
+            request,
+          );
+        }
+
+        const averageFps =
+          metrics.averageFps;
+
+        const minimumFps =
+          metrics.minimumFps;
+
+        if (
+          typeof averageFps !==
+            'number' ||
+          !Number.isFinite(
+            averageFps,
+          ) ||
+          averageFps < 0 ||
+          averageFps > 240 ||
+          typeof minimumFps !==
+            'number' ||
+          !Number.isFinite(
+            minimumFps,
+          ) ||
+          minimumFps < 0 ||
+          minimumFps > 240 ||
+          minimumFps >
+            averageFps
+        ) {
+          return json(
+            {
+              error:
+                'Invalid FPS metrics',
+            },
+            400,
+            request,
+          );
+        }
+
+        const allowedDeathReasons =
+          new Set([
+            'fall',
+            'spike',
+            'exit',
+            'closed',
+            'unknown',
+          ]);
+
+        const deathReason =
+          typeof metrics.deathReason ===
+            'string'
+            ? metrics.deathReason
+            : '';
+
+        if (
+          !allowedDeathReasons.has(
+            deathReason,
+          )
+        ) {
+          return json(
+            {
+              error:
+                'Invalid death reason',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          !Array.isArray(
+            checkpoints,
+          ) ||
+          checkpoints.length > 6 ||
+          getJsonByteLength(
+            checkpoints,
+          ) > 8 * 1024
+        ) {
+          return json(
+            {
+              error:
+                'Invalid checkpoints',
+            },
+            400,
+            request,
+          );
+        }
+
+        const allowedCheckpointScores =
+          new Set([
+            25,
+            50,
+            100,
+            200,
+            300,
+            500,
+          ]);
+
+        const expectedCheckpointScores = [
+          25,
+          50,
+          100,
+          200,
+          300,
+          500,
+        ].filter(
+          checkpointScore =>
+            checkpointScore <= score,
+        );
+
+        let previousCheckpointScore = 0;
+
+        for (
+          let checkpointIndex = 0;
+          checkpointIndex <
+            checkpoints.length;
+          checkpointIndex += 1
+        ) {
+          const checkpoint =
+            checkpoints[
+              checkpointIndex
+            ];
+
+          if (
+            !isPlainObject(
+              checkpoint,
+            )
+          ) {
+            return json(
+              {
+                error:
+                  'Invalid checkpoint',
+              },
+              400,
+              request,
+            );
+          }
+
+          const checkpointScore =
+            checkpoint.score;
+
+          if (
+            typeof checkpointScore !==
+              'number' ||
+            !Number.isSafeInteger(
+              checkpointScore,
+            ) ||
+            !allowedCheckpointScores.has(
+              checkpointScore,
+            ) ||
+            checkpointScore <=
+              previousCheckpointScore ||
+            checkpointScore > score
+          ) {
+            return json(
+              {
+                error:
+                  'Invalid checkpoint score',
+              },
+              400,
+              request,
+            );
+          }
+
+          const checkpointIntegerFields = [
+            'activeDurationMs',
+            'landingCount',
+            'rocketsCollected',
+          ];
+
+          for (
+            const checkpointField of
+            checkpointIntegerFields
+          ) {
+            const checkpointValue =
+              checkpoint[
+                checkpointField
+              ];
+
+            if (
+              typeof checkpointValue !==
+                'number' ||
+              !Number.isSafeInteger(
+                checkpointValue,
+              ) ||
+              checkpointValue < 0
+            ) {
+              return json(
+                {
+                  error:
+                    `Invalid checkpoint metric: ${checkpointField}`,
+                },
+                400,
+                request,
+              );
+            }
+          }
+
+          if (
+            checkpoint.activeDurationMs >
+              metrics.activeDurationMs ||
+            checkpoint.landingCount >
+              metrics.landingCount ||
+            checkpoint.rocketsCollected >
+              metrics.rocketsCollected
+          ) {
+            return json(
+              {
+                error:
+                  'Checkpoint exceeds final metrics',
+              },
+              400,
+              request,
+            );
+          }
+
+          if (
+            checkpointScore !==
+            expectedCheckpointScores[
+              checkpointIndex
+            ]
+          ) {
+            return json(
+              {
+                error:
+                  'Checkpoint sequence mismatch',
+              },
+              400,
+              request,
+            );
+          }
+
+          previousCheckpointScore =
+            checkpointScore;
+        }
+
+        if (
+          checkpoints.length !==
+          expectedCheckpointScores.length
+        ) {
+          return json(
+            {
+              error:
+                'Required checkpoints are missing',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          !isPlainObject(
+            clientMetrics,
+          ) ||
+          getJsonByteLength(
+            clientMetrics,
+          ) > 16 * 1024
+        ) {
+          return json(
+            {
+              error:
+                'Invalid client metrics',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          clientMetrics.seed !==
+          protectedSeed
+        ) {
+          return json(
+            {
+              error:
+                'Game seed mismatch',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          clientMetrics.rulesVersion !==
+          JUMP_GAME_RULES_VERSION
+        ) {
+          return json(
+            {
+              error:
+                'Client rules version mismatch',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          clientMetrics.clientVersion !==
+          JUMP_GAME_CLIENT_VERSION
+        ) {
+          return json(
+            {
+              error:
+                'Client version mismatch',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          typeof clientMetrics.distance !==
+            'number' ||
+          !Number.isFinite(
+            clientMetrics.distance,
+          ) ||
+          clientMetrics.distance < 0 ||
+          clientMetrics.distance >
+            10_000_000
+        ) {
+          return json(
+            {
+              error:
+                'Invalid client distance',
+            },
+            400,
+            request,
+          );
+        }
+
+        const clientIntegerMetrics = [
+          'remainingPlatforms',
+          'remainingRockets',
+        ];
+
+        for (
+          const metricName of
+          clientIntegerMetrics
+        ) {
+          const metricValue =
+            clientMetrics[
+              metricName
+            ];
+
+          if (
+            typeof metricValue !==
+              'number' ||
+            !Number.isSafeInteger(
+              metricValue,
+            ) ||
+            metricValue < 0 ||
+            metricValue >
+              100_000
+          ) {
+            return json(
+              {
+                error:
+                  `Invalid client metric: ${metricName}`,
+              },
+              400,
+              request,
+            );
+          }
+        }
+
+        const expectedDistance =
+          score * 10;
+
+        if (
+          Math.abs(
+            clientMetrics.distance -
+            expectedDistance,
+          ) >= 10
+        ) {
+          return json(
+            {
+              error:
+                'Client distance mismatch',
+            },
+            400,
+            request,
+          );
+        }
+
+        if (
+          metrics.maximumScore !==
+          score
+        ) {
+          return json(
+            {
+              error:
+                'Maximum score mismatch',
+            },
+            400,
+            request,
+          );
+        }
+
+        const stringMetricLimits = {
+          telegramPlatform: 32,
+          telegramWebAppVersion: 32,
+          language: 16,
+        };
+
+        const normalizedStringMetrics = {};
+
+        for (
+          const [
+            metricName,
+            maximumLength,
+          ] of Object.entries(
+            stringMetricLimits,
+          )
+        ) {
+          const metricValue =
+            metrics[metricName];
+
+          if (
+            metricValue ===
+              undefined ||
+            metricValue === null ||
+            metricValue === ''
+          ) {
+            normalizedStringMetrics[
+              metricName
+            ] = null;
+
+            continue;
+          }
+
+          if (
+            typeof metricValue !==
+              'string'
+          ) {
+            return json(
+              {
+                error:
+                  `Invalid game metric: ${metricName}`,
+              },
+              400,
+              request,
+            );
+          }
+
+          const normalizedMetricValue =
+            metricValue.trim();
+
+          if (
+            normalizedMetricValue.length ===
+              0 ||
+            normalizedMetricValue.length >
+              maximumLength
+          ) {
+            return json(
+              {
+                error:
+                  `Invalid game metric: ${metricName}`,
+              },
+              400,
+              request,
+            );
+          }
+
+          normalizedStringMetrics[
+            metricName
+          ] = normalizedMetricValue;
+        }
+
+        verifiedMetrics = {
+          ...metrics,
+          ...normalizedStringMetrics,
+          averageFps,
+          minimumFps,
+          deathReason,
+          checkpoints,
+          clientMetrics,
+        };
+      }
+
       const displayName =
         [
           telegramData?.user?.first_name,
@@ -2928,26 +5584,264 @@ export async function onRequest(context) {
       const username =
         telegramData?.user?.username || null;
 
+      const saveStartedAt =
+        Date.now();
+
+      const rpcResult =
+        useVerifiedSubmission
+          ? await supabase.rpc(
+              'finish_jump_game_v2',
+              {
+                p_session_id:
+                  sessionId,
+                p_user_id:
+                  userId,
+                p_pair_code:
+                  pairCode,
+                p_score:
+                  score,
+                p_active_duration_ms:
+                  Number(
+                    verifiedMetrics
+                      .activeDurationMs,
+                  ),
+                p_paused_duration_ms:
+                  Number(
+                    verifiedMetrics
+                      .pausedDurationMs,
+                  ),
+                p_frame_count:
+                  Number(
+                    verifiedMetrics
+                      .frameCount,
+                  ),
+                p_max_frame_gap_ms:
+                  Number(
+                    verifiedMetrics
+                      .maxFrameGapMs,
+                  ),
+                p_average_fps:
+                  verifiedMetrics
+                    .averageFps,
+                p_minimum_fps:
+                  verifiedMetrics
+                    .minimumFps,
+                p_landing_count:
+                  Number(
+                    verifiedMetrics
+                      .landingCount,
+                  ),
+                p_normal_landings:
+                  Number(
+                    verifiedMetrics
+                      .normalLandings,
+                  ),
+                p_cloud_landings:
+                  Number(
+                    verifiedMetrics
+                      .cloudLandings,
+                  ),
+                p_moving_landings:
+                  Number(
+                    verifiedMetrics
+                      .movingLandings,
+                  ),
+                p_spring_landings:
+                  Number(
+                    verifiedMetrics
+                      .springLandings,
+                  ),
+                p_rockets_collected:
+                  Number(
+                    verifiedMetrics
+                      .rocketsCollected,
+                  ),
+                p_rockets_missed:
+                  Number(
+                    verifiedMetrics
+                      .rocketsMissed,
+                  ),
+                p_maximum_score:
+                  Number(
+                    verifiedMetrics
+                      .maximumScore,
+                  ),
+                p_death_reason:
+                  verifiedMetrics
+                    .deathReason,
+                p_screen_width:
+                  Number(
+                    verifiedMetrics
+                      .screenWidth,
+                  ),
+                p_screen_height:
+                  Number(
+                    verifiedMetrics
+                      .screenHeight,
+                  ),
+                p_telegram_platform:
+                  verifiedMetrics
+                    .telegramPlatform ||
+                  null,
+                p_telegram_webapp_version:
+                  verifiedMetrics
+                    .telegramWebAppVersion ||
+                  null,
+                p_language:
+                  verifiedMetrics
+                    .language ||
+                  null,
+                p_checkpoints:
+                  verifiedMetrics
+                    .checkpoints,
+                p_client_metrics:
+                  verifiedMetrics
+                    .clientMetrics,
+                p_display_name:
+                  displayName,
+                p_username:
+                  username,
+              },
+            )
+          : await supabase.rpc(
+              'finish_jump_game',
+              {
+                p_session_id:
+                  sessionId,
+                p_user_id:
+                  userId,
+                p_pair_code:
+                  pairCode,
+                p_score:
+                  score,
+                p_display_name:
+                  displayName,
+                p_username:
+                  username,
+              },
+            );
+
       const {
-        data,
+        data: rpcData,
         error,
-      } = await supabase.rpc(
-        'finish_jump_game',
-        {
-          p_session_id: sessionId,
-          p_user_id: userId,
-          p_pair_code: pairCode,
-          p_score: score,
-          p_display_name: displayName,
-          p_username: username,
+      } = rpcResult;
+
+      const data =
+        Array.isArray(
+          rpcData,
+        )
+          ? (
+              rpcData[0] ||
+              null
+            )
+          : rpcData;
+
+      const saveDurationMs =
+        Math.max(
+          0,
+          Date.now() -
+          saveStartedAt,
+        );
+
+      if (!error) {
+        const legacyUpdate =
+          useVerifiedSubmission
+            ? {
+                save_duration_ms:
+                  saveDurationMs,
+              }
+            : {
+                save_duration_ms:
+                  saveDurationMs,
+                verification_status:
+                  'accepted',
+                verification_reasons:
+                  [
+                    'legacy_api_fallback',
+                  ],
+                verified_at:
+                  new Date()
+                    .toISOString(),
+              };
+
+        const {
+          error: sessionMetricsError,
+        } = await supabase
+          .from(
+            'jump_game_sessions',
+          )
+          .update(
+            legacyUpdate,
+          )
+          .eq(
+            'id',
+            sessionId,
+          )
+          .eq(
+            'user_id',
+            userId,
+          );
+
+        if (sessionMetricsError) {
+          console.error(
+            'Game session save duration update failed:',
+            sessionMetricsError,
+          );
         }
-      );
+      }
 
       if (error) {
         console.error(
           'Game score submission failed:',
           error
         );
+
+        const previousReasons =
+          normalizeVerificationReasons(
+            gameSession.verification_reasons,
+          );
+
+        const nextReasons =
+          previousReasons.includes(
+            'save_rpc_error',
+          )
+            ? previousReasons
+            : [
+                ...previousReasons,
+                'save_rpc_error',
+              ];
+
+        const {
+          error: saveFailureUpdateError,
+        } = await supabase
+          .from(
+            'jump_game_sessions',
+          )
+          .update({
+            save_duration_ms:
+              saveDurationMs,
+            verification_reasons:
+              nextReasons,
+          })
+          .eq(
+            'id',
+            sessionId,
+          )
+          .eq(
+            'user_id',
+            userId,
+          )
+          .eq(
+            'verification_status',
+            'pending',
+          );
+
+        if (saveFailureUpdateError) {
+          console.error(
+            'Game save failure metrics update failed:',
+            saveFailureUpdateError,
+          );
+        }
 
         const message =
           error.message || 'Failed to save score';
@@ -2970,7 +5864,15 @@ export async function onRequest(context) {
       // isPersonalRecord приходит из RPC finish_jump_game. Шлём партнёру
       // сообщение «установил новый личный рекорд: N». Не роняем сохранение
       // счёта, если Telegram-отправка не удалась.
-      if (data && data.isPersonalRecord === true && score > 0) {
+      if (
+        data &&
+        (
+          !useVerifiedSubmission ||
+          data.accepted === true
+        ) &&
+        data.isPersonalRecord === true &&
+        score > 0
+      ) {
         try {
           const { data: recordMembers } = await supabase
             .from('pair_users')
@@ -5627,6 +8529,90 @@ if (request.method === 'POST' && path === '/api/prepare-sticker') {
       }
 
       return json({ success: true, cleaned, cleanedInactive }, 200, request);
+    }
+
+    // ── POST /api/cleanup-jump-game-sessions (cron) ──
+    if (
+      request.method === 'POST' &&
+      path ===
+        '/api/cleanup-jump-game-sessions'
+    ) {
+      if (
+        !isCronAuthorized(
+          request,
+          env,
+        )
+      ) {
+        return json(
+          {
+            error:
+              'Forbidden',
+          },
+          403,
+          request,
+        );
+      }
+
+      const abandonedAt =
+        new Date()
+          .toISOString();
+
+      const {
+        data: abandonedSessions,
+        error: abandonError,
+      } = await supabase
+        .from(
+          'jump_game_sessions',
+        )
+        .update({
+          verification_status:
+            'abandoned',
+          verification_reasons:
+            [
+              'session_expired',
+            ],
+          abandoned_at:
+            abandonedAt,
+        })
+        .eq(
+          'verification_status',
+          'pending',
+        )
+        .lt(
+          'expires_at',
+          abandonedAt,
+        )
+        .select(
+          'id'
+        );
+
+      if (abandonError) {
+        console.error(
+          'Expired Jump session cleanup failed:',
+          abandonError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to clean expired Jump sessions',
+          },
+          500,
+          request,
+        );
+      }
+
+      return json(
+        {
+          success: true,
+          abandoned:
+            abandonedSessions?.length ||
+            0,
+          abandonedAt,
+        },
+        200,
+        request,
+      );
     }
 
         // ── POST /api/cleanup-postcards (cron) ──

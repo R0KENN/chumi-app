@@ -4165,9 +4165,9 @@ async function syncTelegramProfile(
 
   /*
    * Обновляем имя в игровом рейтинге.
-   * updated_at намеренно не изменяем,
-   * поскольку он участвует в сортировке
-   * пользователей с одинаковым счётом.
+   * updated_at намеренно не изменяем.
+   * Tie-breaker использует отдельное поле
+   * best_score_achieved_at.
    */
   const {
     error: gameScoresError,
@@ -4405,6 +4405,1320 @@ function langButtons() {
   };
 }
 
+function getBotJumpAnalyticsPeriod(
+  period,
+  now = new Date(),
+) {
+  const normalizedPeriod =
+    period === 'today' ||
+    period === '7d' ||
+    period === 'week'
+      ? period
+      : 'today';
+
+  const end =
+    new Date(now);
+
+  let start;
+
+  if (normalizedPeriod === 'today') {
+    start =
+      new Date(end);
+
+    start.setUTCHours(
+      0,
+      0,
+      0,
+      0,
+    );
+  } else if (
+    normalizedPeriod === '7d'
+  ) {
+    start =
+      new Date(
+        end.getTime() -
+        7 * 24 * 60 * 60 * 1000,
+      );
+  } else {
+    const day =
+      end.getUTCDay();
+
+    const daysSinceMonday =
+      day === 0
+        ? 6
+        : day - 1;
+
+    start =
+      new Date(end);
+
+    start.setUTCHours(
+      0,
+      0,
+      0,
+      0,
+    );
+
+    start.setUTCDate(
+      start.getUTCDate() -
+      daysSinceMonday,
+    );
+  }
+
+  return {
+    period:
+      normalizedPeriod,
+
+    start:
+      start.toISOString(),
+
+    end:
+      end.toISOString(),
+  };
+}
+
+function getBotAnalyticsAverage(
+  values,
+) {
+  const numbers =
+    (values || [])
+      .map(value =>
+        Number(value)
+      )
+      .filter(value =>
+        Number.isFinite(value)
+      );
+
+  if (numbers.length === 0) {
+    return 0;
+  }
+
+  return (
+    numbers.reduce(
+      (
+        sum,
+        value,
+      ) =>
+        sum + value,
+      0,
+    ) /
+    numbers.length
+  );
+}
+
+function getBotAnalyticsMedian(
+  values,
+) {
+  const numbers =
+    (values || [])
+      .map(value =>
+        Number(value)
+      )
+      .filter(value =>
+        Number.isFinite(value)
+      )
+      .sort(
+        (
+          firstValue,
+          secondValue,
+        ) =>
+          firstValue -
+          secondValue,
+      );
+
+  if (numbers.length === 0) {
+    return 0;
+  }
+
+  const middleIndex =
+    Math.floor(
+      numbers.length / 2,
+    );
+
+  if (
+    numbers.length % 2 === 1
+  ) {
+    return numbers[
+      middleIndex
+    ];
+  }
+
+  return (
+    numbers[
+      middleIndex - 1
+    ] +
+    numbers[
+      middleIndex
+    ]
+  ) / 2;
+}
+
+function roundBotAnalyticsNumber(
+  value,
+  fractionDigits = 1,
+) {
+  const numericValue =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      numericValue,
+    )
+  ) {
+    return 0;
+  }
+
+  return Number(
+    numericValue.toFixed(
+      fractionDigits,
+    ),
+  );
+}
+
+function formatBotAnalyticsDuration(
+  milliseconds,
+) {
+  const normalizedMilliseconds =
+    Math.max(
+      0,
+      Number(
+        milliseconds,
+      ) || 0,
+    );
+
+  const totalSeconds =
+    Math.round(
+      normalizedMilliseconds /
+      1000,
+    );
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds} сек.`;
+  }
+
+  const minutes =
+    Math.floor(
+      totalSeconds / 60,
+    );
+
+  const seconds =
+    totalSeconds % 60;
+
+  return (
+    `${minutes} мин. ` +
+    `${seconds} сек.`
+  );
+}
+
+function formatBotAnalyticsPercent(
+  value,
+) {
+  return (
+    `${roundBotAnalyticsNumber(
+      (
+        Number(value) ||
+        0
+      ) * 100,
+      1,
+    )}%`
+  );
+}
+
+function countBotAnalyticsValues(
+  values,
+  limit = 8,
+) {
+  const safeLimit =
+    Math.min(
+      Math.max(
+        Number(limit) || 1,
+        1,
+      ),
+      6,
+    );
+
+  const counts =
+    new Map();
+
+  for (const value of (
+    values || []
+  )) {
+    const key =
+      String(
+        value ??
+        'unknown',
+      )
+        .trim()
+        .slice(
+          0,
+          48,
+        ) ||
+      'unknown';
+
+    counts.set(
+      key,
+      (
+        counts.get(
+          key,
+        ) || 0
+      ) + 1,
+    );
+  }
+
+  return [
+    ...counts.entries(),
+  ]
+    .map(
+      ([
+        key,
+        count,
+      ]) => ({
+        key,
+        count,
+      }),
+    )
+    .sort(
+      (
+        firstItem,
+        secondItem,
+      ) =>
+        secondItem.count -
+          firstItem.count ||
+        firstItem.key.localeCompare(
+          secondItem.key,
+        ),
+    )
+    .slice(
+      0,
+      safeLimit,
+    );
+}
+
+function formatBotAnalyticsDistribution(
+  items,
+) {
+  if (
+    !Array.isArray(items) ||
+    items.length === 0
+  ) {
+    return '—';
+  }
+
+  return items
+    .map(
+      item =>
+        `${escapeMd(item.key)}: ${item.count}`,
+    )
+    .join(' · ');
+}
+
+async function loadBotJumpAnalyticsRows(
+  supabase,
+  period,
+) {
+  const rows = [];
+  const pageSize = 1000;
+  const maximumRows = 20_000;
+
+  for (
+    let offset = 0;
+    offset < maximumRows;
+    offset += pageSize
+  ) {
+    const {
+      data: page,
+      error,
+    } = await supabase
+      .from(
+        'jump_game_sessions',
+      )
+      .select(
+        'id, user_id, pair_code, created_at, verified_at, rules_version, client_version, active_duration_ms, paused_duration_ms, frame_count, max_frame_gap_ms, average_fps, minimum_fps, landing_count, normal_landings, cloud_landings, moving_landings, spring_landings, rockets_collected, rockets_missed, maximum_score, death_reason, screen_width, screen_height, telegram_platform, telegram_webapp_version, language, checkpoints, verification_status, verification_reasons, save_duration_ms'
+      )
+      .gte(
+        'created_at',
+        period.start,
+      )
+      .lt(
+        'created_at',
+        period.end,
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        },
+      )
+      .range(
+        offset,
+        offset +
+        pageSize -
+        1,
+      );
+
+    if (error) {
+      throw error;
+    }
+
+    const currentPage =
+      page || [];
+
+    rows.push(
+      ...currentPage,
+    );
+
+    if (
+      currentPage.length <
+      pageSize
+    ) {
+      return {
+        rows,
+        truncated: false,
+      };
+    }
+  }
+
+  return {
+    rows,
+    truncated: true,
+  };
+}
+
+function getBotJumpPeriodTitle(
+  period,
+) {
+  if (period === '7d') {
+    return 'Последние 7 дней';
+  }
+
+  if (period === 'week') {
+    return 'Текущая неделя';
+  }
+
+  return 'Сегодня';
+}
+
+function jumpAnalyticsKeyboard(
+  period,
+) {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text:
+              '🔄 Обновить',
+            callback_data:
+              `admin_jump_${period}`,
+          },
+        ],
+        [
+          {
+            text:
+              '⚠️ Подозрительные забеги',
+            callback_data:
+              'admin_jump_suspicious',
+          },
+        ],
+        [
+          {
+            text:
+              '⬅️ К периодам',
+            callback_data:
+              'admin_jump_analytics',
+          },
+        ],
+        [
+          {
+            text:
+              '🏠 В админ-панель',
+            callback_data:
+              'admin_menu',
+          },
+        ],
+      ],
+    },
+  };
+}
+
+async function sendJumpAnalyticsMenu(
+  env,
+  chatId,
+) {
+  await sendMessage(
+    env,
+    chatId,
+    `📊 *Аналитика Chumi Jump*\n\n` +
+      `Выберите период отчёта.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                'Сегодня',
+              callback_data:
+                'admin_jump_today',
+            },
+          ],
+          [
+            {
+              text:
+                '7 дней',
+              callback_data:
+                'admin_jump_7d',
+            },
+          ],
+          [
+            {
+              text:
+                'Текущая неделя',
+              callback_data:
+                'admin_jump_week',
+            },
+          ],
+          [
+            {
+              text:
+                '⚠️ Подозрительные забеги',
+              callback_data:
+                'admin_jump_suspicious',
+            },
+          ],
+          [
+            {
+              text:
+                '⬅️ Назад',
+              callback_data:
+                'admin_menu',
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function sendJumpAnalyticsReport(
+  env,
+  supabase,
+  chatId,
+  requestedPeriod,
+) {
+  const period =
+    getBotJumpAnalyticsPeriod(
+      requestedPeriod,
+    );
+
+  let loaded;
+
+  try {
+    loaded =
+      await loadBotJumpAnalyticsRows(
+        supabase,
+        period,
+      );
+  } catch (error) {
+    console.error(
+      'Bot Jump analytics query failed:',
+      error,
+    );
+
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось загрузить аналитику Jump:\n` +
+        `${escapeMd(
+          error?.message ||
+          String(error),
+        )}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const sessions =
+    loaded.rows;
+
+  const completedStatuses =
+    new Set([
+      'accepted',
+      'suspicious',
+      'rejected',
+    ]);
+
+  const completed =
+    sessions.filter(
+      session =>
+        completedStatuses.has(
+          session.verification_status,
+        ),
+    );
+
+  const accepted =
+    completed.filter(
+      session =>
+        session.verification_status ===
+          'accepted',
+    );
+
+  const suspicious =
+    completed.filter(
+      session =>
+        session.verification_status ===
+          'suspicious',
+    );
+
+  const rejected =
+    completed.filter(
+      session =>
+        session.verification_status ===
+          'rejected',
+    );
+
+  const abandoned =
+    sessions.filter(
+      session =>
+        session.verification_status ===
+          'abandoned',
+    );
+
+  const pending =
+    sessions.filter(
+      session =>
+        session.verification_status ===
+          'pending',
+    );
+
+  const uniquePlayers =
+    new Set(
+      sessions
+        .map(session =>
+          String(
+            session.user_id ||
+            '',
+          )
+        )
+        .filter(Boolean),
+    );
+
+  const runsByPlayer =
+    new Map();
+
+  for (const session of sessions) {
+    const sessionUserId =
+      String(
+        session.user_id ||
+        '',
+      );
+
+    if (!sessionUserId) {
+      continue;
+    }
+
+    runsByPlayer.set(
+      sessionUserId,
+      (
+        runsByPlayer.get(
+          sessionUserId,
+        ) || 0
+      ) + 1,
+    );
+  }
+
+  const repeatPlayers =
+    [
+      ...runsByPlayer.values(),
+    ].filter(
+      runCount =>
+        runCount > 1,
+    ).length;
+
+  const scores =
+    completed.map(
+      session =>
+        Number(
+          session.maximum_score,
+        ) || 0,
+    );
+
+  const activeDurations =
+    completed.map(
+      session =>
+        Number(
+          session.active_duration_ms,
+        ) || 0,
+    );
+
+  const pausedDurations =
+    completed.map(
+      session =>
+        Number(
+          session.paused_duration_ms,
+        ) || 0,
+    );
+
+  const validAverageFps =
+    completed
+      .map(session =>
+        Number(
+          session.average_fps,
+        )
+      )
+      .filter(value =>
+        Number.isFinite(value) &&
+        value > 0 &&
+        value <= 240
+      );
+
+  const validMinimumFps =
+    completed
+      .map(session =>
+        Number(
+          session.minimum_fps,
+        )
+      )
+      .filter(value =>
+        Number.isFinite(value) &&
+        value > 0 &&
+        value <= 240
+      );
+
+  const longGapSessions =
+    completed.filter(
+      session =>
+        Number(
+          session.max_frame_gap_ms,
+        ) >= 250,
+    );
+
+  const pausedSessions =
+    completed.filter(
+      session =>
+        Number(
+          session.paused_duration_ms,
+        ) > 0,
+    );
+
+  const saveDurations =
+    completed
+      .map(session =>
+        Number(
+          session.save_duration_ms,
+        )
+      )
+      .filter(value =>
+        Number.isFinite(value) &&
+        value >= 0
+      );
+
+  const reasons = [];
+
+  for (const session of sessions) {
+    if (
+      !Array.isArray(
+        session.verification_reasons,
+      )
+    ) {
+      continue;
+    }
+
+    for (
+      const reason of
+      session.verification_reasons
+    ) {
+      if (
+        typeof reason ===
+          'string' &&
+        reason.trim()
+      ) {
+        reasons.push(
+          reason.trim(),
+        );
+      }
+    }
+  }
+
+  const saveErrorSessions =
+    sessions.filter(
+      session => {
+        const sessionReasons =
+          Array.isArray(
+            session.verification_reasons,
+          )
+            ? session.verification_reasons
+            : [];
+
+        return sessionReasons.some(
+          reason =>
+            typeof reason ===
+              'string' &&
+            /save|database|rpc|timeout|network/i.test(
+              reason,
+            ),
+        );
+      },
+    );
+
+  const checkpointScores = [
+    25,
+    50,
+    100,
+    200,
+    300,
+    500,
+  ];
+
+  const checkpointText =
+    checkpointScores
+      .map(
+        checkpointScore => {
+          const checkpointCount =
+            completed.filter(
+              session => {
+                const checkpoints =
+                  Array.isArray(
+                    session.checkpoints,
+                  )
+                    ? session.checkpoints
+                    : [];
+
+                return checkpoints.some(
+                  checkpoint =>
+                    Number(
+                      checkpoint?.score,
+                    ) ===
+                    checkpointScore,
+                );
+              },
+            ).length;
+
+          return (
+            `${checkpointScore}: ` +
+            `${checkpointCount}`
+          );
+        },
+      )
+      .join(' · ');
+
+  const landingTotals = {
+    all:
+      completed.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.landing_count,
+            ) || 0
+          ),
+        0,
+      ),
+
+    normal:
+      completed.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.normal_landings,
+            ) || 0
+          ),
+        0,
+      ),
+
+    cloud:
+      completed.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.cloud_landings,
+            ) || 0
+          ),
+        0,
+      ),
+
+    moving:
+      completed.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.moving_landings,
+            ) || 0
+          ),
+        0,
+      ),
+
+    spring:
+      completed.reduce(
+        (
+          sum,
+          session,
+        ) =>
+          sum +
+          (
+            Number(
+              session.spring_landings,
+            ) || 0
+          ),
+        0,
+      ),
+  };
+
+  const rocketsCollected =
+    completed.reduce(
+      (
+        sum,
+        session,
+      ) =>
+        sum +
+        (
+          Number(
+            session.rockets_collected,
+          ) || 0
+        ),
+      0,
+    );
+
+  const rocketsMissed =
+    completed.reduce(
+      (
+        sum,
+        session,
+      ) =>
+        sum +
+        (
+          Number(
+            session.rockets_missed,
+          ) || 0
+        ),
+      0,
+    );
+
+  const rocketAttempts =
+    rocketsCollected +
+    rocketsMissed;
+
+  const runsPerPlayer =
+    uniquePlayers.size > 0
+      ? sessions.length /
+        uniquePlayers.size
+      : 0;
+
+  const repeatShare =
+    uniquePlayers.size > 0
+      ? repeatPlayers /
+        uniquePlayers.size
+      : 0;
+
+  const firstPart =
+    `📊 *Chumi Jump — ${getBotJumpPeriodTitle(period.period)}*\n\n` +
+    `👥 Уникальные игроки: *${uniquePlayers.size}*\n` +
+    `🎮 Сессии: *${sessions.length}*\n` +
+    `✅ Завершены: *${completed.length}*\n` +
+    `🚪 Брошены: *${abandoned.length}*\n` +
+    `⏳ Pending: *${pending.length}*\n\n` +
+    `🟢 Accepted: *${accepted.length}*\n` +
+    `⚠️ Suspicious: *${suspicious.length}*\n` +
+    `⛔ Rejected: *${rejected.length}*\n` +
+    `0️⃣ Нулевой результат: *${scores.filter(score => score === 0).length}*\n\n` +
+    `📈 Средний результат: *${roundBotAnalyticsNumber(getBotAnalyticsAverage(scores))}*\n` +
+    `📊 Медиана: *${roundBotAnalyticsNumber(getBotAnalyticsMedian(scores))}*\n` +
+    `🏆 Максимум: *${scores.length > 0 ? Math.max(...scores) : 0}*\n\n` +
+    `🔁 Забегов на игрока: *${roundBotAnalyticsNumber(runsPerPlayer, 2)}*\n` +
+    `♻️ Повторно запускали: *${repeatPlayers} (${formatBotAnalyticsPercent(repeatShare)})*\n\n` +
+    `⏱ Средняя игра: *${formatBotAnalyticsDuration(getBotAnalyticsAverage(activeDurations))}*\n` +
+    `⏱ Медиана игры: *${formatBotAnalyticsDuration(getBotAnalyticsMedian(activeDurations))}*`;
+
+  const deathReasons =
+    countBotAnalyticsValues(
+      completed.map(
+        session =>
+          session.death_reason ||
+          'unknown',
+      ),
+      8,
+    );
+
+  const platforms =
+    countBotAnalyticsValues(
+      completed.map(
+        session =>
+          session.telegram_platform ||
+          'unknown',
+      ),
+      8,
+    );
+
+  const webAppVersions =
+    countBotAnalyticsValues(
+      completed.map(
+        session =>
+          session.telegram_webapp_version ||
+          'unknown',
+      ),
+      8,
+    );
+
+  const languages =
+    countBotAnalyticsValues(
+      completed.map(
+        session =>
+          session.language ||
+          'unknown',
+      ),
+      8,
+    );
+
+  const rulesVersions =
+    countBotAnalyticsValues(
+      sessions.map(
+        session =>
+          session.rules_version ??
+          'unknown',
+      ),
+      8,
+    );
+
+  const clientVersions =
+    countBotAnalyticsValues(
+      sessions.map(
+        session =>
+          session.client_version ||
+          'unknown',
+      ),
+      8,
+    );
+
+  const screenSizes =
+    countBotAnalyticsValues(
+      completed.map(
+        session => {
+          const width =
+            Number(
+              session.screen_width,
+            );
+
+          const height =
+            Number(
+              session.screen_height,
+            );
+
+          if (
+            !Number.isSafeInteger(
+              width,
+            ) ||
+            !Number.isSafeInteger(
+              height,
+            ) ||
+            width <= 0 ||
+            height <= 0
+          ) {
+            return 'unknown';
+          }
+
+          return (
+            `${width}x${height}`
+          );
+        },
+      ),
+      8,
+    );
+
+  const secondPart =
+    `📋 *Игровые метрики*\n\n` +
+    `🎯 Checkpoints:\n${checkpointText}\n\n` +
+    `🧱 Приземления: *${landingTotals.all}*\n` +
+    `Обычные: *${landingTotals.normal}* · ` +
+    `Облака: *${landingTotals.cloud}* · ` +
+    `Движущиеся: *${landingTotals.moving}* · ` +
+    `Пружины: *${landingTotals.spring}*\n\n` +
+    `🚀 Ракеты: *${rocketsCollected}* собрано · *${rocketsMissed}* пропущено\n` +
+    `Доля сбора: *${formatBotAnalyticsPercent(rocketAttempts > 0 ? rocketsCollected / rocketAttempts : 0)}*\n\n` +
+    `📉 Средний FPS: *${roundBotAnalyticsNumber(getBotAnalyticsAverage(validAverageFps))}*\n` +
+    `🔻 Минимальный FPS: *${validMinimumFps.length > 0 ? roundBotAnalyticsNumber(Math.min(...validMinimumFps)) : 0}*\n` +
+    `🐢 Frame gap ≥250 мс: *${longGapSessions.length}*\n\n` +
+    `⏸ Сессии с паузой: *${pausedSessions.length}*\n` +
+    `Средняя пауза: *${formatBotAnalyticsDuration(getBotAnalyticsAverage(pausedDurations))}*\n\n` +
+    `💾 Среднее сохранение: *${formatBotAnalyticsDuration(getBotAnalyticsAverage(saveDurations))}*\n` +
+    `Медиана сохранения: *${formatBotAnalyticsDuration(getBotAnalyticsMedian(saveDurations))}*\n` +
+    `Ошибки сохранения: *${saveErrorSessions.length}*\n\n` +
+    `💀 Смерти: ${formatBotAnalyticsDistribution(deathReasons)}\n\n` +
+    `📱 Platform: ${formatBotAnalyticsDistribution(platforms)}\n` +
+    `Telegram: ${formatBotAnalyticsDistribution(webAppVersions)}\n` +
+    `🌐 Язык: ${formatBotAnalyticsDistribution(languages)}\n` +
+    `📐 Экраны: ${formatBotAnalyticsDistribution(screenSizes)}\n` +
+    `⚙️ Rules: ${formatBotAnalyticsDistribution(rulesVersions)}\n` +
+    `🧩 Client: ${formatBotAnalyticsDistribution(clientVersions)}\n\n` +
+    `🛡 Anti-cheat: ${formatBotAnalyticsDistribution(countBotAnalyticsValues(reasons, 10))}` +
+    (
+      loaded.truncated
+        ? `\n\n⚠️ Отчёт ограничен первыми 20000 сессиями.`
+        : ''
+    );
+
+  await sendMessage(
+    env,
+    chatId,
+    firstPart,
+    {
+      reply_markup: {
+        inline_keyboard: [],
+      },
+    },
+  );
+
+  await sendMessage(
+    env,
+    chatId,
+    secondPart,
+    jumpAnalyticsKeyboard(
+      period.period,
+    ),
+  );
+}
+
+async function sendSuspiciousJumpRuns(
+  env,
+  supabase,
+  chatId,
+) {
+  const period =
+    getBotJumpAnalyticsPeriod(
+      'week',
+    );
+
+  let loaded;
+
+  try {
+    loaded =
+      await loadBotJumpAnalyticsRows(
+        supabase,
+        period,
+      );
+  } catch (error) {
+    console.error(
+      'Suspicious Jump runs query failed:',
+      error,
+    );
+
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось загрузить подозрительные забеги:\n` +
+        `${escapeMd(
+          error?.message ||
+          String(error),
+        )}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const flaggedRuns =
+    loaded.rows
+      .filter(
+        session =>
+          session.verification_status ===
+            'suspicious' ||
+          session.verification_status ===
+            'rejected',
+      )
+      .sort(
+        (
+          firstSession,
+          secondSession,
+        ) =>
+          Date.parse(
+            secondSession.verified_at ||
+            secondSession.created_at ||
+            0,
+          ) -
+          Date.parse(
+            firstSession.verified_at ||
+            firstSession.created_at ||
+            0,
+          ),
+      )
+      .slice(
+        0,
+        50,
+      );
+
+  if (flaggedRuns.length === 0) {
+    await sendMessage(
+      env,
+      chatId,
+      `✅ *Подозрительные забеги*\n\n` +
+        `За текущую неделю suspicious/rejected забегов нет.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '🔄 Обновить',
+                callback_data:
+                  'admin_jump_suspicious',
+              },
+            ],
+            [
+              {
+                text:
+                  '⬅️ К аналитике',
+                callback_data:
+                  'admin_jump_analytics',
+              },
+            ],
+          ],
+        },
+      },
+    );
+
+    return;
+  }
+
+  const chunks = [];
+  let chunk =
+    `⚠️ *Подозрительные забеги текущей недели*\n\n`;
+
+  for (const run of flaggedRuns) {
+    const reasons =
+      Array.isArray(
+        run.verification_reasons,
+      )
+        ? run.verification_reasons
+            .filter(reason =>
+              typeof reason ===
+              'string'
+            )
+            .map(reason =>
+              escapeMd(
+                reason.slice(
+                  0,
+                  160,
+                ),
+              )
+            )
+            .join(', ')
+        : '';
+
+    const createdAt =
+      run.created_at
+        ? new Date(
+            run.created_at,
+          ).toLocaleString(
+            'ru-RU',
+            {
+              timeZone:
+                'Europe/Moscow',
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            },
+          )
+        : '—';
+
+    const line =
+      `*${escapeMd(run.verification_status || 'unknown')}* · ` +
+      `*${Number(run.maximum_score) || 0} очков*\n` +
+      `Session: \`${run.id}\`\n` +
+      `User: \`${run.user_id}\`\n` +
+      `Pair: \`${run.pair_code || '—'}\`\n` +
+      `Время: ${escapeMd(createdAt)} МСК\n` +
+      `Причины: ${reasons || '—'}\n\n`;
+
+    if (
+      (
+        chunk +
+        line
+      ).length > 3600
+    ) {
+      chunks.push(
+        chunk.trimEnd(),
+      );
+
+      chunk =
+        `⚠️ *Продолжение подозрительных забегов*\n\n`;
+    }
+
+    chunk += line;
+  }
+
+  if (chunk.trim()) {
+    chunks.push(
+      chunk.trimEnd(),
+    );
+  }
+
+  for (
+    let index = 0;
+    index < chunks.length;
+    index += 1
+  ) {
+    const isLastChunk =
+      index ===
+      chunks.length - 1;
+
+    await sendMessage(
+      env,
+      chatId,
+      chunks[index],
+      isLastChunk
+        ? {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text:
+                      '🔄 Обновить',
+                    callback_data:
+                      'admin_jump_suspicious',
+                  },
+                ],
+                [
+                  {
+                    text:
+                      '⬅️ К аналитике',
+                    callback_data:
+                      'admin_jump_analytics',
+                  },
+                ],
+                [
+                  {
+                    text:
+                      '🏠 В админ-панель',
+                    callback_data:
+                      'admin_menu',
+                  },
+                ],
+              ],
+            },
+          }
+        : {
+            reply_markup: {
+              inline_keyboard: [],
+            },
+          },
+    );
+  }
+}
+
 function adminMenuButtons() {
   return {
     reply_markup: {
@@ -4429,6 +5743,12 @@ function adminMenuButtons() {
           {
             text: '📅 Ежедневная сводка',
             callback_data: 'admin_summary',
+          },
+        ],
+        [
+          {
+            text: '📊 Аналитика Jump',
+            callback_data: 'admin_jump_analytics',
           },
         ],
         [
@@ -4755,6 +6075,47 @@ export async function onRequestPost(context) {
           env,
           cb.id,
         );
+
+        if (
+          cbData ===
+          'admin_jump_analytics'
+        ) {
+          await sendJumpAnalyticsMenu(
+            env,
+            cbChatId,
+          );
+
+          return new Response('OK');
+        }
+
+        const jumpPeriodMatch =
+          cbData.match(
+            /^admin_jump_(today|7d|week)$/,
+          );
+
+        if (jumpPeriodMatch) {
+          await sendJumpAnalyticsReport(
+            env,
+            supabase,
+            cbChatId,
+            jumpPeriodMatch[1],
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData ===
+          'admin_jump_suspicious'
+        ) {
+          await sendSuspiciousJumpRuns(
+            env,
+            supabase,
+            cbChatId,
+          );
+
+          return new Response('OK');
+        }
 
         if (
           cbData ===

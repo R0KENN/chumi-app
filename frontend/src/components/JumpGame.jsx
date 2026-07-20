@@ -5,6 +5,107 @@ import { useLang } from '../context/LangContext';
 import './JumpGame.css';
 
 const ACCENT = '#9B72CF';
+const JUMP_GAME_RULES_VERSION = 2;
+const JUMP_GAME_CLIENT_VERSION = 'jump-2';
+
+const MAX_GAME_SEED = 2147483646;
+
+const GAME_CHECKPOINT_SCORES = [
+  25,
+  50,
+  100,
+  200,
+  300,
+  500,
+];
+
+const JUMP_GAME_MUTED_KEY =
+  'chumi_jump_muted';
+
+function normalizeGameSeed(value) {
+  const parsed = Number(value);
+
+  if (
+    Number.isSafeInteger(parsed) &&
+    parsed >= 1 &&
+    parsed <= MAX_GAME_SEED
+  ) {
+    return parsed;
+  }
+
+  return 1;
+}
+
+function createSeededRandom(seedValue) {
+  let state = normalizeGameSeed(seedValue) >>> 0;
+
+  return () => {
+    state += 0x6D2B79F5;
+
+    let value = state;
+
+    value = Math.imul(
+      value ^ (value >>> 15),
+      value | 1,
+    );
+
+    value ^= value + Math.imul(
+      value ^ (value >>> 7),
+      value | 61,
+    );
+
+    return (
+      (value ^ (value >>> 14)) >>> 0
+    ) / 4294967296;
+  };
+}
+
+function getFallbackGameSeed() {
+  try {
+    const values = new Uint32Array(1);
+    crypto.getRandomValues(values);
+
+    return (
+      values[0] % MAX_GAME_SEED
+    ) + 1;
+  } catch {
+    return (
+      Math.floor(Math.random() * MAX_GAME_SEED)
+    ) + 1;
+  }
+}
+
+function getGameDifficulty(scoreValue) {
+  const score = Math.max(
+    0,
+    Number(scoreValue) || 0,
+  );
+
+  /*
+   * baseDifficulty сохраняет существующий баланс
+   * от 0 до 200 очков.
+   *
+   * endlessDifficulty продолжает постепенно повышать
+   * сложность после 200 очков и достигает максимума
+   * примерно к 1000 очкам.
+   */
+  const baseDifficulty = clamp(
+    score / 200,
+    0,
+    1,
+  );
+
+  const endlessDifficulty = clamp(
+    (score - 200) / 800,
+    0,
+    1,
+  );
+
+  return {
+    baseDifficulty,
+    endlessDifficulty,
+  };
+}
 
 const STATE = {
   INTRO: 'intro',
@@ -16,7 +117,7 @@ const STATE = {
 
 const TYPE = {
   NORMAL: 'normal',
-  FRAGILE: 'fragile',
+  CLOUD: 'cloud',
   MOVING: 'moving',
   SPRING: 'spring',
   SPIKE: 'spike',
@@ -58,12 +159,354 @@ const clamp = (value, min, max) =>
 const random = (min, max) =>
   min + Math.random() * (max - min);
 
+function routeRandom(game, min, max) {
+  if (
+    typeof game?.routeRandom !==
+    'function'
+  ) {
+    throw new Error(
+      'Route random generator is missing',
+    );
+  }
+
+  return (
+    min +
+    game.routeRandom() *
+    (max - min)
+  );
+}
+
+function routeRoll(game) {
+  if (
+    typeof game?.routeRandom !==
+    'function'
+  ) {
+    throw new Error(
+      'Route random generator is missing',
+    );
+  }
+
+  return game.routeRandom();
+}
+
 function getLocalStorageItem(key) {
   try {
     return localStorage.getItem(key);
   } catch {
     return null;
   }
+}
+
+function setLocalStorageItem(
+  key,
+  value,
+) {
+  try {
+    localStorage.setItem(
+      key,
+      value,
+    );
+  } catch {
+    // localStorage может быть недоступен.
+  }
+}
+
+function createRunMetrics(
+  width,
+  height,
+  language,
+) {
+  const telegramWebApp =
+    window.Telegram?.WebApp;
+
+  return {
+    activeDurationMs: 0,
+    pausedDurationMs: 0,
+    frameCount: 0,
+    maxFrameGapMs: 0,
+
+    fpsTotal: 0,
+    fpsSampleCount: 0,
+    minimumFps: 0,
+
+    landingCount: 0,
+    normalLandings: 0,
+    cloudLandings: 0,
+    movingLandings: 0,
+    springLandings: 0,
+
+    rocketsCollected: 0,
+    rocketsMissed: 0,
+
+    maximumScore: 0,
+    deathReason: 'unknown',
+
+    screenWidth:
+      Math.max(
+        1,
+        Math.round(width),
+      ),
+
+    screenHeight:
+      Math.max(
+        1,
+        Math.round(height),
+      ),
+
+    telegramPlatform:
+      telegramWebApp?.platform
+        ? String(
+            telegramWebApp.platform,
+          ).slice(0, 32)
+        : null,
+
+    telegramWebAppVersion:
+      telegramWebApp?.version
+        ? String(
+            telegramWebApp.version,
+          ).slice(0, 32)
+        : null,
+
+    language:
+      language === 'en'
+        ? 'en'
+        : 'ru',
+
+    checkpoints: [],
+    nextCheckpointIndex: 0,
+
+    pauseStartedAt: null,
+  };
+}
+
+function makeScoreMetrics(game) {
+  const runMetrics =
+    game?.metrics;
+
+  if (!runMetrics) {
+    return null;
+  }
+
+  const frameCount =
+    Math.max(
+      0,
+      Math.round(
+        runMetrics.frameCount,
+      ),
+    );
+
+  const averageFps =
+    runMetrics.fpsSampleCount > 0
+      ? runMetrics.fpsTotal /
+        runMetrics.fpsSampleCount
+      : 0;
+
+  const minimumFps =
+    runMetrics.fpsSampleCount > 0
+      ? runMetrics.minimumFps
+      : 0;
+
+  return {
+    activeDurationMs:
+      Math.max(
+        0,
+        Math.round(
+          runMetrics.activeDurationMs,
+        ),
+      ),
+
+    pausedDurationMs:
+      Math.max(
+        0,
+        Math.round(
+          runMetrics.pausedDurationMs,
+        ),
+      ),
+
+    frameCount,
+
+    maxFrameGapMs:
+      Math.max(
+        0,
+        Math.round(
+          runMetrics.maxFrameGapMs,
+        ),
+      ),
+
+    averageFps:
+      Math.max(
+        0,
+        Math.min(
+          240,
+          Number(
+            averageFps.toFixed(2),
+          ),
+        ),
+      ),
+
+    minimumFps:
+      Math.max(
+        0,
+        Math.min(
+          240,
+          Number(
+            minimumFps.toFixed(2),
+          ),
+        ),
+      ),
+
+    landingCount:
+      runMetrics.landingCount,
+
+    normalLandings:
+      runMetrics.normalLandings,
+
+    cloudLandings:
+      runMetrics.cloudLandings,
+
+    movingLandings:
+      runMetrics.movingLandings,
+
+    springLandings:
+      runMetrics.springLandings,
+
+    rocketsCollected:
+      runMetrics.rocketsCollected,
+
+    rocketsMissed:
+      runMetrics.rocketsMissed,
+
+    maximumScore:
+      runMetrics.maximumScore,
+
+    deathReason:
+      runMetrics.deathReason,
+
+    screenWidth:
+      Math.max(
+        1,
+        Math.round(
+          game.width,
+        ),
+      ),
+
+    screenHeight:
+      Math.max(
+        1,
+        Math.round(
+          game.height,
+        ),
+      ),
+
+    telegramPlatform:
+      runMetrics.telegramPlatform,
+
+    telegramWebAppVersion:
+      runMetrics.telegramWebAppVersion,
+
+    language:
+      runMetrics.language,
+
+    checkpoints:
+      runMetrics.checkpoints.map(
+        checkpoint => ({
+          score:
+            checkpoint.score,
+
+          activeDurationMs:
+            checkpoint.activeDurationMs,
+
+          landingCount:
+            checkpoint.landingCount,
+
+          rocketsCollected:
+            checkpoint.rocketsCollected,
+        }),
+      ),
+
+    clientMetrics: {
+      seed:
+        game.seed,
+
+      rulesVersion:
+        game.rulesVersion,
+
+      clientVersion:
+        game.clientVersion,
+
+      distance:
+        Math.max(
+          0,
+          Number(
+            game.distance.toFixed(2),
+          ),
+        ),
+
+      remainingPlatforms:
+        game.platforms.length,
+
+      remainingRockets:
+        game.rockets.length,
+    },
+  };
+}
+
+function formatWeekCountdown(
+  language,
+  weekEndsAt,
+  serverOffset,
+  localNow,
+) {
+  const weekEndTime =
+    Date.parse(
+      weekEndsAt || '',
+    );
+
+  if (
+    !Number.isFinite(
+      weekEndTime,
+    )
+  ) {
+    return '';
+  }
+
+  const serverNow =
+    localNow +
+    serverOffset;
+
+  const remainingMs =
+    weekEndTime -
+    serverNow;
+
+  if (remainingMs <= 0) {
+    return language === 'ru'
+      ? 'Подведение итогов…'
+      : 'Finalizing results…';
+  }
+
+  const totalHours =
+    Math.ceil(
+      remainingMs /
+      (60 * 60 * 1000),
+    );
+
+  const days =
+    Math.floor(
+      totalHours / 24,
+    );
+
+  const hours =
+    totalHours % 24;
+
+  return language === 'ru'
+    ? (
+        `До конца недели: ` +
+        `${days} д. ${hours} ч.`
+      )
+    : (
+        `Week ends in: ` +
+        `${days}d ${hours}h`
+      );
 }
 
 function wrappedDistance(from, to, width) {
@@ -101,49 +544,58 @@ function createPlatform(game, options) {
     height: 15,
     type: options.type || TYPE.NORMAL,
     mainRoute: options.mainRoute !== false,
+
+    /*
+     * broken пока оставляем для совместимости
+     * с текущей физикой и очисткой платформ.
+     */
     broken: false,
     breakVelocity: 0,
+
+    /*
+     * Для облака:
+     * 0 — на него ещё не приземлялись;
+     * > 0 — идёт растворение.
+     */
+    dissolveProgress: 0,
+    dissolved: false,
+
     moveRange: options.moveRange || 0,
     moveSpeed: options.moveSpeed || 0,
-    phase: random(0, Math.PI * 2),
+    phase: routeRandom(
+      game,
+      0,
+      Math.PI * 2,
+    ),
   };
 }
 
-function choosePlatformType(score) {
-  const roll = Math.random();
+function choosePlatformType(game, score) {
+  const roll = routeRoll(game);
+
+  const {
+    baseDifficulty,
+    endlessDifficulty,
+  } = getGameDifficulty(score);
 
   /*
-   * Сложность растёт линейно от 0 до 200 очков.
-   * После 200 очков параметры остаются на максимальном,
-   * но всё ещё проходимом уровне.
-   */
-  const difficulty = clamp(score / 200, 0, 1);
-
-  /*
-   * Движущиеся платформы:
-   *   28 очков  — начинают появляться;
-   *   200 очков — вероятность достигает 25%.
+   * До 200 очков сохраняется прежний рост.
+   * После 200 очков вероятность сложных платформ
+   * продолжает плавно увеличиваться.
    */
   const movingChance =
-    0.08 + difficulty * 0.17;
+    0.08 +
+    baseDifficulty * 0.17 +
+    endlessDifficulty * 0.07;
 
-  /*
-   * Ломающиеся платформы:
-   *   15 очков  — начинают появляться;
-   *   200 очков — вероятность достигает 38%.
-   *
-   * В старом коде вероятность фактически оставалась
-   * примерно одинаковой, потому что movingChance
-   * прибавлялся одновременно к обеим границам.
-   */
-  const fragileChance =
-    0.12 + difficulty * 0.26;
+  const cloudChance =
+    0.12 +
+    baseDifficulty * 0.26 +
+    endlessDifficulty * 0.10;
 
-  /*
-   * Пружины остаются редкими полезными платформами.
-   */
   const springChance =
-    0.05 + difficulty * 0.02;
+    0.05 +
+    baseDifficulty * 0.02;
 
   let chanceCursor = 0;
 
@@ -156,10 +608,10 @@ function choosePlatformType(score) {
   }
 
   if (score >= 15) {
-    chanceCursor += fragileChance;
+    chanceCursor += cloudChance;
 
     if (roll < chanceCursor) {
-      return TYPE.FRAGILE;
+      return TYPE.CLOUD;
     }
   }
 
@@ -175,40 +627,65 @@ function choosePlatformType(score) {
 }
 
 function addPlatform(game) {
-  const score = Math.floor(game.distance / 10);
-  const difficulty = clamp(score / 200, 0, 1);
+  const score = Math.floor(
+    game.distance / 10,
+  );
+
+  const {
+    baseDifficulty,
+    endlessDifficulty,
+  } = getGameDifficulty(score);
+
   const previous = game.lastRoutePlatform;
 
-  const width = random(
-    94 - difficulty * 14,
-    118 - difficulty * 17,
+  /*
+   * После 200 очков платформы продолжают постепенно
+   * сужаться, но остаются достаточно широкими
+   * для мобильного управления.
+   */
+  const width = routeRandom(
+    game,
+    94 -
+      baseDifficulty * 14 -
+      endlessDifficulty * 10,
+    118 -
+      baseDifficulty * 17 -
+      endlessDifficulty * 12,
   );
 
   /*
-   * Вертикальный разрыв всегда меньше реальной высоты прыжка.
-   * Поэтому основной маршрут остаётся проходимым.
+   * Основной маршрут всегда остаётся в пределах
+   * достижимой высоты обычного прыжка.
    */
-  const verticalGap = random(
-    72 + difficulty * 8,
-    106 + difficulty * 15,
+  const verticalGap = routeRandom(
+    game,
+    72 +
+      baseDifficulty * 8 +
+      endlessDifficulty * 5,
+    106 +
+      baseDifficulty * 15 +
+      endlessDifficulty * 8,
   );
 
   const horizontalLimit = Math.min(
-    game.width * 0.42,
-    125 + difficulty * 60,
+    game.width * 0.46,
+    125 +
+      baseDifficulty * 60 +
+      endlessDifficulty * 25,
   );
 
-  const type = choosePlatformType(score);
+  const type = choosePlatformType(
+    game,
+    score,
+  );
 
-  /*
-   * Для движущейся платформы заранее учитываем
-   * амплитуду движения. Иначе платформа,
-   * созданная около края, частично уезжает
-   * за границы экрана.
-   */
   const moveRange =
     type === TYPE.MOVING
-      ? random(16, 32)
+      ? routeRandom(
+          game,
+          16,
+          32 + endlessDifficulty * 5,
+        )
       : 0;
 
   const edgePadding = 12;
@@ -224,7 +701,8 @@ function addPlatform(game) {
 
   const x = clamp(
     previous.x +
-      random(
+      routeRandom(
+        game,
         -horizontalLimit,
         horizontalLimit,
       ),
@@ -241,21 +719,16 @@ function addPlatform(game) {
     width,
     type,
     moveRange,
-    /*
-     * Скорость движущихся платформ плавно увеличивается:
-     *
-     *   начало игры — 1.0–1.5;
-     *   100 очков   — примерно 2.1–2.8;
-     *   200 очков   — 3.2–4.1.
-     *
-     * Амплитуда движения остаётся ограниченной, поэтому
-     * платформа не становится физически недостижимой.
-     */
     moveSpeed:
       type === TYPE.MOVING
-        ? random(
-            1.0 + difficulty * 2.2,
-            1.5 + difficulty * 2.6,
+        ? routeRandom(
+            game,
+            1.0 +
+              baseDifficulty * 2.2 +
+              endlessDifficulty * 0.8,
+            1.5 +
+              baseDifficulty * 2.6 +
+              endlessDifficulty * 1.1,
           )
         : 0,
   });
@@ -264,16 +737,34 @@ function addPlatform(game) {
   game.lastRoutePlatform = platform;
 
   /*
-   * Шипы — только дополнительное препятствие.
-   * Они не становятся частью обязательного маршрута.
+   * Набор препятствий не меняется.
+   * После 200 очков повышается только вероятность.
    */
-  if (score >= 30 && Math.random() < 0.13 + difficulty * 0.06) {
-    const hazardWidth = random(65, 85);
-    const placeRight = x < game.width / 2;
+  const spikeChance =
+    0.13 +
+    baseDifficulty * 0.06 +
+    endlessDifficulty * 0.06;
+
+  if (
+    score >= 30 &&
+    routeRoll(game) < spikeChance
+  ) {
+    const hazardWidth = routeRandom(
+      game,
+      65,
+      85,
+    );
+
+    const placeRight =
+      x < game.width / 2;
 
     let hazardX = placeRight
-      ? x + width + random(45, 75)
-      : x - hazardWidth - random(45, 75);
+      ? x +
+        width +
+        routeRandom(game, 45, 75)
+      : x -
+        hazardWidth -
+        routeRandom(game, 45, 75);
 
     hazardX = clamp(
       hazardX,
@@ -286,28 +777,32 @@ function addPlatform(game) {
       hazardX + hazardWidth > x - 22;
 
     if (!overlaps) {
-      game.platforms.push(createPlatform(game, {
-        x: hazardX,
-        y: platform.y + random(-8, 10),
-        width: hazardWidth,
-        type: TYPE.SPIKE,
-        mainRoute: false,
-      }));
+      game.platforms.push(
+        createPlatform(game, {
+          x: hazardX,
+          y:
+            platform.y +
+            routeRandom(game, -8, 10),
+          width: hazardWidth,
+          type: TYPE.SPIKE,
+          mainRoute: false,
+        }),
+      );
     }
   }
 
-  /*
-   * Ракета появляется только около безопасной платформы.
-   */
   const distanceFromLastRocket =
-    game.distance - game.lastRocketDistance;
+    game.distance -
+    game.lastRocketDistance;
 
   const distanceFromCollectedRocket =
-    game.distance - game.lastCollectedRocketDistance;
+    game.distance -
+    game.lastCollectedRocketDistance;
 
-  const hasActiveRocket = game.rockets.some(
-    rocket => !rocket.collected,
-  );
+  const hasActiveRocket =
+    game.rockets.some(
+      rocket => !rocket.collected,
+    );
 
   const canSpawnRocket =
     distanceFromLastRocket >= 750 &&
@@ -315,21 +810,33 @@ function addPlatform(game) {
     game.player.boost <= 0 &&
     !hasActiveRocket;
 
+  const rocketChance = Math.max(
+    0.02,
+    0.07 -
+      baseDifficulty * 0.03 -
+      endlessDifficulty * 0.015,
+  );
+
   if (
     score >= 12 &&
-    type !== TYPE.FRAGILE &&
+    type !== TYPE.CLOUD &&
     canSpawnRocket &&
-    Math.random() < 0.07 - difficulty * 0.03
+    routeRoll(game) < rocketChance
   ) {
     game.rockets.push({
       id: game.nextRocketId++,
       x: x + width / 2,
       y: platform.y - 36,
-      phase: random(0, Math.PI * 2),
+      phase: routeRandom(
+        game,
+        0,
+        Math.PI * 2,
+      ),
       collected: false,
     });
 
-    game.lastRocketDistance = game.distance;
+    game.lastRocketDistance =
+      game.distance;
   }
 }
 
@@ -339,7 +846,15 @@ function ensurePlatforms(game) {
   }
 }
 
-function makeGame(width, height) {
+function makeGame(
+  width,
+  height,
+  seedValue = getFallbackGameSeed(),
+  language = 'ru',
+) {
+  const seed = normalizeGameSeed(seedValue);
+  const seededRandom =
+    createSeededRandom(seed);
   const startPlatform = {
     id: 1,
     x: width / 2 - 58,
@@ -359,6 +874,11 @@ function makeGame(width, height) {
   const game = {
     width,
     height,
+    seed,
+    rulesVersion: JUMP_GAME_RULES_VERSION,
+    clientVersion: JUMP_GAME_CLIENT_VERSION,
+    routeRandom: seededRandom,
+
     state: STATE.INTRO,
     time: 0,
     accumulator: 0,
@@ -366,6 +886,13 @@ function makeGame(width, height) {
 
     distance: 0,
     score: 0,
+
+    metrics:
+      createRunMetrics(
+        width,
+        height,
+        language,
+      ),
 
     nextPlatformId: 2,
     nextRocketId: 1,
@@ -545,6 +1072,18 @@ function drawPlatform(ctx, platform, dark) {
 
   ctx.save();
 
+  if (
+    type === TYPE.CLOUD &&
+    platform.dissolveProgress > 0
+  ) {
+    ctx.globalAlpha = clamp(
+      1 -
+        platform.dissolveProgress,
+      0,
+      1,
+    );
+  }
+
   if (platform.broken) {
     ctx.globalAlpha = clamp(
       1 - platform.breakVelocity / 1000,
@@ -585,9 +1124,20 @@ function drawPlatform(ctx, platform, dark) {
     y + height,
   );
 
-  if (type === TYPE.FRAGILE) {
-    gradient.addColorStop(0, '#FFD27A');
-    gradient.addColorStop(1, '#E99A3F');
+  if (type === TYPE.CLOUD) {
+    gradient.addColorStop(
+      0,
+      dark
+        ? '#F1ECF8'
+        : '#FFFFFF',
+    );
+
+    gradient.addColorStop(
+      1,
+      dark
+        ? '#BBAFD0'
+        : '#DDD5E8',
+    );
   } else if (type === TYPE.MOVING) {
     gradient.addColorStop(0, '#87D0FF');
     gradient.addColorStop(1, '#438FCE');
@@ -613,14 +1163,39 @@ function drawPlatform(ctx, platform, dark) {
   roundRect(ctx, x + 5, y + 2, width - 10, 3, 2);
   ctx.fill();
 
-  if (type === TYPE.FRAGILE) {
-    ctx.strokeStyle = 'rgba(100,55,15,0.45)';
-    ctx.lineWidth = 2;
+  if (type === TYPE.CLOUD) {
+    ctx.fillStyle =
+      dark
+        ? 'rgba(255,255,255,0.18)'
+        : 'rgba(255,255,255,0.7)';
+
     ctx.beginPath();
-    ctx.moveTo(x + width * 0.35, y + 1);
-    ctx.lineTo(x + width * 0.47, y + height * 0.6);
-    ctx.lineTo(x + width * 0.58, y + 2);
-    ctx.stroke();
+
+    ctx.arc(
+      x + width * 0.28,
+      y + 2,
+      13,
+      Math.PI,
+      Math.PI * 2,
+    );
+
+    ctx.arc(
+      x + width * 0.48,
+      y - 3,
+      18,
+      Math.PI,
+      Math.PI * 2,
+    );
+
+    ctx.arc(
+      x + width * 0.7,
+      y + 1,
+      14,
+      Math.PI,
+      Math.PI * 2,
+    );
+
+    ctx.fill();
   }
 
   if (type === TYPE.MOVING) {
@@ -955,11 +1530,35 @@ export default function JumpGame() {
   const pausedFromRef = useRef(null);
   const renderedScoreRef = useRef(-1);
   const leaderboardAbortRef = useRef(null);
+  const sessionAbortRef = useRef(null);
+  const scoreAbortRef = useRef(null);
+  const personalScoreAbortRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  const audioContextRef = useRef(null);
+  const audioGainRef = useRef(null);
+  const activeOscillatorsRef =
+    useRef(
+      new Set(),
+    );
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
+      mountedRef.current = false;
+
       leaderboardAbortRef.current?.abort();
       leaderboardAbortRef.current = null;
+
+      sessionAbortRef.current?.abort();
+      sessionAbortRef.current = null;
+
+      scoreAbortRef.current?.abort();
+      scoreAbortRef.current = null;
+
+      personalScoreAbortRef.current?.abort();
+      personalScoreAbortRef.current = null;
     };
   }, []);
 
@@ -987,6 +1586,31 @@ export default function JumpGame() {
   const [leaders, setLeaders] =
     useState([]);
 
+  const [pairLeaders, setPairLeaders] =
+    useState([]);
+
+  const [
+    leaderboardTab,
+    setLeaderboardTab,
+  ] = useState('players');
+
+  const [
+    leaderboardServerOffset,
+    setLeaderboardServerOffset,
+  ] = useState(0);
+
+  const [
+    leaderboardWeekEndsAt,
+    setLeaderboardWeekEndsAt,
+  ] = useState('');
+
+  const [
+    leaderboardClock,
+    setLeaderboardClock,
+  ] = useState(
+    () => Date.now(),
+  );
+
   const [personalBest, setPersonalBest] =
     useState(0);
 
@@ -1002,9 +1626,362 @@ export default function JumpGame() {
   const [canRetrySave, setCanRetrySave] =
     useState(false);
 
+  const [muted, setMuted] =
+    useState(
+      () =>
+        getLocalStorageItem(
+          JUMP_GAME_MUTED_KEY,
+        ) === '1',
+    );
+
+  const mutedRef =
+    useRef(muted);
+
   useEffect(() => {
     personalBestRef.current = personalBest;
   }, [personalBest]);
+
+  useEffect(() => {
+    mutedRef.current = muted;
+
+    setLocalStorageItem(
+      JUMP_GAME_MUTED_KEY,
+      muted
+        ? '1'
+        : '0',
+    );
+
+    const gainNode =
+      audioGainRef.current;
+
+    const audioContext =
+      audioContextRef.current;
+
+    if (
+      gainNode &&
+      audioContext
+    ) {
+      gainNode.gain.setTargetAtTime(
+        muted
+          ? 0
+          : 0.075,
+        audioContext.currentTime,
+        0.015,
+      );
+    }
+  }, [muted]);
+
+  const ensureAudioContext =
+    useCallback(() => {
+      let audioContext =
+        audioContextRef.current;
+
+      if (!audioContext) {
+        const AudioContextClass =
+          window.AudioContext ||
+          window.webkitAudioContext;
+
+        if (!AudioContextClass) {
+          return null;
+        }
+
+        try {
+          audioContext =
+            new AudioContextClass();
+
+          const gainNode =
+            audioContext.createGain();
+
+          gainNode.gain.value =
+            mutedRef.current
+              ? 0
+              : 0.075;
+
+          gainNode.connect(
+            audioContext.destination,
+          );
+
+          audioContextRef.current =
+            audioContext;
+
+          audioGainRef.current =
+            gainNode;
+        } catch (error) {
+          console.warn(
+            'Jump audio initialization failed:',
+            error,
+          );
+
+          return null;
+        }
+      }
+
+      return audioContext;
+    }, []);
+
+  const resumeAudio =
+    useCallback(() => {
+      const audioContext =
+        ensureAudioContext();
+
+      if (
+        audioContext?.state ===
+        'suspended'
+      ) {
+        audioContext
+          .resume()
+          .catch(error => {
+            console.warn(
+              'Jump audio resume failed:',
+              error,
+            );
+          });
+      }
+    }, [ensureAudioContext]);
+
+  const suspendAudio =
+    useCallback(() => {
+      const audioContext =
+        audioContextRef.current;
+
+      if (
+        audioContext?.state ===
+        'running'
+      ) {
+        audioContext
+          .suspend()
+          .catch(error => {
+            console.warn(
+              'Jump audio suspend failed:',
+              error,
+            );
+          });
+      }
+    }, []);
+
+  const stopAudio =
+    useCallback(() => {
+      for (
+        const oscillator of
+        activeOscillatorsRef.current
+      ) {
+        try {
+          oscillator.stop();
+        } catch {
+          // Осциллятор уже остановлен.
+        }
+      }
+
+      activeOscillatorsRef.current.clear();
+
+      const audioContext =
+        audioContextRef.current;
+
+      audioContextRef.current = null;
+      audioGainRef.current = null;
+
+      if (
+        audioContext &&
+        audioContext.state !== 'closed'
+      ) {
+        audioContext
+          .close()
+          .catch(error => {
+            console.warn(
+              'Jump audio close failed:',
+              error,
+            );
+          });
+      }
+    }, []);
+
+  const playSound =
+    useCallback((
+      soundType,
+    ) => {
+      if (mutedRef.current) {
+        return;
+      }
+
+      const audioContext =
+        ensureAudioContext();
+
+      const masterGain =
+        audioGainRef.current;
+
+      if (
+        !audioContext ||
+        !masterGain ||
+        audioContext.state !==
+          'running'
+      ) {
+        return;
+      }
+
+      const soundSettings = {
+        landing: {
+          frequency: 190,
+          endFrequency: 145,
+          duration: 0.07,
+          volume: 0.18,
+          oscillatorType: 'sine',
+        },
+
+        cloud: {
+          frequency: 420,
+          endFrequency: 210,
+          duration: 0.2,
+          volume: 0.12,
+          oscillatorType: 'sine',
+        },
+
+        spring: {
+          frequency: 310,
+          endFrequency: 720,
+          duration: 0.16,
+          volume: 0.18,
+          oscillatorType: 'triangle',
+        },
+
+        rocket: {
+          frequency: 260,
+          endFrequency: 780,
+          duration: 0.24,
+          volume: 0.16,
+          oscillatorType: 'sawtooth',
+        },
+
+        death: {
+          frequency: 230,
+          endFrequency: 75,
+          duration: 0.34,
+          volume: 0.16,
+          oscillatorType: 'triangle',
+        },
+
+        record: {
+          frequency: 520,
+          endFrequency: 880,
+          duration: 0.28,
+          volume: 0.15,
+          oscillatorType: 'sine',
+        },
+      };
+
+      const settings =
+        soundSettings[
+          soundType
+        ];
+
+      if (!settings) {
+        return;
+      }
+
+      try {
+        const now =
+          audioContext.currentTime;
+
+        const oscillator =
+          audioContext
+            .createOscillator();
+
+        const soundGain =
+          audioContext
+            .createGain();
+
+        oscillator.type =
+          settings.oscillatorType;
+
+        oscillator.frequency
+          .setValueAtTime(
+            settings.frequency,
+            now,
+          );
+
+        oscillator.frequency
+          .exponentialRampToValueAtTime(
+            Math.max(
+              1,
+              settings.endFrequency,
+            ),
+            now +
+              settings.duration,
+          );
+
+        soundGain.gain
+          .setValueAtTime(
+            0.0001,
+            now,
+          );
+
+        soundGain.gain
+          .exponentialRampToValueAtTime(
+            settings.volume,
+            now + 0.012,
+          );
+
+        soundGain.gain
+          .exponentialRampToValueAtTime(
+            0.0001,
+            now +
+              settings.duration,
+          );
+
+        oscillator.connect(
+          soundGain,
+        );
+
+        soundGain.connect(
+          masterGain,
+        );
+
+        activeOscillatorsRef.current.add(
+          oscillator,
+        );
+
+        oscillator.addEventListener(
+          'ended',
+          () => {
+            activeOscillatorsRef.current.delete(
+              oscillator,
+            );
+
+            try {
+              oscillator.disconnect();
+              soundGain.disconnect();
+            } catch {
+              // Узлы уже отключены.
+            }
+          },
+          {
+            once: true,
+          },
+        );
+
+        oscillator.start(now);
+
+        oscillator.stop(
+          now +
+            settings.duration +
+            0.02,
+        );
+      } catch (error) {
+        console.warn(
+          'Jump sound playback failed:',
+          error,
+        );
+      }
+    }, [ensureAudioContext]);
+
+  const toggleMuted =
+    useCallback(() => {
+      resumeAudio();
+
+      setMuted(
+        currentMuted =>
+          !currentMuted,
+      );
+    }, [resumeAudio]);
 
   const pauseForInterruption = useCallback(() => {
     const game = gameRef.current;
@@ -1028,69 +2005,158 @@ export default function JumpGame() {
     game.accumulator = 0;
     game.previousTime = 0;
 
+    if (
+      game.metrics &&
+      game.metrics.pauseStartedAt ===
+        null
+    ) {
+      game.metrics.pauseStartedAt =
+        Date.now();
+    }
+
     game.pointer.active = false;
     game.pointer.pointerId = null;
     game.pointer.targetX = null;
     game.player.vx = 0;
 
-    setScreen(STATE.PAUSED);
-  }, []);
+    suspendAudio();
+
+    if (mountedRef.current) {
+      setScreen(STATE.PAUSED);
+    }
+  }, [suspendAudio]);
+
+  const enableTelegramGameMode =
+    useCallback(() => {
+      const tg =
+        window.Telegram?.WebApp;
+
+      if (!tg) {
+        return;
+      }
+
+      try {
+        tg.expand?.();
+      } catch (error) {
+        console.warn(
+          'Telegram expand failed:',
+          error,
+        );
+      }
+
+      try {
+        tg.disableVerticalSwipes?.();
+      } catch (error) {
+        console.warn(
+          'Telegram disableVerticalSwipes failed:',
+          error,
+        );
+      }
+
+      try {
+        tg.enableClosingConfirmation?.();
+      } catch (error) {
+        console.warn(
+          'Telegram closing confirmation failed:',
+          error,
+        );
+      }
+
+      try {
+        if (
+          tg.isVersionAtLeast?.('8.0') &&
+          !tg.isFullscreen
+        ) {
+          tg.requestFullscreen?.();
+        }
+      } catch (error) {
+        console.warn(
+          'Telegram fullscreen request failed:',
+          error,
+        );
+      }
+
+      try {
+        tg.lockOrientation?.();
+      } catch (error) {
+        console.warn(
+          'Telegram lockOrientation failed:',
+          error,
+        );
+      }
+    }, []);
+
+  const disableTelegramGameMode =
+    useCallback(() => {
+      const tg =
+        window.Telegram?.WebApp;
+
+      if (!tg) {
+        return;
+      }
+
+      try {
+        tg.enableVerticalSwipes?.();
+      } catch (error) {
+        console.warn(
+          'Telegram enableVerticalSwipes failed:',
+          error,
+        );
+      }
+
+      try {
+        tg.disableClosingConfirmation?.();
+      } catch (error) {
+        console.warn(
+          'Telegram disableClosingConfirmation failed:',
+          error,
+        );
+      }
+
+      try {
+        tg.unlockOrientation?.();
+      } catch (error) {
+        console.warn(
+          'Telegram unlockOrientation failed:',
+          error,
+        );
+      }
+
+      try {
+        if (
+          tg.isVersionAtLeast?.('8.0') &&
+          tg.isFullscreen
+        ) {
+          tg.exitFullscreen?.();
+        }
+      } catch (error) {
+        console.warn(
+          'Telegram exitFullscreen failed:',
+          error,
+        );
+      }
+    }, []);
 
   useEffect(() => {
-    const tg = window.Telegram?.WebApp;
+    const tg =
+      window.Telegram?.WebApp;
 
     if (!tg) {
       return undefined;
     }
 
-    const handleTelegramDeactivate = () => {
-      pauseForInterruption();
-    };
+    const handleTelegramDeactivate =
+      () => {
+        pauseForInterruption();
+      };
 
-    const handleTelegramActivate = () => {
-      /*
-       * Не продолжаем игру автоматически.
-       * Пользователь сам нажмёт кнопку продолжения.
-       */
-    };
-
-    try {
-      tg.expand?.();
-    } catch (error) {
-      console.warn('Telegram expand failed:', error);
-    }
-
-    try {
-      if (
-        tg.isVersionAtLeast?.('8.0') &&
-        !tg.isFullscreen
-      ) {
-        tg.requestFullscreen?.();
-      }
-    } catch (error) {
-      console.warn(
-        'Telegram fullscreen request failed:',
-        error,
-      );
-    }
-
-    try {
-      tg.disableVerticalSwipes?.();
-    } catch (error) {
-      console.warn(
-        'Telegram disableVerticalSwipes failed:',
-        error,
-      );
-    }
-
-    try {
-      tg.lockOrientation?.();
-    } catch (error) {
-      console.warn(
-        'Telegram lockOrientation failed:',
-        error,
-      );
-    }
+    const handleTelegramActivate =
+      () => {
+        /*
+         * Не продолжаем игру автоматически.
+         * Пользователь сам нажмёт кнопку продолжения.
+         */
+      };
 
     tg.onEvent?.(
       'deactivated',
@@ -1113,16 +2179,48 @@ export default function JumpGame() {
         handleTelegramActivate,
       );
 
-      try {
-        tg.unlockOrientation?.();
-      } catch (error) {
-        console.warn(
-          'Telegram unlockOrientation failed:',
-          error,
-        );
-      }
+      disableTelegramGameMode();
     };
-  }, [pauseForInterruption]);
+  }, [
+    disableTelegramGameMode,
+    pauseForInterruption,
+  ]);
+
+  useEffect(() => {
+    const activeGameScreen =
+      screen === STATE.COUNTDOWN ||
+      screen === STATE.RUNNING;
+
+    if (activeGameScreen) {
+      enableTelegramGameMode();
+      resumeAudio();
+    } else {
+      disableTelegramGameMode();
+
+      if (
+        screen === STATE.PAUSED ||
+        screen === STATE.INTRO
+      ) {
+        suspendAudio();
+      }
+    }
+  }, [
+    disableTelegramGameMode,
+    enableTelegramGameMode,
+    resumeAudio,
+    screen,
+    suspendAudio,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      stopAudio();
+      disableTelegramGameMode();
+    };
+  }, [
+    disableTelegramGameMode,
+    stopAudio,
+  ]);
 
   const petName = searchParams.get('pet') || '';
 
@@ -1158,6 +2256,11 @@ export default function JumpGame() {
         back: 'К питомцу',
         leaderboard: 'Недельный рейтинг',
         leaderboardTitle: 'Лучшие игроки недели',
+        pairLeaderboardTitle: 'Лучшие пары недели',
+        playersTab: 'Игроки',
+        pairsTab: 'Пары',
+        waitingForPartner: 'Ожидает второго участника',
+        pairScore: 'Общий результат',
         personalBest: 'Личный рекорд',
         yourPlace: 'Твоё место',
         loading: 'Загрузка...',
@@ -1167,6 +2270,7 @@ export default function JumpGame() {
         player: 'Игрок',
         savingScore: 'Сохраняем результат...',
         scoreSaved: 'Результат сохранён',
+        scoreNotRanked: 'Результат сохранён, но не попал в рейтинг',
         scoreSaveError: 'Не удалось сохранить результат',
         retrySave: 'Повторить сохранение',
         waitForSaving: 'Подожди, пока сохранится предыдущий результат.',
@@ -1188,6 +2292,11 @@ export default function JumpGame() {
         back: 'Back to pet',
         leaderboard: 'Weekly ranking',
         leaderboardTitle: 'Top players of the week',
+        pairLeaderboardTitle: 'Top pairs of the week',
+        playersTab: 'Players',
+        pairsTab: 'Pairs',
+        waitingForPartner: 'Waiting for second partner',
+        pairScore: 'Total score',
         personalBest: 'Personal best',
         yourPlace: 'Your place',
         loading: 'Loading...',
@@ -1197,6 +2306,7 @@ export default function JumpGame() {
         player: 'Player',
         savingScore: 'Saving result...',
         scoreSaved: 'Result saved',
+        scoreNotRanked: 'Result saved but was not added to the ranking',
         scoreSaveError: 'Failed to save result',
         retrySave: 'Retry saving',
         waitForSaving: 'Wait until the previous result is saved.',
@@ -1239,15 +2349,27 @@ export default function JumpGame() {
 
       gameSessionLoadingRef.current = true;
 
+      sessionAbortRef.current?.abort();
+
+      const controller =
+        new AbortController();
+
+      sessionAbortRef.current =
+        controller;
+
       try {
         const response = await fetch(
           '/api/game-session',
           {
             method: 'POST',
             headers: authHeaders(),
+            signal:
+              controller.signal,
             body: JSON.stringify({
               userId,
               pairCode: pairId,
+              clientVersion:
+                JUMP_GAME_CLIENT_VERSION,
             }),
           }
         );
@@ -1269,11 +2391,94 @@ export default function JumpGame() {
           );
         }
 
-        gameSessionRef.current =
-          data.sessionId;
+        const serverSeed =
+          Number(
+            data.seed,
+          );
 
-        return data.sessionId;
+        const serverRulesVersion =
+          Number(
+            data.rulesVersion,
+          );
+
+        if (
+          !Number.isSafeInteger(
+            serverSeed,
+          ) ||
+          serverSeed < 1 ||
+          serverSeed >
+            MAX_GAME_SEED
+        ) {
+          throw new Error(
+            'Server did not return a valid game seed'
+          );
+        }
+
+        if (
+          serverRulesVersion !==
+          JUMP_GAME_RULES_VERSION
+        ) {
+          throw new Error(
+            'Unsupported game rules version'
+          );
+        }
+
+        if (
+          data.clientVersion !==
+          JUMP_GAME_CLIENT_VERSION
+        ) {
+          throw new Error(
+            'Unsupported game client version'
+          );
+        }
+
+        const sessionMetadata = {
+          sessionId:
+            String(
+              data.sessionId,
+            ),
+
+          seed:
+            serverSeed,
+
+          rulesVersion:
+            serverRulesVersion,
+
+          clientVersion:
+            JUMP_GAME_CLIENT_VERSION,
+
+          serverTime:
+            typeof data.serverTime ===
+              'string'
+              ? data.serverTime
+              : null,
+
+          startedAt:
+            typeof data.startedAt ===
+              'string'
+              ? data.startedAt
+              : null,
+
+          expiresAt:
+            typeof data.expiresAt ===
+              'string'
+              ? data.expiresAt
+              : null,
+        };
+
+        gameSessionRef.current =
+          sessionMetadata;
+
+        return sessionMetadata;
       } finally {
+        if (
+          sessionAbortRef.current ===
+          controller
+        ) {
+          sessionAbortRef.current =
+            null;
+        }
+
         gameSessionLoadingRef.current = false;
       }
     },
@@ -1284,22 +2489,41 @@ export default function JumpGame() {
     ]
   );
 
-  const loadLeaderboard = useCallback(async () => {
+  const loadLeaderboard = useCallback(async (
+    requestedTab,
+  ) => {
+    const nextTab =
+      requestedTab === 'pairs'
+        ? 'pairs'
+        : 'players';
+
     leaderboardAbortRef.current?.abort();
 
-    const controller = new AbortController();
+    const controller =
+      new AbortController();
 
-    leaderboardAbortRef.current = controller;
+    leaderboardAbortRef.current =
+      controller;
 
-    setLeaderboardLoading(true);
-    setLeaderboardError('');
+    if (mountedRef.current) {
+      setLeaderboardLoading(true);
+      setLeaderboardError('');
+    }
 
     try {
+      const endpoint =
+        nextTab === 'pairs'
+          ? '/api/game-pair-leaderboard'
+          : '/api/game-leaderboard';
+
       const response = await fetch(
-        '/api/game-leaderboard',
+        endpoint,
         {
-          headers: authHeaders(),
-          signal: controller.signal,
+          headers:
+            authHeaders(),
+
+          signal:
+            controller.signal,
         },
       );
 
@@ -1316,31 +2540,86 @@ export default function JumpGame() {
 
       if (
         leaderboardAbortRef.current !==
-        controller
+          controller ||
+        !mountedRef.current
       ) {
         return;
       }
 
-      setLeaders(
-        Array.isArray(data.leaders)
-          ? data.leaders
-          : [],
+      const serverTime =
+        Date.parse(
+          data.serverTime || '',
+        );
+
+      const weekEndsAt =
+        Date.parse(
+          data.weekEndsAt || '',
+        );
+
+      if (
+        Number.isFinite(
+          serverTime,
+        )
+      ) {
+        setLeaderboardServerOffset(
+          serverTime -
+          Date.now(),
+        );
+      }
+
+      if (
+        Number.isFinite(
+          weekEndsAt,
+        )
+      ) {
+        setLeaderboardWeekEndsAt(
+          data.weekEndsAt,
+        );
+      }
+
+      setLeaderboardClock(
+        Date.now(),
       );
 
-      if (data.me) {
-        setPersonalBest(
-          Number(data.me.score) || 0,
-        );
-
-        setPersonalRank(
-          Number(data.me.rank) || null,
+      if (nextTab === 'pairs') {
+        setPairLeaders(
+          Array.isArray(
+            data.leaders,
+          )
+            ? data.leaders
+            : [],
         );
       } else {
-        setPersonalBest(0);
-        setPersonalRank(null);
+        setLeaders(
+          Array.isArray(
+            data.leaders,
+          )
+            ? data.leaders
+            : [],
+        );
+
+        if (data.me) {
+          setPersonalBest(
+            Number(
+              data.me.score,
+            ) || 0,
+          );
+
+          setPersonalRank(
+            Number(
+              data.me.rank,
+            ) || null,
+          );
+        } else {
+          setPersonalBest(0);
+          setPersonalRank(null);
+        }
       }
     } catch (error) {
-      if (error.name === 'AbortError') {
+      if (
+        error?.name ===
+        'AbortError'
+      ) {
         return;
       }
 
@@ -1351,7 +2630,8 @@ export default function JumpGame() {
 
       if (
         leaderboardAbortRef.current ===
-        controller
+          controller &&
+        mountedRef.current
       ) {
         setLeaderboardError(
           t.leaderboardError,
@@ -1362,8 +2642,12 @@ export default function JumpGame() {
         leaderboardAbortRef.current ===
         controller
       ) {
-        leaderboardAbortRef.current = null;
-        setLeaderboardLoading(false);
+        leaderboardAbortRef.current =
+          null;
+
+        if (mountedRef.current) {
+          setLeaderboardLoading(false);
+        }
       }
     }
   }, [
@@ -1372,8 +2656,9 @@ export default function JumpGame() {
   ]);
 
   const openLeaderboard = useCallback(() => {
+    setLeaderboardTab('players');
     setShowLeaderboard(true);
-    loadLeaderboard();
+    loadLeaderboard('players');
   }, [loadLeaderboard]);
 
   const closeLeaderboard = useCallback(() => {
@@ -1382,6 +2667,115 @@ export default function JumpGame() {
 
     setShowLeaderboard(false);
   }, []);
+
+  const changeLeaderboardTab =
+    useCallback((
+      nextTab,
+    ) => {
+      const normalizedTab =
+        nextTab === 'pairs'
+          ? 'pairs'
+          : 'players';
+
+      setLeaderboardTab(
+        normalizedTab,
+      );
+
+      loadLeaderboard(
+        normalizedTab,
+      );
+    }, [loadLeaderboard]);
+
+  const cleanupBeforeExit =
+    useCallback(() => {
+      const game =
+        gameRef.current;
+
+      if (game) {
+        game.pointer.active = false;
+        game.pointer.pointerId = null;
+        game.pointer.targetX = null;
+        game.player.vx = 0;
+        game.accumulator = 0;
+        game.previousTime = 0;
+
+        if (
+          game.state !== STATE.OVER
+        ) {
+          game.state = STATE.PAUSED;
+        }
+      }
+
+      leaderboardAbortRef.current?.abort();
+      leaderboardAbortRef.current = null;
+
+      sessionAbortRef.current?.abort();
+      sessionAbortRef.current = null;
+
+      scoreAbortRef.current?.abort();
+      scoreAbortRef.current = null;
+
+      personalScoreAbortRef.current?.abort();
+      personalScoreAbortRef.current = null;
+
+      disableTelegramGameMode();
+      stopAudio();
+    }, [
+      disableTelegramGameMode,
+      stopAudio,
+    ]);
+
+  const navigateBack =
+    useCallback(() => {
+      cleanupBeforeExit();
+      navigate(`/pair/${pairId}`);
+    }, [
+      cleanupBeforeExit,
+      navigate,
+      pairId,
+    ]);
+
+  useEffect(() => {
+    if (
+      !showLeaderboard ||
+      !leaderboardWeekEndsAt
+    ) {
+      return undefined;
+    }
+
+    setLeaderboardClock(
+      Date.now(),
+    );
+
+    const timer =
+      window.setInterval(
+        () => {
+          if (mountedRef.current) {
+            setLeaderboardClock(
+              Date.now(),
+            );
+          }
+        },
+        60 * 1000,
+      );
+
+    return () => {
+      window.clearInterval(
+        timer,
+      );
+    };
+  }, [
+    leaderboardWeekEndsAt,
+    showLeaderboard,
+  ]);
+
+  const weekCountdownText =
+    formatWeekCountdown(
+      lang,
+      leaderboardWeekEndsAt,
+      leaderboardServerOffset,
+      leaderboardClock,
+    );
 
   const haptic = useCallback((type = 'light') => {
     try {
@@ -1411,20 +2805,44 @@ export default function JumpGame() {
     }
 
     scoreSavingRef.current = true;
-    setSaveStatus('saving');
-    setSaveError('');
-    setCanRetrySave(false);
+
+    if (mountedRef.current) {
+      setSaveStatus('saving');
+      setSaveError('');
+      setCanRetrySave(false);
+    }
+
+    scoreAbortRef.current?.abort();
+
+    const controller =
+      new AbortController();
+
+    scoreAbortRef.current =
+      controller;
 
     try {
       const response = await fetch('/api/game-score', {
         method: 'POST',
         headers: authHeaders(),
         keepalive: true,
+        signal:
+          controller.signal,
         body: JSON.stringify({
           userId,
-          pairCode: submission.pairCode,
-          sessionId: submission.sessionId,
-          score: submission.score,
+          pairCode:
+            submission.pairCode,
+
+          sessionId:
+            submission.sessionId,
+
+          score:
+            submission.score,
+
+          rulesVersion:
+            submission.rulesVersion,
+
+          metrics:
+            submission.metrics,
         }),
       });
 
@@ -1441,15 +2859,45 @@ export default function JumpGame() {
 
       if (
         pendingScoreRef.current?.sessionId !==
-        submission.sessionId
+          submission.sessionId ||
+        !mountedRef.current
       ) {
         return true;
       }
 
       pendingScoreRef.current = null;
-      setSaveStatus('saved');
       setSaveError('');
       setCanRetrySave(false);
+
+      const verificationStatus =
+        typeof data.verificationStatus ===
+          'string'
+          ? data.verificationStatus
+          : (
+              typeof data.verification_status ===
+                'string'
+                ? data.verification_status
+                : null
+            );
+
+      const accepted =
+        data.accepted !== false &&
+        (
+          !verificationStatus ||
+          verificationStatus ===
+            'accepted'
+        );
+
+      setSaveStatus(
+        accepted
+          ? 'saved'
+          : 'not-ranked',
+      );
+
+      if (!accepted) {
+        setIsNewRecord(false);
+        return true;
+      }
 
       if (
         typeof data.isPersonalRecord === 'boolean'
@@ -1460,6 +2908,7 @@ export default function JumpGame() {
 
         if (data.isPersonalRecord) {
           haptic('success');
+          playSound('record');
         }
       }
 
@@ -1484,14 +2933,22 @@ export default function JumpGame() {
 
       return true;
     } catch (error) {
+      if (
+        error?.name ===
+        'AbortError'
+      ) {
+        return false;
+      }
+
       console.error(
         'Game score saving failed:',
         error,
       );
 
       if (
+        mountedRef.current &&
         pendingScoreRef.current?.sessionId ===
-        submission.sessionId
+          submission.sessionId
       ) {
         setSaveStatus('error');
         setSaveError(
@@ -1505,11 +2962,20 @@ export default function JumpGame() {
 
       return false;
     } finally {
+      if (
+        scoreAbortRef.current ===
+        controller
+      ) {
+        scoreAbortRef.current =
+          null;
+      }
+
       scoreSavingRef.current = false;
     }
   }, [
     authHeaders,
     haptic,
+    playSound,
     userId,
   ]);
 
@@ -1522,7 +2988,10 @@ export default function JumpGame() {
     }
   }, [submitScore]);
 
-  const finishGame = useCallback((finalScore) => {
+  const finishGame = useCallback((
+    finalScore,
+    deathReason = 'unknown',
+  ) => {
     const game = gameRef.current;
 
     if (
@@ -1543,6 +3012,32 @@ export default function JumpGame() {
 
     pausedFromRef.current = null;
 
+    if (game.metrics) {
+      if (
+        game.metrics.pauseStartedAt !==
+          null
+      ) {
+        game.metrics.pausedDurationMs +=
+          Math.max(
+            0,
+            Date.now() -
+            game.metrics.pauseStartedAt,
+          );
+
+        game.metrics.pauseStartedAt =
+          null;
+      }
+
+      game.metrics.maximumScore =
+        Math.max(
+          game.metrics.maximumScore,
+          finalScore,
+        );
+
+      game.metrics.deathReason =
+        deathReason;
+    }
+
     setScreen(STATE.OVER);
     setScore(finalScore);
 
@@ -1552,16 +3047,14 @@ export default function JumpGame() {
 
     setIsNewRecord(localRecord);
     haptic('error');
+    playSound('death');
 
-    const sessionId =
+    const sessionMetadata =
       gameSessionRef.current;
 
     gameSessionRef.current = null;
 
-    if (
-      !pairId ||
-      finalScore <= 0
-    ) {
+    if (!pairId) {
       pendingScoreRef.current = null;
       setSaveStatus('idle');
       setSaveError('');
@@ -1569,9 +3062,11 @@ export default function JumpGame() {
       return;
     }
 
-    if (!sessionId) {
+    if (
+      !sessionMetadata?.sessionId
+    ) {
       console.error(
-        'Score was not saved: game session is missing'
+        'Score was not saved: game session metadata is missing'
       );
 
       setSaveStatus('error');
@@ -1583,10 +3078,39 @@ export default function JumpGame() {
       return;
     }
 
+    const metrics =
+      makeScoreMetrics(
+        game,
+      );
+
+    if (!metrics) {
+      console.error(
+        'Score was not saved: game metrics are missing'
+      );
+
+      setSaveStatus('error');
+      setSaveError(
+        'Game metrics are missing',
+      );
+      setCanRetrySave(false);
+
+      return;
+    }
+
     const submission = {
-      pairCode: pairId,
-      sessionId,
-      score: finalScore,
+      pairCode:
+        pairId,
+
+      sessionId:
+        sessionMetadata.sessionId,
+
+      score:
+        finalScore,
+
+      rulesVersion:
+        sessionMetadata.rulesVersion,
+
+      metrics,
     };
 
     pendingScoreRef.current = submission;
@@ -1595,6 +3119,7 @@ export default function JumpGame() {
   }, [
     haptic,
     pairId,
+    playSound,
     submitScore,
   ]);
 
@@ -1620,8 +3145,18 @@ export default function JumpGame() {
 
     let cancelled = false;
 
+    personalScoreAbortRef.current?.abort();
+
+    const controller =
+      new AbortController();
+
+    personalScoreAbortRef.current =
+      controller;
+
     fetch(`/api/game-score/${pairId}`, {
       headers: authHeaders(),
+      signal:
+        controller.signal,
     })
       .then(async response => {
         const data = await response
@@ -1657,16 +3192,44 @@ export default function JumpGame() {
         }
       })
       .catch(error => {
-        if (!cancelled) {
+        if (
+          error?.name ===
+          'AbortError'
+        ) {
+          return;
+        }
+
+        if (
+          !cancelled &&
+          mountedRef.current
+        ) {
           console.error(
             'Game score loading failed:',
             error,
           );
         }
+      })
+      .finally(() => {
+        if (
+          personalScoreAbortRef.current ===
+          controller
+        ) {
+          personalScoreAbortRef.current =
+            null;
+        }
       });
 
     return () => {
       cancelled = true;
+      controller.abort();
+
+      if (
+        personalScoreAbortRef.current ===
+        controller
+      ) {
+        personalScoreAbortRef.current =
+          null;
+      }
     };
   }, [authHeaders, pairId]);
 
@@ -1789,6 +3352,20 @@ export default function JumpGame() {
       game.width = width;
       game.height = height;
 
+      if (game.metrics) {
+        game.metrics.screenWidth =
+          Math.max(
+            1,
+            Math.round(width),
+          );
+
+        game.metrics.screenHeight =
+          Math.max(
+            1,
+            Math.round(height),
+          );
+      }
+
       game.player.x *= scaleX;
       game.player.y += offsetY;
       game.player.previousY += offsetY;
@@ -1848,6 +3425,11 @@ export default function JumpGame() {
 
     const update = (game, dt) => {
       const player = game.player;
+
+      if (game.metrics) {
+        game.metrics.activeDurationMs +=
+          dt * 1000;
+      }
 
       game.time += dt;
 
@@ -2050,6 +3632,18 @@ export default function JumpGame() {
           );
         }
 
+        if (
+          platform.type === TYPE.CLOUD &&
+          platform.dissolved
+        ) {
+          platform.dissolveProgress =
+            Math.min(
+              1,
+              platform.dissolveProgress +
+                dt / 0.38,
+            );
+        }
+
         if (platform.broken) {
           platform.breakVelocity +=
             1300 * dt;
@@ -2078,7 +3672,14 @@ export default function JumpGame() {
         let landedTop = Infinity;
 
         for (const platform of game.platforms) {
-          if (platform.broken) {
+          if (
+            platform.broken ||
+            (
+              platform.type ===
+                TYPE.CLOUD &&
+              platform.dissolved
+            )
+          ) {
             continue;
           }
 
@@ -2147,7 +3748,11 @@ export default function JumpGame() {
               },
             );
 
-            finishGame(game.score);
+            finishGame(
+              game.score,
+              'spike',
+            );
+
             return;
           }
 
@@ -2168,6 +3773,34 @@ export default function JumpGame() {
             landedPlatform.type === TYPE.SPRING
               ? 1
               : 0.72;
+
+          if (game.metrics) {
+            game.metrics.landingCount +=
+              1;
+
+            if (
+              landedPlatform.type ===
+              TYPE.CLOUD
+            ) {
+              game.metrics.cloudLandings +=
+                1;
+            } else if (
+              landedPlatform.type ===
+              TYPE.MOVING
+            ) {
+              game.metrics.movingLandings +=
+                1;
+            } else if (
+              landedPlatform.type ===
+              TYPE.SPRING
+            ) {
+              game.metrics.springLandings +=
+                1;
+            } else {
+              game.metrics.normalLandings +=
+                1;
+            }
+          }
 
           if (
             player.lastPlatformId !==
@@ -2193,30 +3826,51 @@ export default function JumpGame() {
                 ? 'medium'
                 : 'light',
             );
+
+            if (
+              landedPlatform.type ===
+              TYPE.SPRING
+            ) {
+              playSound('spring');
+            } else if (
+              landedPlatform.type ===
+              TYPE.CLOUD
+            ) {
+              playSound('cloud');
+            } else {
+              playSound('landing');
+            }
           }
 
           /*
-           * Ломкая платформа падает после приземления.
+           * После первого приземления облако
+           * сразу теряет коллизию и растворяется.
            */
           if (
-            landedPlatform.type === TYPE.FRAGILE
+            landedPlatform.type === TYPE.CLOUD
           ) {
-            landedPlatform.broken = true;
-            landedPlatform.breakVelocity = 90;
+            landedPlatform.dissolved = true;
+            landedPlatform.dissolveProgress =
+              Math.max(
+                landedPlatform.dissolveProgress,
+                0.01,
+              );
 
             addParticles(
               game,
               landedPlatform.x +
                 landedPlatform.width / 2,
               landedPlatform.y,
-              '#F1A64B',
+              dark
+                ? '#D9D0E8'
+                : '#FFFFFF',
               13,
               {
-                minVx: -150,
-                maxVx: 150,
-                minVy: -140,
-                maxVy: -30,
-                gravity: 600,
+                minVx: -90,
+                maxVx: 90,
+                minVy: -90,
+                maxVy: -20,
+                gravity: 120,
               },
             );
           }
@@ -2251,6 +3905,11 @@ export default function JumpGame() {
           game.lastCollectedRocketDistance =
             game.distance;
 
+          if (game.metrics) {
+            game.metrics.rocketsCollected +=
+              1;
+          }
+
           player.vy =
             PHYSICS.rocketSpeed;
 
@@ -2283,6 +3942,7 @@ export default function JumpGame() {
           );
 
           haptic('success');
+          playSound('rocket');
         }
       }
 
@@ -2330,6 +3990,49 @@ export default function JumpGame() {
             setScore(nextScore);
           }
 
+          if (game.metrics) {
+            game.metrics.maximumScore =
+              Math.max(
+                game.metrics.maximumScore,
+                nextScore,
+              );
+
+            while (
+              game.metrics.nextCheckpointIndex <
+                GAME_CHECKPOINT_SCORES.length &&
+              GAME_CHECKPOINT_SCORES[
+                game.metrics.nextCheckpointIndex
+              ] <= nextScore
+            ) {
+              const checkpointScore =
+                GAME_CHECKPOINT_SCORES[
+                  game.metrics.nextCheckpointIndex
+                ];
+
+              game.metrics.checkpoints.push({
+                score:
+                  checkpointScore,
+
+                activeDurationMs:
+                  Math.max(
+                    0,
+                    Math.round(
+                      game.metrics.activeDurationMs,
+                    ),
+                  ),
+
+                landingCount:
+                  game.metrics.landingCount,
+
+                rocketsCollected:
+                  game.metrics.rocketsCollected,
+              });
+
+              game.metrics.nextCheckpointIndex +=
+                1;
+            }
+          }
+
           /*
            * Лёгкая вибрация каждые 25 очков.
            * Полноэкранной вспышки здесь нет.
@@ -2350,8 +4053,27 @@ export default function JumpGame() {
         game.platforms.filter(
           platform =>
             platform.y <
-            game.height + 170,
+              game.height + 170 &&
+            !(
+              platform.type ===
+                TYPE.CLOUD &&
+              platform.dissolveProgress >=
+                1
+            ),
         );
+
+      for (const rocket of game.rockets) {
+        if (
+          !rocket.collected &&
+          rocket.y >=
+            game.height + 120
+        ) {
+          if (game.metrics) {
+            game.metrics.rocketsMissed +=
+              1;
+          }
+        }
+      }
 
       game.rockets =
         game.rockets.filter(
@@ -2378,7 +4100,10 @@ export default function JumpGame() {
         player.y - player.radius >
         game.height + 90
       ) {
-        finishGame(game.score);
+        finishGame(
+          game.score,
+          'fall',
+        );
       }
     };
 
@@ -2399,13 +4124,20 @@ export default function JumpGame() {
         game.previousTime = timestamp;
       }
 
-      const frameTime = Math.min(
-        0.05,
+      const rawFrameTime =
         Math.max(
           0,
-          (timestamp - game.previousTime) / 1000,
-        ),
-      );
+          (
+            timestamp -
+            game.previousTime
+          ) / 1000,
+        );
+
+      const frameTime =
+        Math.min(
+          0.05,
+          rawFrameTime,
+        );
 
       game.previousTime = timestamp;
 
@@ -2413,6 +4145,49 @@ export default function JumpGame() {
        * Игровая физика работает фиксированными шагами.
        */
       if (game.state === STATE.RUNNING) {
+        if (game.metrics) {
+          const frameGapMs =
+            Math.max(
+              0,
+              Math.round(
+                rawFrameTime * 1000,
+              ),
+            );
+
+          game.metrics.frameCount +=
+            1;
+
+          game.metrics.maxFrameGapMs =
+            Math.max(
+              game.metrics.maxFrameGapMs,
+              frameGapMs,
+            );
+
+          if (rawFrameTime > 0) {
+            const currentFps =
+              Math.min(
+                240,
+                1 / rawFrameTime,
+              );
+
+            game.metrics.fpsTotal +=
+              currentFps;
+
+            game.metrics.fpsSampleCount +=
+              1;
+
+            if (
+              game.metrics.minimumFps ===
+                0 ||
+              currentFps <
+                game.metrics.minimumFps
+            ) {
+              game.metrics.minimumFps =
+                currentFps;
+            }
+          }
+        }
+
         game.accumulator += frameTime;
 
         let safety = 0;
@@ -2445,6 +4220,13 @@ export default function JumpGame() {
       } else {
         game.accumulator = 0;
         game.time += frameTime;
+
+        /*
+         * Время паузы считается по Date.now()
+         * между pauseForInterruption и resumeGame.
+         * Это учитывает background, где RAF
+         * может полностью остановиться.
+         */
 
         /*
          * Эффекты затухают даже после смерти.
@@ -2583,6 +4365,7 @@ export default function JumpGame() {
     finishGame,
     haptic,
     pauseForInterruption,
+    playSound,
   ]);
 
   useEffect(() => {
@@ -2622,7 +4405,7 @@ export default function JumpGame() {
     if (!backButton) return undefined;
 
     const goBack = () => {
-      navigate(`/pair/${pairId}`);
+      navigateBack();
     };
 
     try {
@@ -2640,7 +4423,7 @@ export default function JumpGame() {
         // Старые версии Telegram.
       }
     };
-  }, [navigate, pairId]);
+  }, [navigateBack]);
 
   const startGame = useCallback(async () => {
     if (
@@ -2664,10 +4447,13 @@ export default function JumpGame() {
     startLockRef.current = true;
     setGameStarting(true);
 
+    resumeAudio();
+
     try {
       gameSessionRef.current = null;
 
-      await createGameSession();
+      const sessionMetadata =
+        await createGameSession();
 
       const canvas = canvasRef.current;
       const currentGame = gameRef.current;
@@ -2698,7 +4484,15 @@ export default function JumpGame() {
       const nextGame = makeGame(
         width,
         height,
+        sessionMetadata.seed,
+        lang,
       );
+
+      nextGame.rulesVersion =
+        sessionMetadata.rulesVersion;
+
+      nextGame.clientVersion =
+        sessionMetadata.clientVersion;
 
       nextGame.state = STATE.COUNTDOWN;
       nextGame.accumulator = 0;
@@ -2720,27 +4514,42 @@ export default function JumpGame() {
 
       haptic('light');
     } catch (error) {
-      console.error(
-        'Unable to start game:',
-        error,
-      );
+      if (
+        error?.name !==
+        'AbortError'
+      ) {
+        console.error(
+          'Unable to start game:',
+          error,
+        );
+      }
 
       gameSessionRef.current = null;
 
-      window.Telegram?.WebApp?.showAlert?.(
-        lang === 'ru'
-          ? 'Не удалось начать игру. Попробуй ещё раз.'
-          : 'Failed to start the game. Please try again.',
-      );
+      if (
+        mountedRef.current &&
+        error?.name !==
+          'AbortError'
+      ) {
+        window.Telegram?.WebApp?.showAlert?.(
+          lang === 'ru'
+            ? 'Не удалось начать игру. Попробуй ещё раз.'
+            : 'Failed to start the game. Please try again.',
+        );
+      }
     } finally {
       startLockRef.current = false;
-      setGameStarting(false);
+
+      if (mountedRef.current) {
+        setGameStarting(false);
+      }
     }
   }, [
     createGameSession,
     gameStarting,
     haptic,
     lang,
+    resumeAudio,
     t.waitForSaving,
   ]);
 
@@ -2769,6 +4578,24 @@ export default function JumpGame() {
     pausedFromRef.current = null;
     game.accumulator = 0;
     game.previousTime = performance.now();
+
+    if (
+      game.metrics &&
+      game.metrics.pauseStartedAt !==
+        null
+    ) {
+      game.metrics.pausedDurationMs +=
+        Math.max(
+          0,
+          Date.now() -
+          game.metrics.pauseStartedAt,
+        );
+
+      game.metrics.pauseStartedAt =
+        null;
+    }
+
+    resumeAudio();
 
     if (pausedFrom === STATE.COUNTDOWN) {
       game.state = STATE.COUNTDOWN;
@@ -2967,7 +4794,7 @@ export default function JumpGame() {
       <header className="jump-game-hud">
         <button
           className="jump-game-circle-button"
-          onClick={() => navigate(`/pair/${pairId}`)}
+          onClick={navigateBack}
           aria-label={t.back}
         >
           ←
@@ -2982,6 +4809,27 @@ export default function JumpGame() {
           <span>🏆</span>
           <strong>{personalBest}</strong>
         </div>
+
+        <button
+          className="jump-game-circle-button"
+          onClick={toggleMuted}
+          aria-label={
+            muted
+              ? (
+                  lang === 'ru'
+                    ? 'Включить звук'
+                    : 'Enable sound'
+                )
+              : (
+                  lang === 'ru'
+                    ? 'Выключить звук'
+                    : 'Mute sound'
+                )
+          }
+          aria-pressed={muted}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
 
         {screen === STATE.RUNNING ? (
           <button
@@ -3047,7 +4895,7 @@ export default function JumpGame() {
 
             <button
               className="jump-game-secondary-button"
-              onClick={() => navigate(`/pair/${pairId}`)}
+              onClick={navigateBack}
             >
               {t.back}
             </button>
@@ -3079,7 +4927,7 @@ export default function JumpGame() {
 
             <button
               className="jump-game-secondary-button"
-              onClick={() => navigate(`/pair/${pairId}`)}
+              onClick={navigateBack}
             >
               {t.back}
             </button>
@@ -3133,6 +4981,12 @@ export default function JumpGame() {
               </div>
             )}
 
+            {saveStatus === 'not-ranked' && (
+              <div className="jump-game-save-status">
+                ℹ️ {t.scoreNotRanked}
+              </div>
+            )}
+
             {saveStatus === 'error' && (
               <div className="jump-game-save-status jump-game-save-status-error">
                 <span>
@@ -3181,7 +5035,7 @@ export default function JumpGame() {
 
             <button
               className="jump-game-secondary-button"
-              onClick={() => navigate(`/pair/${pairId}`)}
+              onClick={navigateBack}
             >
               {t.back}
             </button>
@@ -3199,7 +5053,10 @@ export default function JumpGame() {
                 </div>
 
                 <h2>
-                  {t.leaderboardTitle}
+                  {leaderboardTab ===
+                    'players'
+                    ? t.leaderboardTitle
+                    : t.pairLeaderboardTitle}
                 </h2>
               </div>
 
@@ -3212,7 +5069,69 @@ export default function JumpGame() {
               </button>
             </div>
 
-            {personalBest > 0 && (
+            {weekCountdownText && (
+              <div className="jump-game-week-countdown">
+                {weekCountdownText}
+              </div>
+            )}
+
+            <div
+              className="jump-game-leaderboard-tabs"
+              role="tablist"
+              aria-label={t.leaderboard}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={
+                  leaderboardTab ===
+                  'players'
+                }
+                className={
+                  `jump-game-leaderboard-tab ${
+                    leaderboardTab ===
+                    'players'
+                      ? 'jump-game-leaderboard-tab-active'
+                      : ''
+                  }`
+                }
+                onClick={() => {
+                  changeLeaderboardTab(
+                    'players',
+                  );
+                }}
+              >
+                {t.playersTab}
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={
+                  leaderboardTab ===
+                  'pairs'
+                }
+                className={
+                  `jump-game-leaderboard-tab ${
+                    leaderboardTab ===
+                    'pairs'
+                      ? 'jump-game-leaderboard-tab-active'
+                      : ''
+                  }`
+                }
+                onClick={() => {
+                  changeLeaderboardTab(
+                    'pairs',
+                  );
+                }}
+              >
+                {t.pairsTab}
+              </button>
+            </div>
+
+            {leaderboardTab ===
+              'players' &&
+              personalBest > 0 && (
               <div className="jump-game-personal-result">
                 <div>
                   <span>
@@ -3257,7 +5176,11 @@ export default function JumpGame() {
 
                   <button
                     className="jump-game-secondary-button"
-                    onClick={loadLeaderboard}
+                    onClick={() => {
+                      loadLeaderboard(
+                        leaderboardTab,
+                      );
+                    }}
                   >
                     ↻
                   </button>
@@ -3266,7 +5189,12 @@ export default function JumpGame() {
 
             {!leaderboardLoading &&
               !leaderboardError &&
-              leaders.length === 0 && (
+              (
+                leaderboardTab ===
+                  'players'
+                  ? leaders.length === 0
+                  : pairLeaders.length === 0
+              ) && (
                 <div className="jump-game-leaderboard-message">
                   {t.emptyLeaderboard}
                 </div>
@@ -3274,6 +5202,8 @@ export default function JumpGame() {
 
             {!leaderboardLoading &&
               !leaderboardError &&
+              leaderboardTab ===
+                'players' &&
               leaders.length > 0 && (
                 <div className="jump-game-leaderboard-list">
                   {leaders.map(leader => {
@@ -3344,6 +5274,151 @@ export default function JumpGame() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+            {!leaderboardLoading &&
+              !leaderboardError &&
+              leaderboardTab ===
+                'pairs' &&
+              pairLeaders.length > 0 && (
+                <div className="jump-game-leaderboard-list">
+                  {pairLeaders.map(
+                    leader => {
+                      const medal =
+                        leader.rank === 1
+                          ? '🥇'
+                          : leader.rank === 2
+                            ? '🥈'
+                            : leader.rank === 3
+                              ? '🥉'
+                              : null;
+
+                      const members =
+                        Array.isArray(
+                          leader.members,
+                        )
+                          ? leader.members
+                          : [];
+
+                      return (
+                        <div
+                          key={
+                            leader.pairCode
+                          }
+                          className={
+                            `jump-game-leaderboard-row jump-game-pair-row ${
+                              leader.isMyPair
+                                ? 'jump-game-leaderboard-row-me'
+                                : ''
+                            }`
+                          }
+                        >
+                          <div className="jump-game-leaderboard-rank">
+                            {medal ||
+                              `#${leader.rank}`}
+                          </div>
+
+                          <div className="jump-game-pair-info">
+                            <div className="jump-game-pair-avatars">
+                              {members
+                                .slice(0, 2)
+                                .map(
+                                  member => {
+                                    const memberName =
+                                      member.displayName ||
+                                      t.player;
+
+                                    return (
+                                      <div
+                                        key={
+                                          member.userId
+                                        }
+                                        className="jump-game-leaderboard-avatar jump-game-pair-avatar"
+                                        title={
+                                          memberName
+                                        }
+                                      >
+                                        <span aria-hidden="true">
+                                          {memberName
+                                            .trim()
+                                            .charAt(0)
+                                            .toUpperCase() ||
+                                            '👤'}
+                                        </span>
+
+                                        {member.avatarUrl && (
+                                          <img
+                                            src={
+                                              member.avatarUrl
+                                            }
+                                            alt=""
+                                            loading="lazy"
+                                            decoding="async"
+                                            referrerPolicy="no-referrer"
+                                            onLoad={event => {
+                                              event.currentTarget.hidden =
+                                                false;
+                                            }}
+                                            onError={event => {
+                                              event.currentTarget.hidden =
+                                                true;
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+                                    );
+                                  },
+                                )}
+
+                              {members.length < 2 && (
+                                <div
+                                  className="jump-game-leaderboard-avatar jump-game-pair-avatar jump-game-pair-avatar-empty"
+                                  aria-hidden="true"
+                                >
+                                  <span>?</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="jump-game-pair-text">
+                              <strong>
+                                {members.length > 0
+                                  ? members
+                                      .slice(0, 2)
+                                      .map(
+                                        member =>
+                                          member.displayName ||
+                                          t.player,
+                                      )
+                                      .join(' + ')
+                                  : (
+                                      leader.pairName ||
+                                      'Chumi'
+                                    )}
+                              </strong>
+
+                              <span>
+                                {members.length < 2
+                                  ? t.waitingForPartner
+                                  : (
+                                      leader.pairName ||
+                                      t.pairScore
+                                    )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div
+                            className="jump-game-leaderboard-score"
+                            title={t.pairScore}
+                          >
+                            {leader.score}
+                          </div>
+                        </div>
+                      );
+                    },
+                  )}
                 </div>
               )}
 
