@@ -3716,6 +3716,245 @@ function parseBroadcastSchedule(input) {
   };
 }
 
+async function sendBroadcastButtonsMenu(
+  env,
+  chatId,
+  draftId,
+) {
+  await sendMessage(
+    env,
+    chatId,
+    `🔘 *Кнопки рассылки*\n\n` +
+      `Выберите готовый вариант или добавьте свои кнопки.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '🚫 Без кнопок',
+              callback_data:
+                `admin_bc_none_${draftId}`,
+            },
+          ],
+          [
+            {
+              text:
+                '🐾 Открыть Chumi',
+              callback_data:
+                `admin_bc_webapp_${draftId}`,
+            },
+          ],
+          [
+            {
+              text:
+                '✏️ Свои кнопки',
+              callback_data:
+                `admin_bc_custom_${draftId}`,
+            },
+          ],
+          [
+            {
+              text:
+                '❌ Отменить',
+              callback_data:
+                `admin_broadcast_cancel_${draftId}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function sendBroadcastScheduleMenu(
+  env,
+  chatId,
+  draftId,
+) {
+  await sendMessage(
+    env,
+    chatId,
+    `🕒 *Когда отправить рассылку?*\n\n` +
+      `Выберите немедленную отправку или укажите дату и время.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '🚀 Отправить сейчас',
+              callback_data:
+                `admin_bc_now_${draftId}`,
+            },
+          ],
+          [
+            {
+              text:
+                '⏰ Запланировать',
+              callback_data:
+                `admin_bc_time_${draftId}`,
+            },
+          ],
+          [
+            {
+              text:
+                '❌ Отменить',
+              callback_data:
+                `admin_broadcast_cancel_${draftId}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function showBroadcastPreview(
+  env,
+  supabase,
+  chatId,
+  userId,
+  draftId,
+  scheduledAt,
+) {
+  const {
+    data: draft,
+    error: draftError,
+  } = await supabase
+    .from('broadcast_drafts')
+    .update({
+      scheduled_at:
+        scheduledAt,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq('id', draftId)
+    .eq('created_by', userId)
+    .select(
+      'id, source_chat_id, source_message_id, buttons, scheduled_at'
+    )
+    .maybeSingle();
+
+  if (
+    draftError ||
+    !draft
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Черновик рассылки не найден. Начните создание поста заново.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    '👁 *Предварительный просмотр поста:*',
+    {
+      reply_markup: {
+        inline_keyboard: [],
+      },
+    },
+  );
+
+  const previewResult =
+    await copyTelegramMessage(
+      env,
+      chatId,
+      draft.source_chat_id,
+      draft.source_message_id,
+      Array.isArray(
+        draft.buttons,
+      )
+        ? draft.buttons
+        : [],
+    );
+
+  if (!previewResult.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ *Не удалось создать предварительный просмотр*\n\n` +
+        `${escapeMd(
+          previewResult.description ||
+          previewResult.error ||
+          'Telegram copyMessage failed',
+        )}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const scheduledDate =
+    new Date(
+      draft.scheduled_at,
+    );
+
+  const isScheduled =
+    scheduledDate.getTime() >
+    Date.now() + 30 * 1000;
+
+  const scheduleText =
+    isScheduled
+      ? scheduledDate.toLocaleString(
+          'ru-RU',
+          {
+            timeZone:
+              'Europe/Moscow',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          },
+        ) + ' МСК'
+      : 'сейчас';
+
+  await sendMessage(
+    env,
+    chatId,
+    `📣 *Подтвердите рассылку*\n\n` +
+      `🕒 Отправка: *${escapeMd(scheduleText)}*\n` +
+      `🔘 Кнопок: *${(draft.buttons || []).flat().length}*\n\n` +
+      `После подтверждения список получателей будет зафиксирован.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '✅ Создать рассылку',
+              callback_data:
+                `admin_broadcast_confirm_${draftId}`,
+            },
+          ],
+          [
+            {
+              text:
+                '⬅️ Изменить время',
+              callback_data:
+                `admin_bc_schedule_${draftId}`,
+            },
+          ],
+          [
+            {
+              text:
+                '❌ Отменить',
+              callback_data:
+                `admin_broadcast_cancel_${draftId}`,
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
 // Отправляет уведомление всем админам
 async function notifyAdmins(env, text) {
   for (const adminId of ADMIN_IDS) {
@@ -5328,6 +5567,166 @@ export async function onRequestPost(context) {
           return new Response('OK');
         }
 
+        const broadcastChoiceMatch =
+          cbData.match(
+            /^admin_bc_(none|webapp|custom|now|time|schedule)_(.+)$/,
+          );
+
+        if (broadcastChoiceMatch) {
+          const action =
+            broadcastChoiceMatch[1];
+
+          const draftId =
+            broadcastChoiceMatch[2];
+
+          const {
+            data: existingDraft,
+            error: existingDraftError,
+          } = await supabase
+            .from('broadcast_drafts')
+            .select('id')
+            .eq('id', draftId)
+            .eq('created_by', cbUserId)
+            .maybeSingle();
+
+          if (
+            existingDraftError ||
+            !existingDraft
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Черновик рассылки не найден или уже был использован.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          if (
+            action === 'none' ||
+            action === 'webapp'
+          ) {
+            const selectedButtons =
+              action === 'webapp'
+                ? [
+                    [
+                      {
+                        text:
+                          '🐾 Открыть Chumi',
+                        web_app: {
+                          url:
+                            WEBAPP_URL,
+                        },
+                      },
+                    ],
+                  ]
+                : [];
+
+            const {
+              data: updatedDraft,
+              error: updateError,
+            } = await supabase
+              .from('broadcast_drafts')
+              .update({
+                buttons:
+                  selectedButtons,
+                updated_at:
+                  new Date().toISOString(),
+              })
+              .eq('id', draftId)
+              .eq('created_by', cbUserId)
+              .select('id')
+              .maybeSingle();
+
+            if (
+              updateError ||
+              !updatedDraft
+            ) {
+              await sendMessage(
+                env,
+                cbChatId,
+                '❌ Не удалось сохранить кнопки рассылки.',
+                adminMenuButtons(),
+              );
+
+              return new Response('OK');
+            }
+
+            await sendBroadcastScheduleMenu(
+              env,
+              cbChatId,
+              draftId,
+            );
+
+            return new Response('OK');
+          }
+
+          if (action === 'custom') {
+            await sendMessage(
+              env,
+              cbChatId,
+              `CHUMI-BROADCAST-BUTTONS:${draftId}\n\n` +
+                `✏️ *Добавьте свои кнопки*\n\n` +
+                `Одна кнопка:\n` +
+                `Название | https://example.com\n\n` +
+                `Две кнопки в одном ряду:\n` +
+                `Сайт | https://example.com || Канал | https://t.me/example\n\n` +
+                `Кнопка открытия Mini App:\n` +
+                `Открыть Chumi | webapp\n\n` +
+                `Каждый новый ряд отправляйте с новой строки.`,
+              adminForceReply(
+                'Введите кнопки',
+              ),
+            );
+
+            return new Response('OK');
+          }
+
+          if (
+            action === 'schedule'
+          ) {
+            await sendBroadcastScheduleMenu(
+              env,
+              cbChatId,
+              draftId,
+            );
+
+            return new Response('OK');
+          }
+
+          if (action === 'now') {
+            await showBroadcastPreview(
+              env,
+              supabase,
+              cbChatId,
+              cbUserId,
+              draftId,
+              new Date().toISOString(),
+            );
+
+            return new Response('OK');
+          }
+
+          if (action === 'time') {
+            await sendMessage(
+              env,
+              cbChatId,
+              `CHUMI-BROADCAST-SCHEDULE:${draftId}\n\n` +
+                `⏰ *Запланированная отправка*\n\n` +
+                `Укажите дату и московское время.\n\n` +
+                `Пример:\n` +
+                `2026-07-20 18:30\n\n` +
+                `Формат: ГГГГ-ММ-ДД ЧЧ:ММ`,
+              adminForceReply(
+                'ГГГГ-ММ-ДД ЧЧ:ММ',
+              ),
+            );
+
+            return new Response('OK');
+          }
+        }
+
         if (
           cbData.startsWith(
             'admin_broadcast_cancel_',
@@ -5365,6 +5764,24 @@ export async function onRequestPost(context) {
               'admin_broadcast_confirm_',
               '',
             );
+
+          if (
+            cb.message?.message_id
+          ) {
+            await callTelegramBotApi(
+              env,
+              'editMessageReplyMarkup',
+              {
+                chat_id:
+                  String(cbChatId),
+                message_id:
+                  cb.message.message_id,
+                reply_markup: {
+                  inline_keyboard: [],
+                },
+              },
+            );
+          }
 
           const {
             data: draft,
@@ -5424,7 +5841,36 @@ export async function onRequestPost(context) {
               cbChatId,
               `❌ *Не удалось создать рассылку*\n\n` +
                 `${escapeMd(createError.message || 'Unknown database error')}`,
-              adminMenuButtons(),
+              {
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text:
+                          '🔄 Повторить создание',
+                        callback_data:
+                          `admin_broadcast_confirm_${draftId}`,
+                      },
+                    ],
+                    [
+                      {
+                        text:
+                          '⬅️ Изменить время',
+                        callback_data:
+                          `admin_bc_schedule_${draftId}`,
+                      },
+                    ],
+                    [
+                      {
+                        text:
+                          '❌ Отменить',
+                        callback_data:
+                          `admin_broadcast_cancel_${draftId}`,
+                      },
+                    ],
+                  ],
+                },
+              },
             );
 
             return new Response('OK');
@@ -6081,23 +6527,10 @@ export async function onRequestPost(context) {
           return new Response('OK');
         }
 
-        await sendMessage(
+        await sendBroadcastButtonsMenu(
           env,
           chatId,
-          `CHUMI-BROADCAST-BUTTONS:${draft.id}\n\n` +
-            `🔘 *Добавьте кнопки к посту*\n\n` +
-            `Одна кнопка:\n` +
-            `Название | https://example.com\n\n` +
-            `Две кнопки в одном ряду:\n` +
-            `Сайт | https://example.com || Канал | https://t.me/example\n\n` +
-            `Кнопка открытия Mini App:\n` +
-            `Открыть Chumi | webapp\n\n` +
-            `Каждый новый ряд отправляйте с новой строки.\n\n` +
-            `Если кнопки не нужны — отправьте:\n` +
-            `/skip`,
-          adminForceReply(
-            'Кнопки или /skip',
-          ),
+          draft.id,
         );
 
         return new Response('OK');
@@ -6131,10 +6564,13 @@ export async function onRequestPost(context) {
           await sendMessage(
             env,
             chatId,
-            `❌ *Ошибка в кнопках*\n\n` +
+            `CHUMI-BROADCAST-BUTTONS:${draftId}\n\n` +
+              `❌ *Ошибка в кнопках*\n\n` +
               `${escapeMd(buttonsError)}\n\n` +
               `Повторите ввод в формате:\n` +
               `Название | https://example.com\n\n` +
+              `Две кнопки в одном ряду:\n` +
+              `Сайт | https://example.com || Канал | https://t.me/example\n\n` +
               `Или отправьте /skip`,
             adminForceReply(
               'Исправьте кнопки',
@@ -6173,19 +6609,10 @@ export async function onRequestPost(context) {
           return new Response('OK');
         }
 
-        await sendMessage(
+        await sendBroadcastScheduleMenu(
           env,
           chatId,
-          `CHUMI-BROADCAST-SCHEDULE:${draftId}\n\n` +
-            `🕒 *Когда отправить пост?*\n\n` +
-            `Для немедленной отправки:\n` +
-            `сейчас\n\n` +
-            `Для отложенной отправки укажите московское время:\n` +
-            `2026-07-20 18:30\n\n` +
-            `Формат: ГГГГ-ММ-ДД ЧЧ:ММ`,
-          adminForceReply(
-            'сейчас или ГГГГ-ММ-ДД ЧЧ:ММ',
-          ),
+          draftId,
         );
 
         return new Response('OK');
@@ -6220,144 +6647,28 @@ export async function onRequestPost(context) {
           await sendMessage(
             env,
             chatId,
-            `❌ *Ошибка времени отправки*\n\n` +
+            `CHUMI-BROADCAST-SCHEDULE:${draftId}\n\n` +
+              `❌ *Ошибка времени отправки*\n\n` +
               `${escapeMd(scheduleError)}\n\n` +
-              `Отправьте «сейчас» или дату в формате:\n` +
-              `2026-07-20 18:30`,
+              `Укажите будущую дату по московскому времени.\n\n` +
+              `Пример:\n` +
+              `2026-07-20 18:30\n\n` +
+              `Формат: ГГГГ-ММ-ДД ЧЧ:ММ`,
             adminForceReply(
-              'Исправьте время',
+              'ГГГГ-ММ-ДД ЧЧ:ММ',
             ),
           );
 
           return new Response('OK');
         }
 
-        const {
-          data: draft,
-          error: draftError,
-        } = await supabase
-          .from('broadcast_drafts')
-          .update({
-            scheduled_at:
-              scheduledAt,
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq('id', draftId)
-          .eq('created_by', userId)
-          .select(
-            'id, source_chat_id, source_message_id, buttons, scheduled_at'
-          )
-          .maybeSingle();
-
-        if (
-          draftError ||
-          !draft
-        ) {
-          await sendMessage(
-            env,
-            chatId,
-            '❌ Черновик рассылки не найден. Начните создание поста заново.',
-            adminMenuButtons(),
-          );
-
-          return new Response('OK');
-        }
-
-        await sendMessage(
+        await showBroadcastPreview(
           env,
+          supabase,
           chatId,
-          '👁 *Предварительный просмотр поста:*',
-          {
-            reply_markup: {
-              inline_keyboard: [],
-            },
-          },
-        );
-
-        const previewResult =
-          await copyTelegramMessage(
-            env,
-            chatId,
-            draft.source_chat_id,
-            draft.source_message_id,
-            Array.isArray(
-              draft.buttons,
-            )
-              ? draft.buttons
-              : [],
-          );
-
-        if (!previewResult.ok) {
-          await sendMessage(
-            env,
-            chatId,
-            `❌ *Не удалось создать предварительный просмотр*\n\n` +
-              `${escapeMd(
-                previewResult.description ||
-                previewResult.error ||
-                'Telegram copyMessage failed',
-              )}`,
-            adminMenuButtons(),
-          );
-
-          return new Response('OK');
-        }
-
-        const scheduledDate =
-          new Date(
-            draft.scheduled_at,
-          );
-
-        const isScheduled =
-          scheduledDate.getTime() >
-          Date.now() + 30 * 1000;
-
-        const scheduleText =
-          isScheduled
-            ? scheduledDate.toLocaleString(
-                'ru-RU',
-                {
-                  timeZone:
-                    'Europe/Moscow',
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                },
-              ) + ' МСК'
-            : 'сейчас';
-
-        await sendMessage(
-          env,
-          chatId,
-          `📣 *Подтвердите рассылку*\n\n` +
-            `🕒 Отправка: *${escapeMd(scheduleText)}*\n` +
-            `🔘 Кнопок: *${(draft.buttons || []).flat().length}*\n\n` +
-            `После подтверждения список получателей будет зафиксирован.`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text:
-                      '✅ Подтвердить',
-                    callback_data:
-                      `admin_broadcast_confirm_${draftId}`,
-                  },
-                ],
-                [
-                  {
-                    text:
-                      '❌ Отменить',
-                    callback_data:
-                      `admin_broadcast_cancel_${draftId}`,
-                  },
-                ],
-              ],
-            },
-          },
+          userId,
+          draftId,
+          scheduledAt,
         );
 
         return new Response('OK');
