@@ -1539,12 +1539,8 @@
 }
 
 /*
- * Критическое исправление рейтинга.
- *
- * Раньше у .jump-game-leaderboard-overlay
- * был z-index: 40, поэтому рейтинг открывался
- * под стартовым окном или окном результата,
- * у которого z-index: 2020.
+ * Рейтинг должен находиться выше HUD,
+ * стартового окна, паузы и результата.
  */
 .jump-game-leaderboard-overlay {
   z-index: var(--jump-layer-leaderboard);
@@ -1567,7 +1563,7 @@
  */
 .jump-game-leaderboard-panel {
   max-height: calc(
-    100dvh -
+    var(--tg-viewport-stable-height, 100dvh) -
     max(
       env(safe-area-inset-top, 0px),
       var(--chumi-safe-top, 0px)

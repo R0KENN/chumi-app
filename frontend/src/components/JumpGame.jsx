@@ -737,6 +737,123 @@ function addPlatform(game) {
   game.lastRoutePlatform = platform;
 
   /*
+   * Дополнительная безопасная платформа создаёт
+   * выбор маршрута. Особенно часто она появляется
+   * в начале забега, чтобы первые прыжки не были
+   * полностью линейными.
+   */
+  const routeChoiceChance =
+    score < 30
+      ? 0.75
+      : score < 120
+        ? 0.48
+        : 0.32;
+
+  if (
+    routeRoll(game) <
+    routeChoiceChance
+  ) {
+    const branchWidth =
+      routeRandom(
+        game,
+        Math.max(
+          72,
+          width * 0.72,
+        ),
+        Math.max(
+          86,
+          width * 0.9,
+        ),
+      );
+
+    const mainCenter =
+      x + width / 2;
+
+    const placeBranchRight =
+      mainCenter <
+      game.width / 2;
+
+    const branchOffset =
+      routeRandom(
+        game,
+        Math.max(
+          26,
+          game.width * 0.08,
+        ),
+        Math.max(
+          42,
+          game.width * 0.16,
+        ),
+      );
+
+    const rawBranchX =
+      placeBranchRight
+        ? x +
+          width +
+          branchOffset
+        : x -
+          branchWidth -
+          branchOffset;
+
+    const branchX =
+      clamp(
+        rawBranchX,
+        edgePadding,
+        Math.max(
+          edgePadding,
+          game.width -
+            branchWidth -
+            edgePadding,
+        ),
+      );
+
+    const branchOverlapsMain =
+      branchX <
+        x + width + 20 &&
+      branchX +
+        branchWidth >
+        x - 20;
+
+    if (!branchOverlapsMain) {
+      const branchTypeRoll =
+        routeRoll(game);
+
+      const branchType =
+        score >= 15 &&
+        branchTypeRoll < 0.28
+          ? TYPE.CLOUD
+          : TYPE.NORMAL;
+
+      game.platforms.push(
+        createPlatform(
+          game,
+          {
+            x:
+              branchX,
+
+            y:
+              platform.y +
+              routeRandom(
+                game,
+                -14,
+                18,
+              ),
+
+            width:
+              branchWidth,
+
+            type:
+              branchType,
+
+            mainRoute:
+              false,
+          },
+        ),
+      );
+    }
+  }
+
+  /*
    * Набор препятствий не меняется.
    * После 200 очков повышается только вероятность.
    */
@@ -1164,34 +1281,152 @@ function drawPlatform(ctx, platform, dark) {
   ctx.fill();
 
   if (type === TYPE.CLOUD) {
+    const cloudHighlight =
+      dark
+        ? 'rgba(255,255,255,0.34)'
+        : 'rgba(255,255,255,0.92)';
+
+    const cloudMiddle =
+      dark
+        ? 'rgba(220,211,235,0.32)'
+        : 'rgba(238,233,246,0.88)';
+
+    const cloudShadow =
+      dark
+        ? 'rgba(80,65,105,0.24)'
+        : 'rgba(128,105,155,0.16)';
+
+    ctx.shadowColor =
+      dark
+        ? 'rgba(0,0,0,0.24)'
+        : 'rgba(100,75,130,0.18)';
+
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 5;
+
+    ctx.fillStyle =
+      cloudMiddle;
+
+    const cloudSegments = [
+      {
+        centerX:
+          x + width * 0.2,
+        centerY:
+          y + 1,
+        radius:
+          Math.min(12, width * 0.14),
+      },
+      {
+        centerX:
+          x + width * 0.38,
+        centerY:
+          y - 5,
+        radius:
+          Math.min(18, width * 0.2),
+      },
+      {
+        centerX:
+          x + width * 0.58,
+        centerY:
+          y - 8,
+        radius:
+          Math.min(21, width * 0.22),
+      },
+      {
+        centerX:
+          x + width * 0.78,
+        centerY:
+          y,
+        radius:
+          Math.min(14, width * 0.16),
+      },
+    ];
+
+    for (
+      const segment of
+      cloudSegments
+    ) {
+      ctx.beginPath();
+
+      ctx.arc(
+        segment.centerX,
+        segment.centerY,
+        segment.radius,
+        Math.PI,
+        Math.PI * 2,
+      );
+
+      ctx.fill();
+    }
+
+    ctx.shadowColor =
+      'transparent';
+
+    const cloudGloss =
+      ctx.createLinearGradient(
+        x,
+        y - 20,
+        x,
+        y + height,
+      );
+
+    cloudGloss.addColorStop(
+      0,
+      cloudHighlight,
+    );
+
+    cloudGloss.addColorStop(
+      0.55,
+      'rgba(255,255,255,0.16)',
+    );
+
+    cloudGloss.addColorStop(
+      1,
+      'rgba(255,255,255,0)',
+    );
+
+    ctx.fillStyle =
+      cloudGloss;
+
+    roundRect(
+      ctx,
+      x + 7,
+      y + 1,
+      width - 14,
+      5,
+      3,
+    );
+
+    ctx.fill();
+
+    ctx.fillStyle =
+      cloudShadow;
+
+    roundRect(
+      ctx,
+      x + 10,
+      y + height - 4,
+      width - 20,
+      4,
+      2,
+    );
+
+    ctx.fill();
+
     ctx.fillStyle =
       dark
-        ? 'rgba(255,255,255,0.18)'
-        : 'rgba(255,255,255,0.7)';
+        ? 'rgba(220,211,235,0.12)'
+        : 'rgba(255,255,255,0.3)';
 
     ctx.beginPath();
 
-    ctx.arc(
-      x + width * 0.28,
-      y + 2,
-      13,
-      Math.PI,
-      Math.PI * 2,
-    );
-
-    ctx.arc(
-      x + width * 0.48,
-      y - 3,
-      18,
-      Math.PI,
-      Math.PI * 2,
-    );
-
-    ctx.arc(
-      x + width * 0.7,
-      y + 1,
-      14,
-      Math.PI,
+    ctx.ellipse(
+      x + width * 0.5,
+      y + height + 5,
+      width * 0.34,
+      5,
+      0,
+      0,
       Math.PI * 2,
     );
 
@@ -1459,39 +1694,6 @@ function drawGame(ctx, game, image, dark) {
     image,
   );
 
-  const playerVisualRadius = 52;
-
-  if (
-    game.player.x - playerVisualRadius < 0
-  ) {
-    ctx.save();
-    ctx.translate(game.width, 0);
-
-    drawPlayer(
-      ctx,
-      game,
-      image,
-    );
-
-    ctx.restore();
-  }
-
-  if (
-    game.player.x + playerVisualRadius >
-    game.width
-  ) {
-    ctx.save();
-    ctx.translate(-game.width, 0);
-
-    drawPlayer(
-      ctx,
-      game,
-      image,
-    );
-
-    ctx.restore();
-  }
-
   ctx.restore();
 
   /*
@@ -1664,7 +1866,7 @@ export default function JumpGame() {
       gainNode.gain.setTargetAtTime(
         muted
           ? 0
-          : 0.075,
+          : 0.22,
         audioContext.currentTime,
         0.015,
       );
@@ -1695,7 +1897,7 @@ export default function JumpGame() {
           gainNode.gain.value =
             mutedRef.current
               ? 0
-              : 0.075;
+              : 0.22;
 
           gainNode.connect(
             audioContext.destination,
@@ -2187,25 +2389,25 @@ export default function JumpGame() {
   ]);
 
   useEffect(() => {
+    enableTelegramGameMode();
+
     const activeGameScreen =
       screen === STATE.COUNTDOWN ||
       screen === STATE.RUNNING;
 
     if (activeGameScreen) {
-      enableTelegramGameMode();
       resumeAudio();
-    } else {
-      disableTelegramGameMode();
+      return;
+    }
 
-      if (
-        screen === STATE.PAUSED ||
-        screen === STATE.INTRO
-      ) {
-        suspendAudio();
-      }
+    if (
+      screen === STATE.PAUSED ||
+      screen === STATE.INTRO ||
+      screen === STATE.OVER
+    ) {
+      suspendAudio();
     }
   }, [
-    disableTelegramGameMode,
     enableTelegramGameMode,
     resumeAudio,
     screen,
