@@ -737,119 +737,148 @@ function addPlatform(game) {
   game.lastRoutePlatform = platform;
 
   /*
-   * Дополнительная безопасная платформа создаёт
-   * выбор маршрута. Особенно часто она появляется
-   * в начале забега, чтобы первые прыжки не были
-   * полностью линейными.
+   * Создаём первую развилку в начале забега.
+   * Следующие развилки появляются не чаще,
+   * чем один раз на 240 пикселей подъёма.
    */
-  const routeChoiceChance =
-    score < 30
-      ? 0.75
-      : score < 120
-        ? 0.48
-        : 0.32;
+  const firstRouteChoice =
+    game.lastRouteChoiceDistance ===
+    -Infinity;
 
-  if (
-    routeRoll(game) <
-    routeChoiceChance
-  ) {
-    const branchWidth =
-      routeRandom(
-        game,
-        Math.max(
-          72,
-          width * 0.72,
-        ),
-        Math.max(
-          86,
-          width * 0.9,
-        ),
-      );
+  const routeChoiceDistance =
+    game.distance -
+    game.lastRouteChoiceDistance;
 
-    const mainCenter =
-      x + width / 2;
+  const canCreateRouteChoice =
+    firstRouteChoice ||
+    routeChoiceDistance >= 240;
+
+  const shouldCreateRouteChoice =
+    canCreateRouteChoice &&
+    (
+      firstRouteChoice ||
+      routeRoll(game) < 0.28
+    );
+
+  if (shouldCreateRouteChoice) {
+    const branchGap = 14;
+
+    const leftAvailable =
+      x -
+      edgePadding -
+      branchGap;
+
+    const rightAvailable =
+      game.width -
+      edgePadding -
+      (
+        x + width
+      ) -
+      branchGap;
 
     const placeBranchRight =
-      mainCenter <
-      game.width / 2;
+      rightAvailable >
+      leftAvailable;
 
-    const branchOffset =
-      routeRandom(
-        game,
-        Math.max(
-          26,
-          game.width * 0.08,
-        ),
-        Math.max(
-          42,
-          game.width * 0.16,
-        ),
-      );
-
-    const rawBranchX =
+    const availableWidth =
       placeBranchRight
-        ? x +
-          width +
-          branchOffset
-        : x -
-          branchWidth -
-          branchOffset;
+        ? rightAvailable
+        : leftAvailable;
 
-    const branchX =
+    const branchWidth =
       clamp(
-        rawBranchX,
-        edgePadding,
-        Math.max(
-          edgePadding,
-          game.width -
-            branchWidth -
-            edgePadding,
-        ),
-      );
-
-    const branchOverlapsMain =
-      branchX <
-        x + width + 20 &&
-      branchX +
-        branchWidth >
-        x - 20;
-
-    if (!branchOverlapsMain) {
-      const branchTypeRoll =
-        routeRoll(game);
-
-      const branchType =
-        score >= 15 &&
-        branchTypeRoll < 0.28
-          ? TYPE.CLOUD
-          : TYPE.NORMAL;
-
-      game.platforms.push(
-        createPlatform(
+        routeRandom(
           game,
-          {
-            x:
-              branchX,
-
-            y:
-              platform.y +
-              routeRandom(
-                game,
-                -14,
-                18,
-              ),
-
-            width:
-              branchWidth,
-
-            type:
-              branchType,
-
-            mainRoute:
-              false,
-          },
+          58,
+          82,
         ),
+        0,
+        availableWidth,
       );
+
+    if (branchWidth >= 54) {
+      const branchX =
+        placeBranchRight
+          ? x +
+            width +
+            branchGap
+          : x -
+            branchGap -
+            branchWidth;
+
+      const branchY =
+        platform.y +
+        routeRandom(
+          game,
+          -10,
+          14,
+        );
+
+      const overlapsExistingPlatform =
+        game.platforms.some(
+          existingPlatform => {
+            if (
+              existingPlatform.id ===
+              platform.id
+            ) {
+              return false;
+            }
+
+            const verticallyClose =
+              Math.abs(
+                existingPlatform.y -
+                branchY,
+              ) < 24;
+
+            const horizontallyOverlaps =
+              branchX <
+                existingPlatform.x +
+                existingPlatform.width +
+                12 &&
+              branchX +
+                branchWidth >
+                existingPlatform.x -
+                12;
+
+            return (
+              verticallyClose &&
+              horizontallyOverlaps
+            );
+          },
+        );
+
+      if (!overlapsExistingPlatform) {
+        const branchType =
+          score >= 15 &&
+          routeRoll(game) < 0.22
+            ? TYPE.CLOUD
+            : TYPE.NORMAL;
+
+        game.platforms.push(
+          createPlatform(
+            game,
+            {
+              x:
+                branchX,
+
+              y:
+                branchY,
+
+              width:
+                branchWidth,
+
+              type:
+                branchType,
+
+              mainRoute:
+                false,
+            },
+          ),
+        );
+
+        game.lastRouteChoiceDistance =
+          game.distance;
+      }
     }
   }
 
@@ -889,17 +918,45 @@ function addPlatform(game) {
       game.width - hazardWidth - 12,
     );
 
+    const hazardY =
+      platform.y +
+      routeRandom(
+        game,
+        -8,
+        10,
+      );
+
     const overlaps =
-      hazardX < x + width + 22 &&
-      hazardX + hazardWidth > x - 22;
+      game.platforms.some(
+        existingPlatform => {
+          const verticallyClose =
+            Math.abs(
+              existingPlatform.y -
+              hazardY,
+            ) < 28;
+
+          const horizontallyOverlaps =
+            hazardX <
+              existingPlatform.x +
+              existingPlatform.width +
+              22 &&
+            hazardX +
+              hazardWidth >
+              existingPlatform.x -
+              22;
+
+          return (
+            verticallyClose &&
+            horizontallyOverlaps
+          );
+        },
+      );
 
     if (!overlaps) {
       game.platforms.push(
         createPlatform(game, {
           x: hazardX,
-          y:
-            platform.y +
-            routeRandom(game, -8, 10),
+          y: hazardY,
           width: hazardWidth,
           type: TYPE.SPIKE,
           mainRoute: false,
@@ -1020,6 +1077,10 @@ function makeGame(
     // Расстояние, на котором игрок собрал последнюю ракету.
     // Используется для паузы между ракетными полётами.
     lastCollectedRocketDistance: -Infinity,
+
+    // Расстояние, на котором была создана
+    // последняя альтернативная платформа.
+    lastRouteChoiceDistance: -Infinity,
 
     platforms: [startPlatform],
     rockets: [],
@@ -1866,7 +1927,7 @@ export default function JumpGame() {
       gainNode.gain.setTargetAtTime(
         muted
           ? 0
-          : 0.22,
+          : 0.7,
         audioContext.currentTime,
         0.015,
       );
@@ -1897,7 +1958,7 @@ export default function JumpGame() {
           gainNode.gain.value =
             mutedRef.current
               ? 0
-              : 0.22;
+              : 0.7;
 
           gainNode.connect(
             audioContext.destination,
@@ -2033,7 +2094,7 @@ export default function JumpGame() {
           frequency: 420,
           endFrequency: 210,
           duration: 0.2,
-          volume: 0.12,
+          volume: 0.2,
           oscillatorType: 'sine',
         },
 
@@ -2049,7 +2110,7 @@ export default function JumpGame() {
           frequency: 260,
           endFrequency: 780,
           duration: 0.24,
-          volume: 0.16,
+          volume: 0.22,
           oscillatorType: 'sawtooth',
         },
 
@@ -2229,7 +2290,9 @@ export default function JumpGame() {
   }, [suspendAudio]);
 
   const enableTelegramGameMode =
-    useCallback(() => {
+    useCallback((
+      requestFullscreen = false,
+    ) => {
       const tg =
         window.Telegram?.WebApp;
 
@@ -2266,6 +2329,7 @@ export default function JumpGame() {
 
       try {
         if (
+          requestFullscreen &&
           tg.isVersionAtLeast?.('8.0') &&
           !tg.isFullscreen
         ) {
@@ -2389,7 +2453,9 @@ export default function JumpGame() {
   ]);
 
   useEffect(() => {
-    enableTelegramGameMode();
+    enableTelegramGameMode(
+      false,
+    );
 
     const activeGameScreen =
       screen === STATE.COUNTDOWN ||
@@ -2400,13 +2466,7 @@ export default function JumpGame() {
       return;
     }
 
-    if (
-      screen === STATE.PAUSED ||
-      screen === STATE.INTRO ||
-      screen === STATE.OVER
-    ) {
-      suspendAudio();
-    }
+    suspendAudio();
   }, [
     enableTelegramGameMode,
     resumeAudio,
@@ -4751,6 +4811,10 @@ export default function JumpGame() {
     startLockRef.current = true;
     setGameStarting(true);
 
+    enableTelegramGameMode(
+      true,
+    );
+
     resumeAudio();
 
     try {
@@ -4850,6 +4914,7 @@ export default function JumpGame() {
     }
   }, [
     createGameSession,
+    enableTelegramGameMode,
     gameStarting,
     haptic,
     lang,

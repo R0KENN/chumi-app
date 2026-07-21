@@ -986,8 +986,14 @@
 .jump-game-leaderboard-panel {
   width: min(92vw, 430px);
   max-height: min(78vh, 680px);
+  min-height: 0;
   padding: 22px;
+
+  display: flex;
+  flex-direction: column;
+
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .jump-game-leaderboard-header {
@@ -1158,11 +1164,15 @@
 
 .jump-game-leaderboard-list {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
   gap: 8px;
-  max-height: min(46vh, 410px);
+
   margin-bottom: 14px;
   padding-right: 2px;
+
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -1562,20 +1572,25 @@
  * чтобы нижняя кнопка не уходила за экран.
  */
 .jump-game-leaderboard-panel {
-  max-height: calc(
-    var(--tg-viewport-stable-height, 100dvh) -
-    max(
-      env(safe-area-inset-top, 0px),
-      var(--chumi-safe-top, 0px)
-    ) -
-    max(
-      env(safe-area-inset-bottom, 0px),
-      var(--chumi-safe-bottom, 0px)
-    ) -
-    36px
+  max-height: min(
+    680px,
+    calc(
+      var(--tg-viewport-stable-height, 100dvh) -
+      max(
+        env(safe-area-inset-top, 0px),
+        var(--chumi-safe-top, 0px)
+      ) -
+      max(
+        env(safe-area-inset-bottom, 0px),
+        var(--chumi-safe-bottom, 0px)
+      ) -
+      36px
+    )
   );
 
+  min-height: 0;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 /*
@@ -1583,8 +1598,21 @@
  * заголовок и кнопка закрытия остаются на месте.
  */
 .jump-game-leaderboard-list {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+.jump-game-leaderboard-panel > .jump-game-secondary-button {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+.jump-game-leaderboard-header,
+.jump-game-week-countdown,
+.jump-game-leaderboard-tabs,
+.jump-game-personal-result {
+  flex: 0 0 auto;
 }
 
 /*

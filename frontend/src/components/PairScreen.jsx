@@ -2494,6 +2494,23 @@ if (tab.key === 'game') {
     petSrc?.idle ||
     (isEgg ? `egg_${eggDay}` : 'axolotl_idle');
 
+  try {
+    tg?.expand?.();
+    tg?.disableVerticalSwipes?.();
+
+    if (
+      tg?.isVersionAtLeast?.('8.0') &&
+      !tg.isFullscreen
+    ) {
+      tg.requestFullscreen?.();
+    }
+  } catch (error) {
+    console.warn(
+      'Telegram fullscreen request before game failed:',
+      error,
+    );
+  }
+
   navigate(
     `/game/${pairId}?pet=${encodeURIComponent(gamePet)}`
   );
