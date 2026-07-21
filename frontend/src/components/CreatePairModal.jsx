@@ -119,10 +119,37 @@ export default function CreatePairModal({ userId, onClose, onCreated }) {
               📨 {lang === 'ru' ? 'Пригласить партнёра' : 'Invite partner'}
             </button>
             <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => {
-                navigator.clipboard?.writeText(createdCode);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
+              <button onClick={async () => {
+                try {
+                  if (!navigator.clipboard?.writeText) {
+                    throw new Error('Clipboard API is unavailable');
+                  }
+
+                  await navigator.clipboard.writeText(createdCode);
+
+                  setCopied(true);
+
+                  setTimeout(
+                    () => setCopied(false),
+                    2000,
+                  );
+                } catch (copyError) {
+                  console.error(
+                    'Copy code failed:',
+                    copyError,
+                  );
+
+                  const message =
+                    lang === 'ru'
+                      ? 'Не удалось скопировать код'
+                      : 'Failed to copy the code';
+
+                  if (tg?.showAlert) {
+                    tg.showAlert(message);
+                  } else {
+                    window.alert(message);
+                  }
+                }
               }} style={{ flex:1,padding:12,borderRadius:14,border:'none',background:'rgba(0,0,0,0.05)',fontSize:14,cursor:'pointer',color:'#333' }}>
                 {copied ? '✅' : '📋'} {copied ? (lang === 'ru' ? 'Скопировано' : 'Copied') : (t('copyCode')||'Копировать')}
               </button>

@@ -15,9 +15,25 @@ export function getSupabase(env) {
 
 // ── Генерация кода пары ──
 export function generateCode() {
-  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const randomValues = new Uint32Array(6);
+
+  crypto.getRandomValues(randomValues);
+
   let code = '';
-  for (let i = 0; i < 6; i++) code += c[Math.floor(Math.random() * c.length)];
+
+  for (
+    let index = 0;
+    index < randomValues.length;
+    index += 1
+  ) {
+    code +=
+      characters[
+        randomValues[index] %
+        characters.length
+      ];
+  }
+
   return code;
 }
 

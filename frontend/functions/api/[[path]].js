@@ -23,6 +23,16 @@ const TASK_POINTS = {
 const JUMP_GAME_RULES_VERSION = 2;
 const JUMP_GAME_CLIENT_VERSION = 'jump-2';
 
+const MAX_UPLOADED_IMAGE_BYTES =
+  8 * 1024 * 1024;
+
+const MAX_UPLOADED_IMAGE_BASE64_LENGTH =
+  Math.ceil(
+    MAX_UPLOADED_IMAGE_BYTES *
+    4 /
+    3,
+  ) + 4;
+
 const DEATH_STICKER_FILE_IDS = {
   egg: 'CAACAgIAAxkBAAERkSNqXF8oMQdvSDAzuH40k4Zhv9jNtgACVpsAAu8b6EpIcX6Y4NlIwD0E',
   idle: 'CAACAgIAAxkBAAERkPlqXE_irAT4BXXq4Od5dNXT7vvrjQAC-qgAAikz4Uo70-N11x_ALT0E',
@@ -6821,28 +6831,82 @@ if (
 
       const code = await generateUniqueCode(supabase, 20);
 
-      await supabase.from('pairs').insert({
-        code,
-        pet_type: 'spark',
-        streak_days: 0,
-        growth_points: 0,
-        hatched: false,
-        bg_id: 'room',
-        pet_name: null,
-        streak_recoveries_used: 0,
-        last_recovery_month: null,
-        last_streak_date: null,
-        is_dead: false,
-        timezone: userTz,
-      });
+      const {
+        error: pairInsertError,
+      } = await supabase
+        .from('pairs')
+        .insert({
+          code,
+          pet_type: 'spark',
+          streak_days: 0,
+          growth_points: 0,
+          hatched: false,
+          bg_id: 'room',
+          pet_name: null,
+          streak_recoveries_used: 0,
+          last_recovery_month: null,
+          last_streak_date: null,
+          is_dead: false,
+          timezone: userTz,
+        });
 
-      await supabase.from('pair_users').insert({
-        pair_code: code,
-        user_id: userId,
-        display_name: displayName,
-        username,
-        timezone: userTz,
-      });
+      if (pairInsertError) {
+        console.error(
+          'Pair creation failed:',
+          pairInsertError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to create pair',
+          },
+          500,
+          request,
+        );
+      }
+
+      const {
+        error: memberInsertError,
+      } = await supabase
+        .from('pair_users')
+        .insert({
+          pair_code: code,
+          user_id: userId,
+          display_name: displayName,
+          username,
+          timezone: userTz,
+        });
+
+      if (memberInsertError) {
+        console.error(
+          'Pair owner creation failed:',
+          memberInsertError,
+        );
+
+        const {
+          error: rollbackError,
+        } = await supabase
+          .from('pairs')
+          .delete()
+          .eq('code', code);
+
+        if (rollbackError) {
+          console.error(
+            'Pair creation rollback failed:',
+            rollbackError,
+          );
+        }
+
+        return json(
+          {
+            error:
+              'Failed to add pair owner',
+          },
+          500,
+          request,
+        );
+      }
 
       // ── Засчитываем pending-реферал, если он есть ──
       const { data: pending } = await supabase
@@ -6894,13 +6958,60 @@ if (
       if (members?.some(m => m.user_id === userId)) return json({ error: 'Already in pair' }, 400, request);
       if (members && members.length >= 2) return json({ error: 'Pair full' }, 400, request);
 
-      await supabase.from('pair_users').insert({
-        pair_code: code,
-        user_id: userId,
-        display_name: displayName,
-        username,
-        timezone: userTz,
-      });
+      const {
+        error: joinError,
+      } = await supabase
+        .from('pair_users')
+        .insert({
+          pair_code: code,
+          user_id: userId,
+          display_name: displayName,
+          username,
+          timezone: userTz,
+        });
+
+      if (joinError) {
+        console.error(
+          'Pair join failed:',
+          {
+            code,
+            userId,
+            error:
+              joinError,
+          },
+        );
+
+        if (joinError.code === '23505') {
+          return json(
+            {
+              error:
+                'Already in pair',
+            },
+            409,
+            request,
+          );
+        }
+
+        if (joinError.code === '23514') {
+          return json(
+            {
+              error:
+                'Pair full',
+            },
+            409,
+            request,
+          );
+        }
+
+        return json(
+          {
+            error:
+              'Failed to join pair',
+          },
+          500,
+          request,
+        );
+      }
 
       // ── Засчитываем pending-реферал, если он есть ──
       const { data: pending } = await supabase
@@ -7600,6 +7711,20 @@ try {
 
     // ── GET /api/ranking ──
     if (request.method === 'GET' && path === '/api/ranking') {
+      const userId =
+        getAuthedUserId(
+          request,
+          env,
+        );
+
+      if (!userId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request,
+        );
+      }
+
       const { data: allPairs } = await supabase
         .from('pairs')
         .select('code, pet_name, growth_points, streak_days')
@@ -7646,6 +7771,20 @@ try {
 
     // ── GET /api/ranking-random ──
     if (request.method === 'GET' && path === '/api/ranking-random') {
+      const userId =
+        getAuthedUserId(
+          request,
+          env,
+        );
+
+      if (!userId) {
+        return json(
+          { error: 'Unauthorized' },
+          401,
+          request,
+        );
+      }
+
       // Активные = заходили в последние 2 дня (вчера или сегодня)
       // Используем UTC как точку отсчёта, чтобы покрыть все таймзоны
       const todayUtc = new Date().toISOString().split('T')[0];
@@ -7730,7 +7869,42 @@ try {
         const shareExt = shareImgMatch[1] === 'jpeg' ? 'jpg' : 'png';
         const shareContentType = `image/${shareImgMatch[1]}`;
         const base64 = imageDataUrl.split(',')[1];
-        const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+
+        if (
+          !base64 ||
+          base64.length >
+            MAX_UPLOADED_IMAGE_BASE64_LENGTH
+        ) {
+          return json(
+            {
+              error:
+                'Image is too large',
+            },
+            413,
+            request,
+          );
+        }
+
+        const binary = Uint8Array.from(
+          atob(base64),
+          character =>
+            character.charCodeAt(0),
+        );
+
+        if (
+          binary.byteLength >
+          MAX_UPLOADED_IMAGE_BYTES
+        ) {
+          return json(
+            {
+              error:
+                'Image is too large',
+            },
+            413,
+            request,
+          );
+        }
+
         const fileName = `promo_${userId}_${Date.now()}.${shareExt}`;
 
         const uploadRes = await fetch(
@@ -7879,7 +8053,42 @@ try {
       const ext = m[1] === 'jpeg' ? 'jpg' : 'png';
       const contentType = `image/${m[1]}`;
       const base64 = imageDataUrl.split(',')[1];
-      const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+
+      if (
+        !base64 ||
+        base64.length >
+          MAX_UPLOADED_IMAGE_BASE64_LENGTH
+      ) {
+        return json(
+          {
+            error:
+              'Image is too large',
+          },
+          413,
+          request,
+        );
+      }
+
+      const binary = Uint8Array.from(
+        atob(base64),
+        character =>
+          character.charCodeAt(0),
+      );
+
+      if (
+        binary.byteLength >
+        MAX_UPLOADED_IMAGE_BYTES
+      ) {
+        return json(
+          {
+            error:
+              'Image is too large',
+          },
+          413,
+          request,
+        );
+      }
+
       const fileName = `postcard_${userId}_${Date.now()}.${ext}`;
 
       const uploadRes = await fetch(
@@ -7918,7 +8127,42 @@ try {
       const ext = m[1] === 'jpeg' ? 'jpg' : 'png';
       const contentType = `image/${m[1]}`;
       const base64 = imageDataUrl.split(',')[1];
-      const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+
+      if (
+        !base64 ||
+        base64.length >
+          MAX_UPLOADED_IMAGE_BASE64_LENGTH
+      ) {
+        return json(
+          {
+            error:
+              'Image is too large',
+          },
+          413,
+          request,
+        );
+      }
+
+      const binary = Uint8Array.from(
+        atob(base64),
+        character =>
+          character.charCodeAt(0),
+      );
+
+      if (
+        binary.byteLength >
+        MAX_UPLOADED_IMAGE_BYTES
+      ) {
+        return json(
+          {
+            error:
+              'Image is too large',
+          },
+          413,
+          request,
+        );
+      }
+
       const fileName = `postcard_${userId}_${Date.now()}.${ext}`;
 
       const uploadRes = await fetch(

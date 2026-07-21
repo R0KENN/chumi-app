@@ -203,7 +203,7 @@ export default function PairScreen() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [petTapped, setPetTapped] = useState(false);
-  const [maxPairs, setMaxPairs] = useState(3);
+  const [maxPairs, setMaxPairs] = useState(2);
   const [showOutfits, setShowOutfits] = useState(false);
   const [ownedSkins, setOwnedSkins] = useState([]);
   const [referralCount, setReferralCount] = useState(0);
@@ -1941,14 +1941,73 @@ const handleSendSticker = async (sticker) => {
   };
 
   const handleRename = async () => {
-    if (!newName.trim()) return;
-    await fetch(`${API}/rename`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ code: pairId, pet_name: newName.trim(), userId }),
-    });
-    setPair(p => ({ ...p, pet_name: newName.trim() }));
-    setRenaming(false);
+    const normalizedName =
+      newName.trim();
+
+    if (!normalizedName) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API}/rename`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            code: pairId,
+            pet_name:
+              normalizedName,
+            userId,
+          }),
+        },
+      );
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (
+        !response.ok ||
+        data.error
+      ) {
+        throw new Error(
+          data.error ||
+          `Failed to rename pet: ${response.status}`,
+        );
+      }
+
+      setPair(currentPair =>
+        currentPair
+          ? {
+              ...currentPair,
+              pet_name:
+                normalizedName,
+            }
+          : currentPair
+      );
+
+      setRenaming(false);
+      haptic('success');
+    } catch (error) {
+      console.error(
+        'Failed to rename pet:',
+        error,
+      );
+
+      haptic('error');
+
+      const message =
+        lang === 'ru'
+          ? 'Не удалось изменить имя. Попробуйте ещё раз.'
+          : 'Failed to rename the pet. Please try again.';
+
+      if (tg?.showAlert) {
+        tg.showAlert(message);
+      } else {
+        alert(message);
+      }
+    }
   };
 
   const myPairsData = pairs || [];
@@ -2042,32 +2101,99 @@ const handleShareInvite = () => {
   // Создание нового яйца (когда воскрешения закончились)
   const handleCreateNewEgg = async () => {
     try {
-      await fetch(`${API}/create-egg`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ userId, pairCode: pairId }),
-      });
+      const response = await fetch(
+        `${API}/create-egg`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            userId,
+            pairCode: pairId,
+          }),
+        },
+      );
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (
+        !response.ok ||
+        data.error
+      ) {
+        throw new Error(
+          data.error ||
+          `Failed to create egg: ${response.status}`,
+        );
+      }
+
       haptic('success');
       await load();
-    } catch (e) {}
+    } catch (error) {
+      console.error(
+        'Failed to create a new egg:',
+        error,
+      );
+
+      haptic('error');
+
+      const message =
+        lang === 'ru'
+          ? 'Не удалось создать новое яйцо. Попробуйте ещё раз.'
+          : 'Failed to create a new egg. Please try again.';
+
+      if (tg?.showAlert) {
+        tg.showAlert(message);
+      } else {
+        alert(message);
+      }
+    }
   };
 
   const activeRanking = rankingTab === 'top' ? ranking : randomRanking;
   const eggVideoSrc = EGG_VIDEOS[eggDay];
 
-  // FIX #7: loadSkins с auth заголовком
   const loadSkins = async () => {
     setSkinsLoading(true);
+
     try {
-      const headers = {};
-      const initData = getInitData();
-      if (initData) headers['X-Telegram-Init-Data'] = initData;
-      const res = await fetch(`${API}/skins/${userId}`, { headers });
-      const data = await res.json();
-      setOwnedSkins(data.owned || []);
-      setReferralCount(data.referral_count || 0);
-    } catch (e) {}
-    finally { setSkinsLoading(false); }
+      const res = await fetch(
+        `${API}/skins/${userId}`,
+        {
+          headers:
+            authGetHeaders(),
+        },
+      );
+
+      const data = await res
+        .json()
+        .catch(() => ({}));
+
+      if (
+        !res.ok ||
+        data.error
+      ) {
+        throw new Error(
+          data.error ||
+          `Failed to load skins: ${res.status}`,
+        );
+      }
+
+      setOwnedSkins(
+        data.owned || [],
+      );
+
+      setReferralCount(
+        data.referral_count || 0,
+      );
+    } catch (error) {
+      console.error(
+        'Failed to load skins:',
+        error,
+      );
+    } finally {
+      setSkinsLoading(false);
+    }
   };
 
 
@@ -2138,13 +2264,58 @@ const handleGiftSkin = async (skinId) => {
 
   const handleSetSkin = async (skinId) => {
     try {
-      await fetch(`${API}/set-skin`, {
-        method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ userId, pairCode: pairId, skinId }),
-      });
+      const response = await fetch(
+        `${API}/set-skin`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            userId,
+            pairCode: pairId,
+            skinId,
+          }),
+        },
+      );
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (
+        !response.ok ||
+        data.error
+      ) {
+        throw new Error(
+          data.error ||
+          `Failed to set skin: ${response.status}`,
+        );
+      }
+
       await load();
-      haptic('light');
-    } catch (e) {}
+      haptic('success');
+
+      return true;
+    } catch (error) {
+      console.error(
+        'Failed to set skin:',
+        error,
+      );
+
+      haptic('error');
+
+      const message =
+        lang === 'ru'
+          ? 'Не удалось применить наряд. Попробуйте ещё раз.'
+          : 'Failed to apply the outfit. Please try again.';
+
+      if (tg?.showAlert) {
+        tg.showAlert(message);
+      } else {
+        alert(message);
+      }
+
+      return false;
+    }
   };
 
   const LEVEL_SKINS = LEVELS
@@ -3204,10 +3375,17 @@ const owned = ownedSkins.includes(skin.id) || isAdmin;
             );
           }
           if (canApply) return (
-            <button onClick={() => {
+            <button onClick={async () => {
               const s = (previewSkin === null || (isLevelSkin && parseInt(previewSkin.split('_')[1]) === lv.idx))
                 ? null : previewSkin;
-              handleSetSkin(s);
+
+              const applied =
+                await handleSetSkin(s);
+
+              if (!applied) {
+                return;
+              }
+
               setShowOutfits(false);
               setPreviewSkin(undefined);
             }} style={{

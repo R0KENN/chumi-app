@@ -2244,7 +2244,7 @@ export default function JumpGame() {
         subtitle: 'Поднимайся как можно выше',
         play: 'Играть',
         control: 'Удерживай палец и веди влево или вправо',
-        fragile: 'Оранжевые платформы ломаются',
+        fragile: 'Облака исчезают после приземления',
         spike: 'Не приземляйся на шипы',
         rocket: 'Ракета подбросит тебя выше',
         paused: 'Пауза',
@@ -2280,7 +2280,7 @@ export default function JumpGame() {
         subtitle: 'Climb as high as you can',
         play: 'Play',
         control: 'Hold and move left or right',
-        fragile: 'Orange platforms break',
+        fragile: 'Clouds disappear after landing',
         spike: 'Do not land on spikes',
         rocket: 'Rockets boost you higher',
         paused: 'Paused',
@@ -2356,6 +2356,17 @@ export default function JumpGame() {
 
       sessionAbortRef.current =
         controller;
+
+      let requestTimedOut = false;
+
+      const timeoutId =
+        window.setTimeout(
+          () => {
+            requestTimedOut = true;
+            controller.abort();
+          },
+          15_000,
+        );
 
       try {
         const response = await fetch(
@@ -2470,7 +2481,23 @@ export default function JumpGame() {
           sessionMetadata;
 
         return sessionMetadata;
+      } catch (error) {
+        if (
+          error?.name ===
+            'AbortError' &&
+          requestTimedOut
+        ) {
+          throw new Error(
+            'Game session request timed out',
+          );
+        }
+
+        throw error;
       } finally {
+        window.clearTimeout(
+          timeoutId,
+        );
+
         if (
           sessionAbortRef.current ===
           controller
@@ -2820,6 +2847,17 @@ export default function JumpGame() {
     scoreAbortRef.current =
       controller;
 
+    let requestTimedOut = false;
+
+    const timeoutId =
+      window.setTimeout(
+        () => {
+          requestTimedOut = true;
+          controller.abort();
+        },
+        20_000,
+      );
+
     try {
       const response = await fetch('/api/game-score', {
         method: 'POST',
@@ -2851,10 +2889,22 @@ export default function JumpGame() {
         .catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(
-          data.error ||
-          'Failed to save game score',
-        );
+        const requestError =
+          new Error(
+            data.error ||
+            'Failed to save game score',
+          );
+
+        requestError.retryable =
+          response.status === 429 ||
+          response.status >= 500;
+
+        requestError.code =
+          typeof data.code === 'string'
+            ? data.code
+            : null;
+
+        throw requestError;
       }
 
       if (
@@ -2935,14 +2985,27 @@ export default function JumpGame() {
     } catch (error) {
       if (
         error?.name ===
-        'AbortError'
+          'AbortError' &&
+        !requestTimedOut
       ) {
         return false;
       }
 
+      const normalizedError =
+        requestTimedOut
+          ? Object.assign(
+              new Error(
+                'Game score request timed out',
+              ),
+              {
+                retryable: true,
+              },
+            )
+          : error;
+
       console.error(
         'Game score saving failed:',
-        error,
+        normalizedError,
       );
 
       if (
@@ -2950,18 +3013,34 @@ export default function JumpGame() {
         pendingScoreRef.current?.sessionId ===
           submission.sessionId
       ) {
+        const retryable =
+          normalizedError?.retryable !==
+          false;
+
+        if (!retryable) {
+          pendingScoreRef.current =
+            null;
+        }
+
         setSaveStatus('error');
+
         setSaveError(
-          error instanceof Error
-            ? error.message
+          normalizedError instanceof Error
+            ? normalizedError.message
             : 'Failed to save game score',
         );
 
-        setCanRetrySave(true);
+        setCanRetrySave(
+          retryable,
+        );
       }
 
       return false;
     } finally {
+      window.clearTimeout(
+        timeoutId,
+      );
+
       if (
         scoreAbortRef.current ===
         controller
@@ -3370,6 +3449,25 @@ export default function JumpGame() {
       game.player.y += offsetY;
       game.player.previousY += offsetY;
 
+      game.pointer.anchorPetX *=
+        scaleX;
+
+      game.pointer.anchorPointerX *=
+        scaleX;
+
+      if (
+        game.pointer.targetX !==
+        null
+      ) {
+        game.pointer.targetX =
+          clamp(
+            game.pointer.targetX *
+              scaleX,
+            0,
+            width,
+          );
+      }
+
       for (const platform of game.platforms) {
         platform.x *= scaleX;
         platform.baseX *= scaleX;
@@ -3532,7 +3630,11 @@ export default function JumpGame() {
         game.pointer.targetX !== null
       ) {
         const distanceToTarget =
-          game.pointer.targetX - player.x;
+          wrappedDistance(
+            player.x,
+            game.pointer.targetX,
+            game.width,
+          );
 
         /*
          * followStrength переводит расстояние в желаемую
@@ -4861,7 +4963,7 @@ export default function JumpGame() {
               </div>
 
               <div>
-                <span>🟠</span>
+                <span>☁️</span>
                 <p>{t.fragile}</p>
               </div>
 
@@ -5016,7 +5118,10 @@ export default function JumpGame() {
               disabled={
                 gameStarting ||
                 saveStatus === 'saving' ||
-                saveStatus === 'error'
+                (
+                  saveStatus === 'error' &&
+                  canRetrySave
+                )
               }
             >
               {gameStarting
