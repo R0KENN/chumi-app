@@ -171,7 +171,7 @@ export default function PairScreen() {
 
   const [pair, setPair] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [
@@ -768,11 +768,70 @@ useEffect(() => {
 
   const load = useCallback(async () => {
     try {
-      setLoadError(false);
-      const res = await fetch(`${API}/pair/${pairId}/${userId}`, { headers: authGetHeaders() });
-      if (!res.ok) { setLoadError(true); setLoading(false); return; }
-      const data = await res.json();
-      if (data.error) { navigate('/'); return; }
+      setLoadError('');
+
+      const res = await fetch(
+        `${API}/pair/${pairId}/${userId}`,
+        {
+          headers:
+            authGetHeaders(),
+        },
+      );
+
+      const data = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok) {
+        if (
+          res.status === 401
+        ) {
+          throw new Error(
+            lang === 'ru'
+              ? 'Сессия Telegram недействительна. Закройте Mini App и откройте его снова через бота.'
+              : 'The Telegram session is invalid. Close the Mini App and reopen it through the bot.',
+          );
+        }
+
+        if (
+          res.status === 403
+        ) {
+          throw new Error(
+            lang === 'ru'
+              ? 'У вас нет доступа к этой паре.'
+              : 'You do not have access to this pair.',
+          );
+        }
+
+        if (
+          res.status === 404
+        ) {
+          navigate(
+            '/',
+            {
+              replace: true,
+            },
+          );
+
+          return;
+        }
+
+        throw new Error(
+          data.error ||
+          (
+            lang === 'ru'
+              ? `Ошибка сервера: ${res.status}`
+              : `Server error: ${res.status}`
+          ),
+        );
+      }
+
+      if (data.error) {
+        throw new Error(
+          data.error,
+        );
+      }
+
       setPair(data);
       setNewName(data.pet_name || '');
 
@@ -803,17 +862,31 @@ useEffect(() => {
           if (!d2.error) setPair(d2);
         }
       }
-    } catch (e) {
-      console.error(e);
-      setLoadError(true);
+    } catch (error) {
+      console.error(
+        'Pair loading failed:',
+        error,
+      );
+
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : (
+              lang === 'ru'
+                ? 'Не удалось загрузить пару.'
+                : 'Failed to load the pair.'
+            ),
+      );
+    } finally {
+      setLoading(false);
     }
-    finally { setLoading(false); }
   }, [
     pairId,
     userId,
     navigate,
     completeTask,
     authGetHeaders,
+    lang,
   ]);
 
   useEffect(() => {
@@ -1290,8 +1363,8 @@ useEffect(() => {
       <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a1a', marginBottom: 8 }}>
         {lang === 'ru' ? 'Ошибка загрузки' : 'Failed to load'}
       </div>
-      <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.5)', marginBottom: 16 }}>
-        {lang === 'ru' ? 'Проверьте подключение к интернету' : 'Check your internet connection'}
+      <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.5)', marginBottom: 16, maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
+        {loadError}
       </div>
       <button onClick={() => { setLoading(true); load(); }} style={{
         padding: '12px 32px', borderRadius: 14, border: 'none',

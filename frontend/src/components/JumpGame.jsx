@@ -754,6 +754,7 @@ function addPlatform(game) {
     routeChoiceDistance >= 240;
 
   const shouldCreateRouteChoice =
+    type !== TYPE.MOVING &&
     canCreateRouteChoice &&
     (
       firstRouteChoice ||
@@ -828,17 +829,30 @@ function addPlatform(game) {
               Math.abs(
                 existingPlatform.y -
                 branchY,
-              ) < 24;
+              ) < 32;
+
+            const existingLeft =
+              existingPlatform.type ===
+                TYPE.MOVING
+                ? existingPlatform.baseX -
+                  existingPlatform.moveRange
+                : existingPlatform.x;
+
+            const existingRight =
+              existingPlatform.type ===
+                TYPE.MOVING
+                ? existingPlatform.baseX +
+                  existingPlatform.moveRange +
+                  existingPlatform.width
+                : existingPlatform.x +
+                  existingPlatform.width;
 
             const horizontallyOverlaps =
               branchX <
-                existingPlatform.x +
-                existingPlatform.width +
-                12 &&
+                existingRight + 18 &&
               branchX +
                 branchWidth >
-                existingPlatform.x -
-                12;
+                existingLeft - 18;
 
             return (
               verticallyClose &&
@@ -893,6 +907,7 @@ function addPlatform(game) {
 
   if (
     score >= 30 &&
+    type !== TYPE.MOVING &&
     routeRoll(game) < spikeChance
   ) {
     const hazardWidth = routeRandom(
@@ -1796,6 +1811,7 @@ export default function JumpGame() {
   const sessionAbortRef = useRef(null);
   const scoreAbortRef = useRef(null);
   const personalScoreAbortRef = useRef(null);
+  const fullscreenRequestRef = useRef(false);
   const mountedRef = useRef(true);
 
   const audioContextRef = useRef(null);
@@ -1927,7 +1943,7 @@ export default function JumpGame() {
       gainNode.gain.setTargetAtTime(
         muted
           ? 0
-          : 0.7,
+          : 1.4,
         audioContext.currentTime,
         0.015,
       );
@@ -1958,7 +1974,7 @@ export default function JumpGame() {
           gainNode.gain.value =
             mutedRef.current
               ? 0
-              : 0.7;
+              : 1.4;
 
           gainNode.connect(
             audioContext.destination,
@@ -2331,11 +2347,26 @@ export default function JumpGame() {
         if (
           requestFullscreen &&
           tg.isVersionAtLeast?.('8.0') &&
-          !tg.isFullscreen
+          !tg.isFullscreen &&
+          !fullscreenRequestRef.current
         ) {
+          fullscreenRequestRef.current =
+            true;
+
           tg.requestFullscreen?.();
+
+          window.setTimeout(
+            () => {
+              fullscreenRequestRef.current =
+                false;
+            },
+            1200,
+          );
         }
       } catch (error) {
+        fullscreenRequestRef.current =
+          false;
+
         console.warn(
           'Telegram fullscreen request failed:',
           error,
@@ -2388,19 +2419,12 @@ export default function JumpGame() {
         );
       }
 
-      try {
-        if (
-          tg.isVersionAtLeast?.('8.0') &&
-          tg.isFullscreen
-        ) {
-          tg.exitFullscreen?.();
-        }
-      } catch (error) {
-        console.warn(
-          'Telegram exitFullscreen failed:',
-          error,
-        );
-      }
+      /*
+       * Fullscreen не отключаем при выходе из игры.
+       * Основной экран Chumi также рассчитан на fullscreen.
+       * Иначе после navigate() Telegram возвращает обычный
+       * viewport, а PairScreen повторно fullscreen не запрашивает.
+       */
     }, []);
 
   useEffect(() => {
