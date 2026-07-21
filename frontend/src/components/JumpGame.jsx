@@ -1347,14 +1347,35 @@ function drawPlatform(ctx, platform, dark) {
   ctx.shadowOffsetY = 6;
   ctx.fillStyle = gradient;
 
-  roundRect(ctx, x, y, width, height, 8);
+  roundRect(
+    ctx,
+    x,
+    y,
+    width,
+    height,
+    type === TYPE.CLOUD
+      ? height / 2
+      : 8,
+  );
+
   ctx.fill();
 
   ctx.shadowColor = 'transparent';
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
 
-  roundRect(ctx, x + 5, y + 2, width - 10, 3, 2);
-  ctx.fill();
+  if (type !== TYPE.CLOUD) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+
+    roundRect(
+      ctx,
+      x + 5,
+      y + 2,
+      width - 10,
+      3,
+      2,
+    );
+
+    ctx.fill();
+  }
 
   if (type === TYPE.CLOUD) {
     const cloudHighlight =
@@ -1363,9 +1384,33 @@ function drawPlatform(ctx, platform, dark) {
         : 'rgba(255,255,255,0.92)';
 
     const cloudMiddle =
+      ctx.createLinearGradient(
+        x,
+        y - 28,
+        x,
+        y + height + 8,
+      );
+
+    cloudMiddle.addColorStop(
+      0,
       dark
-        ? 'rgba(220,211,235,0.32)'
-        : 'rgba(238,233,246,0.88)';
+        ? 'rgba(248,244,255,0.56)'
+        : 'rgba(255,255,255,0.99)',
+    );
+
+    cloudMiddle.addColorStop(
+      0.58,
+      dark
+        ? 'rgba(218,208,235,0.38)'
+        : 'rgba(241,236,249,0.96)',
+    );
+
+    cloudMiddle.addColorStop(
+      1,
+      dark
+        ? 'rgba(154,137,180,0.28)'
+        : 'rgba(205,193,222,0.82)',
+    );
 
     const cloudShadow =
       dark
@@ -1386,35 +1431,51 @@ function drawPlatform(ctx, platform, dark) {
     const cloudSegments = [
       {
         centerX:
-          x + width * 0.2,
+          x + width * 0.1,
         centerY:
-          y + 1,
+          y + 4,
         radius:
-          Math.min(12, width * 0.14),
+          Math.min(10, width * 0.12),
       },
       {
         centerX:
-          x + width * 0.38,
-        centerY:
-          y - 5,
-        radius:
-          Math.min(18, width * 0.2),
-      },
-      {
-        centerX:
-          x + width * 0.58,
-        centerY:
-          y - 8,
-        radius:
-          Math.min(21, width * 0.22),
-      },
-      {
-        centerX:
-          x + width * 0.78,
+          x + width * 0.24,
         centerY:
           y,
         radius:
           Math.min(14, width * 0.16),
+      },
+      {
+        centerX:
+          x + width * 0.41,
+        centerY:
+          y - 8,
+        radius:
+          Math.min(20, width * 0.22),
+      },
+      {
+        centerX:
+          x + width * 0.59,
+        centerY:
+          y - 11,
+        radius:
+          Math.min(23, width * 0.24),
+      },
+      {
+        centerX:
+          x + width * 0.76,
+        centerY:
+          y - 4,
+        radius:
+          Math.min(17, width * 0.19),
+      },
+      {
+        centerX:
+          x + width * 0.9,
+        centerY:
+          y + 3,
+        radius:
+          Math.min(11, width * 0.13),
       },
     ];
 
