@@ -1399,10 +1399,10 @@ async function sendAdminWeeklyRewardPrompt(
         chat_id:
           String(adminId),
         text:
-          `🎁 Награждение топ-10\n\n` +
+          `🎁 Награждение за неделю\n\n` +
           `Неделя: ${weekStart}\n` +
-          `Победителей: ${winnerCount}\n\n` +
-          `Выберите актуальный Telegram-подарок и подтвердите отправку.`,
+          `Призовых мест: ${winnerCount}\n\n` +
+          `Откройте награды, задайте число мест и выберите подарки.`,
         reply_markup: {
           inline_keyboard: [
             [
@@ -3745,7 +3745,22 @@ export async function onRequest(context) {
 
         let rewardWinnerCount = 0;
 
+        const {
+          data: rewardsSetting,
+        } = await supabase
+          .from('app_settings')
+          .select('enabled')
+          .eq(
+            'key',
+            'weekly_game_rewards_enabled',
+          )
+          .maybeSingle();
+
+        const rewardsEnabled =
+          rewardsSetting?.enabled === true;
+
         if (
+          rewardsEnabled &&
           rankedRows.length > 0 &&
           ADMIN_IDS.length > 0
         ) {

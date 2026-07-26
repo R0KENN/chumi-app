@@ -1629,6 +1629,222 @@ async function getActiveBusinessConnection(
   return data || null;
 }
 
+async function getWeeklyRewardsEnabled(
+  supabase,
+) {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('app_settings')
+    .select('enabled')
+    .eq(
+      'key',
+      'weekly_game_rewards_enabled',
+    )
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      'Weekly rewards setting query failed:',
+      error,
+    );
+
+    return false;
+  }
+
+  return data?.enabled === true;
+}
+
+async function sendWeeklyRewardsSettings(
+  env,
+  supabase,
+  chatId,
+) {
+  const enabled =
+    await getWeeklyRewardsEnabled(
+      supabase,
+    );
+
+  await sendMessage(
+    env,
+    chatId,
+    `⚙️ *Настройки раздачи подарков*\n\n` +
+      `Статус: *${enabled ? 'включена' : 'выключена'}*\n\n` +
+      (
+        enabled
+          ? (
+              `Каждый понедельник бот подготовит список победителей ` +
+              `и пришлёт кнопку для выбора подарков.`
+            )
+          : (
+              `Недельный отчёт по рейтингу продолжит приходить, ` +
+              `но награждение готовиться не будет.`
+            )
+      ),
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                enabled
+                  ? '🔴 Выключить раздачу'
+                  : '🟢 Включить раздачу',
+              callback_data:
+                enabled
+                  ? 'admin_rewards_off'
+                  : 'admin_rewards_on',
+            },
+          ],
+          [
+            {
+              text:
+                '🎁 Открыть награды',
+              callback_data:
+                'admin_weekly_rewards',
+            },
+          ],
+          [
+            {
+              text:
+                '⬅️ В админ-панель',
+              callback_data:
+                'admin_menu',
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function setWeeklyRewardsEnabled(
+  env,
+  supabase,
+  chatId,
+  adminUserId,
+  enabled,
+) {
+  const {
+    error,
+  } = await supabase
+    .from('app_settings')
+    .upsert(
+      {
+        key:
+          'weekly_game_rewards_enabled',
+        enabled:
+          Boolean(enabled),
+        updated_at:
+          new Date().toISOString(),
+        updated_by:
+          String(adminUserId),
+      },
+      {
+        onConflict: 'key',
+      },
+    );
+
+  if (error) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось сохранить настройку:\n` +
+        `${escapeMd(error.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendWeeklyRewardsSettings(
+    env,
+    supabase,
+    chatId,
+  );
+}
+
+async function sendStarsTopupInvoice(
+  env,
+  chatId,
+  adminUserId,
+  starCount,
+) {
+  const invoice =
+    await callTelegramBotApi(
+      env,
+      'createInvoiceLink',
+      {
+        title:
+          'Пополнение баланса бота',
+        description:
+          `Перевод ${starCount} Stars на баланс Chumi для выдачи подарков.`,
+        payload:
+          JSON.stringify({
+            t: 'stars_topup',
+            a: starCount,
+            u: String(adminUserId),
+          }),
+        provider_token: '',
+        currency: 'XTR',
+        prices: [
+          {
+            label:
+              'Bot balance top-up',
+            amount:
+              starCount,
+          },
+        ],
+      },
+    );
+
+  if (
+    !invoice.ok ||
+    typeof invoice.result !== 'string'
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось создать счёт:\n` +
+        `${escapeMd(invoice.description || 'Unknown Telegram error')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    `🧾 *Счёт на пополнение готов*\n\n` +
+      `Сумма: *${starCount} ⭐*\n\n` +
+      `Оплатите его со своего аккаунта — Stars зачислятся на баланс бота полностью, без комиссии.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                `⭐ Оплатить ${starCount} Stars`,
+              url:
+                invoice.result,
+            },
+          ],
+          [
+            {
+              text:
+                '🔄 Проверить баланс',
+              callback_data:
+                'admin_stars_balance',
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
 async function sendStarsBalancePanel(
   env,
   supabase,
@@ -1665,6 +1881,14 @@ async function sendStarsBalancePanel(
     [
       {
         text:
+          '🧾 Пополнить инвойсом',
+        callback_data:
+          'admin_stars_invoice',
+      },
+    ],
+    [
+      {
+        text:
           '🔄 Обновить баланс',
         callback_data:
           'admin_stars_balance',
@@ -1678,7 +1902,7 @@ async function sendStarsBalancePanel(
     keyboard.unshift([
       {
         text:
-          '➕ Пополнить баланс',
+          '➕ Перевести с Business',
         callback_data:
           'admin_stars_topup',
       },
@@ -1729,6 +1953,103 @@ function getRewardPlaceLabel(
   }
 
   return `${position} место`;
+}
+
+async function setWeeklyWinnerCount(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  requestedCount,
+) {
+  const {
+    count: availableCount,
+    error: countError,
+  } = await supabase
+    .from(
+      'weekly_game_rewards',
+    )
+    .select(
+      '*',
+      {
+        count: 'exact',
+        head: true,
+      },
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    );
+
+  if (
+    countError ||
+    !availableCount
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '❌ Не удалось определить количество победителей.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const nextCount =
+    Math.min(
+      Math.max(
+        Number(
+          requestedCount,
+        ) || 1,
+        1,
+      ),
+      Number(
+        availableCount,
+      ),
+    );
+
+  const {
+    data: updatedBatch,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .update({
+      winner_count:
+        nextCount,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      'draft',
+    )
+    .select(
+      'week_start'
+    )
+    .maybeSingle();
+
+  if (!updatedBatch) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Менять число призовых мест можно только до отправки подарков.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendWeeklyRewardSummaryV2(
+    env,
+    supabase,
+    chatId,
+    weekStart,
+  );
 }
 
 async function sendWeeklyRewardSummaryV2(
@@ -1805,8 +2126,24 @@ async function sendWeeklyRewardSummaryV2(
       weekStart,
     );
 
+  const winnerCount =
+    Math.max(
+      1,
+      Number(
+        batch.winner_count,
+      ) || 1,
+    );
+
+  const activeRewards =
+    (rewards || []).filter(
+      reward =>
+        Number(
+          reward.position,
+        ) <= winnerCount,
+    );
+
   const lines =
-    (rewards || []).map(
+    activeRewards.map(
       reward => {
         const name =
           escapeMd(
@@ -1839,7 +2176,7 @@ async function sendWeeklyRewardSummaryV2(
     );
 
   const totalCost =
-    (rewards || []).reduce(
+    activeRewards.reduce(
       (
         sum,
         reward,
@@ -1854,8 +2191,8 @@ async function sendWeeklyRewardSummaryV2(
     );
 
   const allSelected =
-    (rewards || []).length > 0 &&
-    (rewards || []).every(
+    activeRewards.length > 0 &&
+    activeRewards.every(
       reward =>
         Boolean(
           reward.gift_id,
@@ -1865,9 +2202,28 @@ async function sendWeeklyRewardSummaryV2(
   const keyboard = [];
 
   if (batch.status === 'draft') {
-    for (const reward of (
-      rewards || []
-    )) {
+    keyboard.push([
+      {
+        text:
+          '➖ место',
+        callback_data:
+          `admin_reward2_count_${weekKey}_${winnerCount - 1}`,
+      },
+      {
+        text:
+          `🏅 мест: ${winnerCount}`,
+        callback_data:
+          `admin_reward_open_${weekKey}`,
+      },
+      {
+        text:
+          '➕ место',
+        callback_data:
+          `admin_reward2_count_${weekKey}_${winnerCount + 1}`,
+      },
+    ]);
+
+    for (const reward of activeRewards) {
       keyboard.push([
         {
           text:
@@ -1966,7 +2322,7 @@ async function sendWeeklyRewardSummaryV2(
     `🏆 *Награды Chumi Jump*\n\n` +
       `📅 Неделя: \`${weekStart}\`\n` +
       `📌 Статус: *${escapeMd(batch.status)}*\n` +
-      `👥 Победителей: *${batch.winner_count}*\n` +
+      `👥 Призовых мест: *${winnerCount}*\n` +
       `⭐ Выбрано подарков на: *${totalCost} Stars*\n\n` +
       `${lines.join('\n\n') || 'Победителей нет.'}`,
     {
@@ -2311,6 +2667,32 @@ async function selectWeeklyGiftV2(
         'position',
         position,
       );
+  } else {
+    const {
+      data: batchForAll,
+    } = await supabase
+      .from(
+        'weekly_game_reward_batches',
+      )
+      .select(
+        'winner_count'
+      )
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .maybeSingle();
+
+    updateQuery =
+      updateQuery.lte(
+        'position',
+        Math.max(
+          1,
+          Number(
+            batchForAll?.winner_count,
+          ) || 1,
+        ),
+      );
   }
 
   const {
@@ -2375,7 +2757,7 @@ async function processWeeklyGiftsV2(
       'weekly_game_reward_batches',
     )
     .select(
-      'week_start, status'
+      'week_start, status, winner_count'
     )
     .eq(
       'week_start',
@@ -2398,6 +2780,14 @@ async function processWeeklyGiftsV2(
     return;
   }
 
+  const winnerCount =
+    Math.max(
+      1,
+      Number(
+        batch.winner_count,
+      ) || 1,
+    );
+
   const {
     data: recipients,
     error: recipientsError,
@@ -2411,6 +2801,10 @@ async function processWeeklyGiftsV2(
     .eq(
       'week_start',
       weekStart,
+    )
+    .lte(
+      'position',
+      winnerCount,
     )
     .in(
       'status',
@@ -2456,6 +2850,10 @@ async function processWeeklyGiftsV2(
       .eq(
         'week_start',
         weekStart,
+      )
+      .lte(
+        'position',
+        winnerCount,
       );
 
     if (
@@ -2691,7 +3089,7 @@ async function processWeeklyGiftsV2(
   await sendMessage(
     env,
     chatId,
-    `⏳ Отправляю подарки топ-10.\n\n` +
+    `⏳ Отправляю подарки победителям.\n\n` +
       `Получателей: *${recipients.length}*\n` +
       `Стоимость: *${totalCost} ⭐*`,
     {
@@ -2859,6 +3257,10 @@ async function processWeeklyGiftsV2(
     .eq(
       'week_start',
       weekStart,
+    )
+    .lte(
+      'position',
+      winnerCount,
     );
 
   const sentCount =
@@ -3042,6 +3444,15 @@ async function sendManualRewardsPanel(
     .eq(
       'week_start',
       weekStart,
+    )
+    .lte(
+      'position',
+      Math.max(
+        1,
+        Number(
+          batch.winner_count,
+        ) || 1,
+      ),
     )
     .order(
       'position',
@@ -3433,6 +3844,21 @@ async function markManualRewardAsSent(
   }
 
   const {
+    data: batchForCount,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'winner_count'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  const {
     count: remainingCount,
     error: countError,
   } = await supabase
@@ -3449,6 +3875,15 @@ async function markManualRewardAsSent(
     .eq(
       'week_start',
       weekStart,
+    )
+    .lte(
+      'position',
+      Math.max(
+        1,
+        Number(
+          batchForCount?.winner_count,
+        ) || 1,
+      ),
     )
     .neq(
       'status',
@@ -5753,12 +6188,18 @@ function adminMenuButtons() {
         ],
         [
           {
-            text: '🎁 Награды топ-10',
+            text: '🎁 Награды',
             callback_data: 'admin_weekly_rewards',
           },
           {
             text: '⭐ Баланс',
             callback_data: 'admin_stars_balance',
+          },
+        ],
+        [
+          {
+            text: '⚙️ Настройки раздачи',
+            callback_data: 'admin_rewards_settings',
           },
         ],
         [
@@ -6119,8 +6560,74 @@ export async function onRequestPost(context) {
 
         if (
           cbData ===
+          'admin_rewards_settings'
+        ) {
+          await sendWeeklyRewardsSettings(
+            env,
+            supabase,
+            cbChatId,
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData === 'admin_rewards_on' ||
+          cbData === 'admin_rewards_off'
+        ) {
+          await setWeeklyRewardsEnabled(
+            env,
+            supabase,
+            cbChatId,
+            cbUserId,
+            cbData === 'admin_rewards_on',
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData ===
           'admin_weekly_rewards'
         ) {
+          const rewardsEnabled =
+            await getWeeklyRewardsEnabled(
+              supabase,
+            );
+
+          if (!rewardsEnabled) {
+            await sendMessage(
+              env,
+              cbChatId,
+              `⚠️ Раздача подарков сейчас выключена.\n\n` +
+                `Включите её, чтобы подготовить награждение за прошлую неделю.`,
+              {
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text:
+                          '🟢 Включить раздачу',
+                        callback_data:
+                          'admin_rewards_on',
+                      },
+                    ],
+                    [
+                      {
+                        text:
+                          '⬅️ В админ-панель',
+                        callback_data:
+                          'admin_menu',
+                      },
+                    ],
+                  ],
+                },
+              },
+            );
+
+            return new Response('OK');
+          }
+
           const previousWeekStart =
             getPreviousUtcWeekStart();
 
@@ -6650,6 +7157,61 @@ export async function onRequestPost(context) {
                 ],
               },
             },
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData ===
+          'admin_stars_invoice'
+        ) {
+          await sendMessage(
+            env,
+            cbChatId,
+            `CHUMI-STARS-INVOICE\n\n` +
+              `🧾 *Пополнение баланса счётом*\n\n` +
+              `Введите количество Stars от 1 до 10000.\n\n` +
+              `Бот выставит счёт, который вы оплатите со своего аккаунта. ` +
+              `Вся сумма зачислится на баланс бота.`,
+            adminForceReply(
+              'От 1 до 10000 Stars',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardCountMatch =
+          cbData.match(
+            /^admin_reward2_count_(\d{8})_(\d{1,2})$/,
+          );
+
+        if (rewardCountMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardCountMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await setWeeklyWinnerCount(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            Number(
+              rewardCountMatch[2],
+            ),
           );
 
           return new Response('OK');
@@ -7495,15 +8057,43 @@ export async function onRequestPost(context) {
           productKey = 'skin';
         } else if (payloadType === 'skin_gift') {
           productKey = 'skin_gift';
+        } else if (
+          payloadType === 'stars_topup'
+        ) {
+          productKey = 'stars_topup';
         } else {
           productKey = productId;
         }
 
-        const expected =
-          expectedAmount(
-            productKey,
-            skinId,
+        /*
+         * Пополнение баланса — сумма динамическая,
+         * поэтому берётся из подписанного нами payload.
+         * Счёт может оплатить только администратор.
+         */
+        const topupAmount =
+          Number(
+            payload.amount ||
+            payload.a,
           );
+
+        const expected =
+          productKey === 'stars_topup'
+            ? (
+                Number.isSafeInteger(
+                  topupAmount,
+                ) &&
+                topupAmount >= 1 &&
+                topupAmount <= 10000 &&
+                ADMIN_IDS.includes(
+                  String(query.from.id),
+                )
+                  ? topupAmount
+                  : NaN
+              )
+            : expectedAmount(
+                productKey,
+                skinId,
+              );
 
         const userMatches =
           payloadUserId === null ||
@@ -7619,13 +8209,33 @@ export async function onRequestPost(context) {
       let productKey;
       if (pType === 'skin') productKey = 'skin';
       else if (pType === 'skin_gift') productKey = 'skin_gift';
+      else if (pType === 'stars_topup') productKey = 'stars_topup';
       else productKey = pProductId;
+
+      const pTopupAmount =
+        Number(
+          payload.amount ||
+          payload.a,
+        );
 
       // Цена берётся из общего модуля _prices.js — единый источник правды
       // для скинов (по skinId) и товаров (extra_slot и т.п.).
       // Как и в pre_checkout: неизвестный продукт (expected === undefined)
       // считаем невалидным и товар не выдаём — иначе сумма не проверяется вообще.
-      const expected = expectedAmount(productKey, pSkinId);
+      // Пополнение баланса проверяется по сумме из payload.
+      const expected =
+        productKey === 'stars_topup'
+          ? (
+              Number.isSafeInteger(
+                pTopupAmount,
+              ) &&
+              pTopupAmount >= 1 &&
+              pTopupAmount <= 10000 &&
+              ADMIN_IDS.includes(userId)
+                ? pTopupAmount
+                : NaN
+            )
+          : expectedAmount(productKey, pSkinId);
 
       if (
         payment.currency !== 'XTR' ||
@@ -7640,6 +8250,54 @@ export async function onRequestPost(context) {
             expected,
             productKey,
             skinId: pSkinId,
+          },
+        );
+
+        return new Response('OK');
+      }
+
+      // ── Пополнение баланса бота ──
+      if (pType === 'stars_topup') {
+        const topupClaim = await claimCharge(supabase, chargeId, userId, 'stars_topup');
+        if (!(await shouldFulfill(env, topupClaim, {
+          product: 'stars_topup', userId,
+          amount: payment.total_amount, chargeId,
+        }))) {
+          return new Response('OK');
+        }
+
+        const balanceAfterTopup =
+          await getTelegramBotStarBalance(
+            env,
+          );
+
+        await sendMessage(
+          env,
+          update.message.chat.id,
+          `✅ *Баланс бота пополнен*\n\n` +
+            `Зачислено: *${payment.total_amount} ⭐*\n` +
+            `Текущий баланс: *${balanceAfterTopup.ok ? balanceAfterTopup.amount : 'обновите вручную'}*`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text:
+                      '🔄 Обновить баланс',
+                    callback_data:
+                      'admin_stars_balance',
+                  },
+                ],
+                [
+                  {
+                    text:
+                      '🎁 К наградам',
+                    callback_data:
+                      'admin_weekly_rewards',
+                  },
+                ],
+              ],
+            },
           },
         );
 
@@ -7881,6 +8539,48 @@ export async function onRequestPost(context) {
       ADMIN_IDS.includes(userId) &&
       message.chat.type === 'private'
     ) {
+      if (
+        repliedBotText.startsWith(
+          'CHUMI-STARS-INVOICE',
+        )
+      ) {
+        const invoiceStarCount =
+          Number(
+            messageText,
+          );
+
+        if (
+          !/^\d{1,5}$/.test(
+            messageText,
+          ) ||
+          !Number.isInteger(
+            invoiceStarCount,
+          ) ||
+          invoiceStarCount < 1 ||
+          invoiceStarCount > 10000
+        ) {
+          await sendMessage(
+            env,
+            chatId,
+            `❌ Введите целое число от 1 до 10000.`,
+            adminForceReply(
+              'От 1 до 10000 Stars',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        await sendStarsTopupInvoice(
+          env,
+          chatId,
+          userId,
+          invoiceStarCount,
+        );
+
+        return new Response('OK');
+      }
+
       if (
         repliedBotText.startsWith(
           'CHUMI-STARS-TOPUP',
