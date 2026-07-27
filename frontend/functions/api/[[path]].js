@@ -794,50 +794,6 @@ async function createWeeklyRankingImage(
       },
     );
 
-  /*
-   * Загружаем последовательно, а не через Promise.all.
-   * Это не превышает ограничение Cloudflare
-   * на одновременные внешние соединения.
-   */
-  const avatarDataUrls = [];
-
-  /*
-   * Общий бюджет на аватары в теле запроса.
-   * QuickChart отвергает слишком большой POST,
-   * поэтому лишние аватары просто пропускаем.
-   */
-  let avatarBudgetLeft =
-    700 * 1024;
-
-  for (const row of cardRows) {
-    if (avatarBudgetLeft <= 0) {
-      avatarDataUrls.push(null);
-
-      continue;
-    }
-
-    const avatarDataUrl =
-      await loadWeeklyRankingAvatar(
-        env,
-        row.userId,
-      );
-
-    if (
-      avatarDataUrl &&
-      avatarDataUrl.length <=
-        avatarBudgetLeft
-    ) {
-      avatarBudgetLeft -=
-        avatarDataUrl.length;
-
-      avatarDataUrls.push(
-        avatarDataUrl,
-      );
-    } else {
-      avatarDataUrls.push(null);
-    }
-  }
-
   const scores =
     cardRows.map(
       row => row.score,
@@ -884,7 +840,8 @@ async function createWeeklyRankingImage(
   const chartData = {
     labels:
       cardRows.map(
-        () => '',
+        row =>
+          `${row.rank}. ${row.name}`,
       ),
 
     datasets: [
@@ -922,9 +879,9 @@ async function createWeeklyRankingImage(
     layout: {
       padding: {
         top: 35,
-        right: 100,
+        right: 120,
         bottom: 45,
-        left: 370,
+        left: 30,
       },
     },
 
@@ -960,7 +917,20 @@ async function createWeeklyRankingImage(
         },
 
         ticks: {
-          display: false,
+          display: true,
+
+          color: '#352743',
+
+          crossAlign: 'far',
+
+          padding: 14,
+
+          font: {
+            size: 22,
+            weight: 'bold',
+            family:
+              'Arial, sans-serif',
+          },
         },
       },
     },
@@ -1039,283 +1009,23 @@ async function createWeeklyRankingImage(
   };
 
   /*
-   * QuickChart принимает конфигурацию Chart.js
-   * не только как JSON, но и как JavaScript-строку.
+   * Конфигурацию отправляем обычным JSON-объектом.
    *
-   * JavaScript-строка нужна для inline-плагина,
-   * который рисует круглые аватары и имена.
+   * Кастомные inline-плагины здесь использовать нельзя:
+   * на бесплатном тарифе QuickChart вырезает доступ
+   * к внутренностям Chart.js (chart.ctx, шкалы),
+   * поэтому места и имена выводим подписями оси Y,
+   * а очки — встроенным плагином datalabels.
    */
-  const buildChartSource = (
-    avatars,
-  ) =>
-    `{
-      type: 'bar',
+  const chartConfig = {
+    type: 'bar',
 
-      data: ${JSON.stringify(
-        chartData,
-      )},
+    data: chartData,
 
-      options: ${JSON.stringify(
-        chartOptions,
-      )},
+    options: chartOptions,
+  };
 
-      plugins: [
-        {
-          id: 'chumiRankingCard',
-
-          afterDraw: function(chart) {
-            var ctx = chart.ctx;
-
-            var rows = ${JSON.stringify(
-              cardRows.map(
-                row => ({
-                  rank:
-                    row.rank,
-
-                  name:
-                    row.name,
-
-                  score:
-                    row.score,
-                }),
-              ),
-            )};
-
-            var avatars = ${JSON.stringify(
-              avatars,
-            )};
-
-            /*
-             * QuickChart блокирует часть внутренних
-             * методов Chart.js внутри плагинов,
-             * поэтому позиции строк считаем сами
-             * по границам области построения.
-             */
-            var chartArea =
-              chart.chartArea || {};
-
-            var areaTop =
-              Number(chartArea.top) || 0;
-
-            var areaBottom =
-              Number(chartArea.bottom) ||
-              Number(chart.height) ||
-              0;
-
-            var rowHeight =
-              rows.length > 0
-                ? (areaBottom - areaTop) /
-                  rows.length
-                : 0;
-
-            function getRowCenterY(index) {
-              return (
-                areaTop +
-                rowHeight * (index + 0.5)
-              );
-            }
-
-            function getPlaceColor(rank) {
-              if (rank === 1) {
-                return '#D99A27';
-              }
-
-              if (rank === 2) {
-                return '#8E99AA';
-              }
-
-              if (rank === 3) {
-                return '#B66E39';
-              }
-
-              return '#7E55AE';
-            }
-
-            function getAvatarColor(rank) {
-              if (rank === 1) {
-                return '#FBE4A1';
-              }
-
-              if (rank === 2) {
-                return '#E2E6ED';
-              }
-
-              if (rank === 3) {
-                return '#EBC09F';
-              }
-
-              return '#DCC6F3';
-            }
-
-            rows.forEach(
-              function(row, index) {
-                var centerY =
-                  getRowCenterY(index);
-
-                var rankX = 42;
-                var avatarX = 100;
-                var nameX = 148;
-                var avatarRadius = 29;
-
-                ctx.save();
-
-                ctx.textAlign =
-                  'center';
-
-                ctx.textBaseline =
-                  'middle';
-
-                ctx.fillStyle =
-                  getPlaceColor(
-                    row.rank,
-                  );
-
-                ctx.font =
-                  'bold 25px Arial';
-
-                ctx.fillText(
-                  String(row.rank),
-                  rankX,
-                  centerY,
-                );
-
-                ctx.beginPath();
-
-                ctx.arc(
-                  avatarX,
-                  centerY,
-                  avatarRadius + 4,
-                  0,
-                  Math.PI * 2,
-                );
-
-                ctx.fillStyle =
-                  getPlaceColor(
-                    row.rank,
-                  );
-
-                ctx.fill();
-
-                ctx.beginPath();
-
-                ctx.arc(
-                  avatarX,
-                  centerY,
-                  avatarRadius,
-                  0,
-                  Math.PI * 2,
-                );
-
-                ctx.fillStyle =
-                  getAvatarColor(
-                    row.rank,
-                  );
-
-                ctx.fill();
-
-                var avatarDrawn =
-                  false;
-
-                if (avatars[index]) {
-                  try {
-                    var avatarImage =
-                      new Image();
-
-                    avatarImage.src =
-                      avatars[index];
-
-                    ctx.save();
-
-                    ctx.beginPath();
-
-                    ctx.arc(
-                      avatarX,
-                      centerY,
-                      avatarRadius,
-                      0,
-                      Math.PI * 2,
-                    );
-
-                    ctx.clip();
-
-                    ctx.drawImage(
-                      avatarImage,
-                      avatarX -
-                        avatarRadius,
-                      centerY -
-                        avatarRadius,
-                      avatarRadius * 2,
-                      avatarRadius * 2,
-                    );
-
-                    ctx.restore();
-
-                    avatarDrawn =
-                      true;
-                  } catch (
-                    avatarError
-                  ) {
-                    avatarDrawn =
-                      false;
-                  }
-                }
-
-                if (!avatarDrawn) {
-                  var firstLetter =
-                    String(
-                      row.name ||
-                      '?',
-                    )
-                      .trim()
-                      .charAt(0)
-                      .toUpperCase() ||
-                    '?';
-
-                  ctx.fillStyle =
-                    '#5D3E7C';
-
-                  ctx.font =
-                    'bold 25px Arial';
-
-                  ctx.textAlign =
-                    'center';
-
-                  ctx.fillText(
-                    firstLetter,
-                    avatarX,
-                    centerY + 1,
-                  );
-                }
-
-                ctx.textAlign =
-                  'left';
-
-                ctx.textBaseline =
-                  'middle';
-
-                ctx.fillStyle =
-                  '#352743';
-
-                ctx.font =
-                  'bold 24px Arial';
-
-                ctx.fillText(
-                  row.name,
-                  nameX,
-                  centerY,
-                );
-
-                ctx.restore();
-              },
-            );
-          },
-        },
-      ],
-    }`;
-
-  const requestRankingChart = async (
-    avatars,
-  ) => {
+  const requestRankingChart = async () => {
     const response = await fetch(
       'https://quickchart.io/chart',
       {
@@ -1344,10 +1054,7 @@ async function createWeeklyRankingImage(
 
           version: '4',
 
-          chart:
-            buildChartSource(
-              avatars,
-            ),
+          chart: chartConfig,
         }),
       },
     );
@@ -1400,41 +1107,8 @@ async function createWeeklyRankingImage(
     };
   };
 
-  const hasAvatars =
-    avatarDataUrls.some(
-      avatar => Boolean(avatar),
-    );
-
-  let renderResult =
-    await requestRankingChart(
-      avatarDataUrls,
-    );
-
-  /*
-   * Аватары — самая тяжёлая часть запроса.
-   * Если QuickChart отказал, пробуем ещё раз
-   * без них: лучше картинка с буквами,
-   * чем полное отсутствие отчёта.
-   */
-  if (
-    !renderResult.ok &&
-    hasAvatars
-  ) {
-    console.warn(
-      'Ranking image retry without avatars:',
-      {
-        status: renderResult.status,
-        error: renderResult.error,
-      },
-    );
-
-    renderResult =
-      await requestRankingChart(
-        cardRows.map(
-          () => null,
-        ),
-      );
-  }
+  const renderResult =
+    await requestRankingChart();
 
   if (!renderResult.ok) {
     throw new Error(
