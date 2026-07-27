@@ -4060,6 +4060,229 @@ export async function onRequest(context) {
       }
     }
 
+    // ── POST /api/admin-ranking-image ──
+    if (
+      request.method === 'POST' &&
+      path ===
+        '/api/admin-ranking-image'
+    ) {
+      if (
+        !isCronAuthorized(
+          request,
+          env,
+        )
+      ) {
+        return json(
+          { error: 'Forbidden' },
+          403,
+          request,
+        );
+      }
+
+      const body = await request
+        .json()
+        .catch(() => ({}));
+
+      const adminChatId =
+        String(
+          body.chatId || '',
+        );
+
+      /*
+       * Эндпоинт вызывается ботом от имени администратора.
+       * Картинка отправляется только в админский чат.
+       */
+      if (
+        !ADMIN_IDS.includes(
+          adminChatId,
+        )
+      ) {
+        return json(
+          { error: 'Forbidden' },
+          403,
+          request,
+        );
+      }
+
+      const currentWeekStart =
+        getUtcWeekStart();
+
+      const usePreviousWeek =
+        body.week === 'previous';
+
+      let targetWeekStart =
+        currentWeekStart;
+
+      let targetWeekEnd =
+        new Date()
+          .toISOString()
+          .slice(0, 10);
+
+      if (usePreviousWeek) {
+        const previousStart =
+          new Date(
+            `${currentWeekStart}T00:00:00.000Z`,
+          );
+
+        previousStart.setUTCDate(
+          previousStart.getUTCDate() - 7,
+        );
+
+        targetWeekStart =
+          previousStart
+            .toISOString()
+            .slice(0, 10);
+
+        const previousEnd =
+          new Date(
+            `${currentWeekStart}T00:00:00.000Z`,
+          );
+
+        previousEnd.setUTCDate(
+          previousEnd.getUTCDate() - 1,
+        );
+
+        targetWeekEnd =
+          previousEnd
+            .toISOString()
+            .slice(0, 10);
+      }
+
+      const {
+        data: scoreRows,
+        error: scoreRowsError,
+      } = await supabase
+        .from('jump_game_scores')
+        .select(
+          'user_id, display_name, username, best_score, best_score_achieved_at'
+        )
+        .eq(
+          'week_start',
+          targetWeekStart,
+        )
+        .gt(
+          'best_score',
+          0,
+        )
+        .order(
+          'best_score',
+          {
+            ascending: false,
+          },
+        )
+        .order(
+          'best_score_achieved_at',
+          {
+            ascending: true,
+          },
+        )
+        .order(
+          'user_id',
+          {
+            ascending: true,
+          },
+        )
+        .limit(10);
+
+      if (scoreRowsError) {
+        console.error(
+          'Ranking image scores query failed:',
+          scoreRowsError,
+        );
+
+        return json(
+          {
+            error:
+              'Failed to load weekly scores',
+          },
+          500,
+          request,
+        );
+      }
+
+      const rankedRows =
+        (scoreRows || []).map(
+          (row, index) => ({
+            ...row,
+            rank:
+              index + 1,
+            best_score:
+              Number(
+                row.best_score,
+              ) || 0,
+          }),
+        );
+
+      if (rankedRows.length === 0) {
+        return json(
+          {
+            success: true,
+            empty: true,
+            weekStart:
+              targetWeekStart,
+          },
+          200,
+          request,
+        );
+      }
+
+      try {
+        const rankingImage =
+          await createWeeklyRankingImage(
+            env,
+            rankedRows,
+            targetWeekStart,
+            targetWeekEnd,
+          );
+
+        await sendAdminRankingPhoto(
+          env,
+          adminChatId,
+          rankingImage,
+          `🏆 Chumi Jump: ${targetWeekStart} — ${targetWeekEnd}` +
+            (
+              usePreviousWeek
+                ? ''
+                : ' (неделя идёт)'
+            ),
+        );
+      } catch (imageError) {
+        console.error(
+          'Ranking image generation failed:',
+          imageError,
+        );
+
+        return json(
+          {
+            error:
+              'Ranking image generation failed',
+            details:
+              String(
+                imageError?.message ||
+                imageError,
+              ),
+          },
+          500,
+          request,
+        );
+      }
+
+      return json(
+        {
+          success: true,
+          empty: false,
+          weekStart:
+            targetWeekStart,
+          weekEnd:
+            targetWeekEnd,
+          playerCount:
+            rankedRows.length,
+        },
+        200,
+        request,
+      );
+    }
+
     // ── POST /api/game-session ──
     if (
       request.method === 'POST' &&

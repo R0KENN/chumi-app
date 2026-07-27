@@ -5607,6 +5607,181 @@ function jumpAnalyticsKeyboard(
   };
 }
 
+async function sendRankingImageMenu(
+  env,
+  chatId,
+) {
+  await sendMessage(
+    env,
+    chatId,
+    `🖼 *Картинка с рейтингом*\n\n` +
+      `Выберите неделю. На карточке будут топ-10 игроков с аватарками и очками.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '📅 Текущая неделя',
+              callback_data:
+                'admin_rankimg_current',
+            },
+          ],
+          [
+            {
+              text:
+                '📆 Прошлая неделя',
+              callback_data:
+                'admin_rankimg_previous',
+            },
+          ],
+          [
+            {
+              text:
+                '⬅️ В админ-панель',
+              callback_data:
+                'admin_menu',
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+async function sendRankingImage(
+  env,
+  chatId,
+  week,
+) {
+  await sendMessage(
+    env,
+    chatId,
+    '⏳ Генерирую картинку с рейтингом…',
+    {
+      reply_markup: {
+        inline_keyboard: [],
+      },
+    },
+  );
+
+  let response;
+
+  try {
+    response = await fetch(
+      `${env.BASE_URL || WEBAPP_URL}/api/admin-ranking-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+          Authorization:
+            `Bearer ${env.CRON_SECRET || ''}`,
+        },
+        body: JSON.stringify({
+          chatId:
+            String(chatId),
+          week,
+        }),
+      },
+    );
+  } catch (error) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось создать картинку:\n` +
+        `${escapeMd(String(error?.message || error))}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  const result = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось создать картинку (HTTP ${response.status}).\n` +
+        `${escapeMd(result.details || result.error || 'Неизвестная ошибка')}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (result.empty) {
+    await sendMessage(
+      env,
+      chatId,
+      `ℹ️ За неделю \`${result.weekStart}\` результатов пока нет.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '🖼 Выбрать другую неделю',
+                callback_data:
+                  'admin_ranking_image',
+              },
+            ],
+            [
+              {
+                text:
+                  '⬅️ В админ-панель',
+                callback_data:
+                  'admin_menu',
+              },
+            ],
+          ],
+        },
+      },
+    );
+
+    return;
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    `✅ Готово. Игроков на карточке: *${result.playerCount}*`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text:
+                '🔄 Сгенерировать заново',
+              callback_data:
+                `admin_rankimg_${week}`,
+            },
+          ],
+          [
+            {
+              text:
+                '🖼 Другая неделя',
+              callback_data:
+                'admin_ranking_image',
+            },
+          ],
+          [
+            {
+              text:
+                '⬅️ В админ-панель',
+              callback_data:
+                'admin_menu',
+            },
+          ],
+        ],
+      },
+    },
+  );
+}
+
 async function sendJumpAnalyticsMenu(
   env,
   chatId,
@@ -6520,6 +6695,12 @@ function adminMenuButtons() {
         ],
         [
           {
+            text: '🖼 Картинка рейтинга',
+            callback_data: 'admin_ranking_image',
+          },
+        ],
+        [
+          {
             text: '🎁 Награды',
             callback_data: 'admin_weekly_rewards',
           },
@@ -6885,6 +7066,33 @@ export async function onRequestPost(context) {
             env,
             supabase,
             cbChatId,
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData ===
+          'admin_ranking_image'
+        ) {
+          await sendRankingImageMenu(
+            env,
+            cbChatId,
+          );
+
+          return new Response('OK');
+        }
+
+        const rankingImageMatch =
+          cbData.match(
+            /^admin_rankimg_(current|previous)$/,
+          );
+
+        if (rankingImageMatch) {
+          await sendRankingImage(
+            env,
+            cbChatId,
+            rankingImageMatch[1],
           );
 
           return new Response('OK');
