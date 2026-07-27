@@ -1085,8 +1085,35 @@ async function createWeeklyRankingImage(
               avatars,
             )};
 
-            var yScale =
-              chart.scales.y;
+            /*
+             * QuickChart блокирует часть внутренних
+             * методов Chart.js внутри плагинов,
+             * поэтому позиции строк считаем сами
+             * по границам области построения.
+             */
+            var chartArea =
+              chart.chartArea || {};
+
+            var areaTop =
+              Number(chartArea.top) || 0;
+
+            var areaBottom =
+              Number(chartArea.bottom) ||
+              Number(chart.height) ||
+              0;
+
+            var rowHeight =
+              rows.length > 0
+                ? (areaBottom - areaTop) /
+                  rows.length
+                : 0;
+
+            function getRowCenterY(index) {
+              return (
+                areaTop +
+                rowHeight * (index + 0.5)
+              );
+            }
 
             function getPlaceColor(rank) {
               if (rank === 1) {
@@ -1123,9 +1150,7 @@ async function createWeeklyRankingImage(
             rows.forEach(
               function(row, index) {
                 var centerY =
-                  yScale.getPixelForValue(
-                    index,
-                  );
+                  getRowCenterY(index);
 
                 var rankX = 42;
                 var avatarX = 100;
