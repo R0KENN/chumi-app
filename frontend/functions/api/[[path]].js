@@ -711,7 +711,7 @@ async function loadWeeklyRankingAvatar(
     if (
       imageBuffer.byteLength === 0 ||
       imageBuffer.byteLength >
-        2 * 1024 * 1024
+        128 * 1024
     ) {
       return null;
     }
@@ -801,16 +801,41 @@ async function createWeeklyRankingImage(
    */
   const avatarDataUrls = [];
 
+  /*
+   * Общий бюджет на аватары в теле запроса.
+   * QuickChart отвергает слишком большой POST,
+   * поэтому лишние аватары просто пропускаем.
+   */
+  let avatarBudgetLeft =
+    700 * 1024;
+
   for (const row of cardRows) {
+    if (avatarBudgetLeft <= 0) {
+      avatarDataUrls.push(null);
+
+      continue;
+    }
+
     const avatarDataUrl =
       await loadWeeklyRankingAvatar(
         env,
         row.userId,
       );
 
-    avatarDataUrls.push(
-      avatarDataUrl,
-    );
+    if (
+      avatarDataUrl &&
+      avatarDataUrl.length <=
+        avatarBudgetLeft
+    ) {
+      avatarBudgetLeft -=
+        avatarDataUrl.length;
+
+      avatarDataUrls.push(
+        avatarDataUrl,
+      );
+    } else {
+      avatarDataUrls.push(null);
+    }
   }
 
   const scores =
@@ -1020,7 +1045,9 @@ async function createWeeklyRankingImage(
    * JavaScript-строка нужна для inline-плагина,
    * который рисует круглые аватары и имена.
    */
-  const chartSource =
+  const buildChartSource = (
+    avatars,
+  ) =>
     `{
       type: 'bar',
 
@@ -1055,7 +1082,7 @@ async function createWeeklyRankingImage(
             )};
 
             var avatars = ${JSON.stringify(
-              avatarDataUrls,
+              avatars,
             )};
 
             var yScale =
@@ -1261,74 +1288,142 @@ async function createWeeklyRankingImage(
       ],
     }`;
 
-  const response = await fetch(
-    'https://quickchart.io/chart',
-    {
-      method: 'POST',
+  const requestRankingChart = async (
+    avatars,
+  ) => {
+    const response = await fetch(
+      'https://quickchart.io/chart',
+      {
+        method: 'POST',
 
-      headers: {
-        'Content-Type':
-          'application/json',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+
+        body: JSON.stringify({
+          width: 1200,
+
+          height: Math.max(
+            800,
+            310 +
+            cardRows.length * 72,
+          ),
+
+          format: 'png',
+
+          backgroundColor:
+            '#F8F4FC',
+
+          devicePixelRatio: 1,
+
+          version: '4',
+
+          chart:
+            buildChartSource(
+              avatars,
+            ),
+        }),
       },
+    );
 
-      body: JSON.stringify({
-        width: 1200,
+    if (!response.ok) {
+      /*
+       * Текст ошибки QuickChart отдаёт
+       * в заголовке, а в теле рисует
+       * ту же ошибку картинкой.
+       */
+      const quickChartError =
+        response.headers.get(
+          'X-quickchart-error',
+        ) || '';
 
-        height: Math.max(
-          800,
-          310 +
-          cardRows.length * 72,
-        ),
-
-        format: 'png',
-
-        backgroundColor:
-          '#F8F4FC',
-
-        devicePixelRatio: 1,
-
-        version: '4',
-
-        chart: chartSource,
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const responseText =
       await response
-        .text()
-        .catch(() => '');
+        .arrayBuffer()
+        .catch(() => null);
 
+      return {
+        ok: false,
+        status: response.status,
+        error: quickChartError,
+      };
+    }
+
+    const contentType =
+      response.headers.get(
+        'Content-Type',
+      ) || '';
+
+    if (
+      !contentType.includes(
+        'image/',
+      )
+    ) {
+      return {
+        ok: false,
+        status: response.status,
+        error:
+          `unexpected content type: ` +
+          `${contentType || 'unknown'}`,
+      };
+    }
+
+    return {
+      ok: true,
+      blob:
+        await response.blob(),
+    };
+  };
+
+  const hasAvatars =
+    avatarDataUrls.some(
+      avatar => Boolean(avatar),
+    );
+
+  let renderResult =
+    await requestRankingChart(
+      avatarDataUrls,
+    );
+
+  /*
+   * Аватары — самая тяжёлая часть запроса.
+   * Если QuickChart отказал, пробуем ещё раз
+   * без них: лучше картинка с буквами,
+   * чем полное отсутствие отчёта.
+   */
+  if (
+    !renderResult.ok &&
+    hasAvatars
+  ) {
+    console.warn(
+      'Ranking image retry without avatars:',
+      {
+        status: renderResult.status,
+        error: renderResult.error,
+      },
+    );
+
+    renderResult =
+      await requestRankingChart(
+        cardRows.map(
+          () => null,
+        ),
+      );
+  }
+
+  if (!renderResult.ok) {
     throw new Error(
       `Ranking image generation failed: ` +
-      `${response.status}` +
+      `${renderResult.status}` +
       (
-        responseText
-          ? ` — ${responseText.slice(0, 300)}`
+        renderResult.error
+          ? ` — ${String(renderResult.error).slice(0, 300)}`
           : ''
       ),
     );
   }
 
-  const contentType =
-    response.headers.get(
-      'Content-Type',
-    ) || '';
-
-  if (
-    !contentType.includes(
-      'image/',
-    )
-  ) {
-    throw new Error(
-      `Ranking image generation returned ` +
-      `unexpected content type: ` +
-      `${contentType || 'unknown'}`,
-    );
-  }
-
-  return response.blob();
+  return renderResult.blob;
 }
 
 async function sendAdminRankingPhoto(
