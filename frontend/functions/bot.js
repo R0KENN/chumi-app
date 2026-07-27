@@ -1955,6 +1955,257 @@ function getRewardPlaceLabel(
   return `${position} место`;
 }
 
+async function getWeeklyGiftText(
+  supabase,
+  weekStart,
+) {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'gift_text'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      'Weekly gift text query failed:',
+      error,
+    );
+
+    return null;
+  }
+
+  return data?.gift_text || null;
+}
+
+/*
+ * Telegram принимает не более 255 символов
+ * в подписи к подарку, без форматирования.
+ */
+function formatGiftTextForPosition(
+  giftText,
+  position,
+) {
+  const normalized =
+    String(
+      giftText || '',
+    ).trim();
+
+  if (!normalized) {
+    return (
+      `🏆 ${position} место в недельном рейтинге Chumi Jump!`
+    );
+  }
+
+  return normalized
+    .replace(
+      /\{place\}/gi,
+      String(position),
+    )
+    .slice(
+      0,
+      255,
+    );
+}
+
+async function setWeeklyGiftText(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  giftText,
+) {
+  const {
+    data: updatedBatch,
+    error,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .update({
+      gift_text:
+        giftText,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .eq(
+      'status',
+      'draft',
+    )
+    .select(
+      'week_start'
+    )
+    .maybeSingle();
+
+  if (error) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось сохранить подпись:\n` +
+        `${escapeMd(error.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (!updatedBatch) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Менять подпись можно только до отправки подарков.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendWeeklyRewardSummaryV2(
+    env,
+    supabase,
+    chatId,
+    weekStart,
+  );
+}
+
+async function clearWeeklyGiftV2(
+  env,
+  supabase,
+  chatId,
+  weekStart,
+  position,
+) {
+  const {
+    data: batch,
+  } = await supabase
+    .from(
+      'weekly_game_reward_batches',
+    )
+    .select(
+      'status'
+    )
+    .eq(
+      'week_start',
+      weekStart,
+    )
+    .maybeSingle();
+
+  if (
+    !batch ||
+    batch.status !== 'draft'
+  ) {
+    await sendMessage(
+      env,
+      chatId,
+      '⚠️ Отменить выбор можно только до отправки подарков.',
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  let clearQuery =
+    supabase
+      .from(
+        'weekly_game_rewards',
+      )
+      .update({
+        gift_id:
+          null,
+        gift_star_count:
+          0,
+        status:
+          'pending',
+        last_error:
+          null,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        'week_start',
+        weekStart,
+      )
+      .in(
+        'status',
+        [
+          'pending',
+          'selected',
+          'failed',
+        ],
+      );
+
+  if (position !== 0) {
+    clearQuery =
+      clearQuery.eq(
+        'position',
+        position,
+      );
+  }
+
+  const {
+    data: clearedRewards,
+    error: clearError,
+  } = await clearQuery.select(
+    'id'
+  );
+
+  if (clearError) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось отменить выбор:\n` +
+        `${escapeMd(clearError.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  if (!clearedRewards?.length) {
+    await sendMessage(
+      env,
+      chatId,
+      'ℹ️ Отменять нечего — подарок не выбран.',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text:
+                  '📋 К наградам',
+                callback_data:
+                  `admin_reward_open_${rewardWeekToKey(weekStart)}`,
+              },
+            ],
+          ],
+        },
+      },
+    );
+
+    return;
+  }
+
+  await sendWeeklyRewardSummaryV2(
+    env,
+    supabase,
+    chatId,
+    weekStart,
+  );
+}
+
 async function setWeeklyWinnerCount(
   env,
   supabase,
@@ -2134,6 +2385,25 @@ async function sendWeeklyRewardSummaryV2(
       ) || 1,
     );
 
+  const giftText =
+    await getWeeklyGiftText(
+      supabase,
+      weekStart,
+    );
+
+  const giftTextPreview =
+    giftText
+      ? (
+          `_${escapeMd(
+            giftText.slice(0, 60),
+          )}${
+            giftText.length > 60
+              ? '…'
+              : ''
+          }_`
+        )
+      : 'стандартная';
+
   const activeRewards =
     (rewards || []).filter(
       reward =>
@@ -2224,7 +2494,7 @@ async function sendWeeklyRewardSummaryV2(
     ]);
 
     for (const reward of activeRewards) {
-      keyboard.push([
+      const placeRow = [
         {
           text:
             `${getRewardPlaceLabel(reward.position)} — ` +
@@ -2236,8 +2506,27 @@ async function sendWeeklyRewardSummaryV2(
           callback_data:
             `admin_reward2_place_${weekKey}_${reward.position}`,
         },
-      ]);
+      ];
+
+      if (reward.gift_id) {
+        placeRow.push({
+          text:
+            '❌',
+          callback_data:
+            `admin_reward2_clear_${weekKey}_${reward.position}`,
+        });
+      }
+
+      keyboard.push(placeRow);
     }
+
+    const selectedCount =
+      activeRewards.filter(
+        reward =>
+          Boolean(
+            reward.gift_id,
+          ),
+      ).length;
 
     keyboard.push([
       {
@@ -2247,6 +2536,39 @@ async function sendWeeklyRewardSummaryV2(
           `admin_reward2_place_${weekKey}_0`,
       },
     ]);
+
+    if (selectedCount > 0) {
+      keyboard.push([
+        {
+          text:
+            '❌ Сбросить все подарки',
+          callback_data:
+            `admin_reward2_clear_${weekKey}_0`,
+        },
+      ]);
+    }
+
+    keyboard.push([
+      {
+        text:
+          giftText
+            ? '✍️ Изменить подпись'
+            : '✍️ Добавить подпись',
+        callback_data:
+          `admin_gifttext_${weekKey}`,
+      },
+    ]);
+
+    if (giftText) {
+      keyboard.push([
+        {
+          text:
+            '🧹 Убрать подпись',
+          callback_data:
+            `admin_gifttext_clear_${weekKey}`,
+        },
+      ]);
+    }
 
     keyboard.push([
       {
@@ -2323,7 +2645,8 @@ async function sendWeeklyRewardSummaryV2(
       `📅 Неделя: \`${weekStart}\`\n` +
       `📌 Статус: *${escapeMd(batch.status)}*\n` +
       `👥 Призовых мест: *${winnerCount}*\n` +
-      `⭐ Выбрано подарков на: *${totalCost} Stars*\n\n` +
+      `⭐ Выбрано подарков на: *${totalCost} Stars*\n` +
+      `✍️ Подпись: ${giftTextPreview}\n\n` +
       `${lines.join('\n\n') || 'Победителей нет.'}`,
     {
       reply_markup: {
@@ -2788,6 +3111,12 @@ async function processWeeklyGiftsV2(
       ) || 1,
     );
 
+  const giftText =
+    await getWeeklyGiftText(
+      supabase,
+      weekStart,
+    );
+
   const {
     data: recipients,
     error: recipientsError,
@@ -3183,7 +3512,10 @@ async function processWeeklyGiftsV2(
               recipient.gift_id,
             ),
           text:
-            `🏆 ${recipient.position} место в недельном рейтинге Chumi Jump!`,
+            formatGiftTextForPosition(
+              giftText,
+              recipient.position,
+            ),
         },
       );
 
@@ -7217,6 +7549,130 @@ export async function onRequestPost(context) {
           return new Response('OK');
         }
 
+        const giftTextPromptMatch =
+          cbData.match(
+            /^admin_gifttext_(\d{8})$/,
+          );
+
+        if (giftTextPromptMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              giftTextPromptMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          const currentGiftText =
+            await getWeeklyGiftText(
+              supabase,
+              weekStart,
+            );
+
+          await sendMessage(
+            env,
+            cbChatId,
+            `CHUMI-GIFT-TEXT:${giftTextPromptMatch[1]}\n\n` +
+              `✍️ *Подпись к подарку*\n\n` +
+              `Ответьте на это сообщение текстом, который победители увидят вместе с подарком.\n\n` +
+              `Максимум 200 символов, без форматирования.\n` +
+              `Сочетание \`{place}\` заменится на номер места.\n\n` +
+              `Сейчас: ${currentGiftText ? escapeMd(currentGiftText) : 'стандартная подпись'}\n\n` +
+              `Отправьте /skip, чтобы вернуть стандартную.`,
+            adminForceReply(
+              'Введите подпись',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        const giftTextClearMatch =
+          cbData.match(
+            /^admin_gifttext_clear_(\d{8})$/,
+          );
+
+        if (giftTextClearMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              giftTextClearMatch[1],
+            );
+
+          if (!weekStart) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректная дата награждения.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await setWeeklyGiftText(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            null,
+          );
+
+          return new Response('OK');
+        }
+
+        const rewardClearMatch =
+          cbData.match(
+            /^admin_reward2_clear_(\d{8})_(\d{1,2})$/,
+          );
+
+        if (rewardClearMatch) {
+          const weekStart =
+            rewardKeyToWeek(
+              rewardClearMatch[1],
+            );
+
+          const position =
+            Number(
+              rewardClearMatch[2],
+            );
+
+          if (
+            !weekStart ||
+            !Number.isInteger(
+              position,
+            ) ||
+            position < 0 ||
+            position > 10
+          ) {
+            await sendMessage(
+              env,
+              cbChatId,
+              '❌ Некорректные параметры награды.',
+              adminMenuButtons(),
+            );
+
+            return new Response('OK');
+          }
+
+          await clearWeeklyGiftV2(
+            env,
+            supabase,
+            cbChatId,
+            weekStart,
+            position,
+          );
+
+          return new Response('OK');
+        }
+
         const rewardPlaceMatch =
           cbData.match(
             /^admin_reward2_place_(\d{8})_(\d{1,2})$/,
@@ -8574,6 +9030,73 @@ export async function onRequestPost(context) {
       ADMIN_IDS.includes(userId) &&
       message.chat.type === 'private'
     ) {
+      if (
+        repliedBotText.startsWith(
+          'CHUMI-GIFT-TEXT:',
+        )
+      ) {
+        const weekKey =
+          repliedBotText
+            .split('\n')[0]
+            .replace(
+              'CHUMI-GIFT-TEXT:',
+              '',
+            )
+            .trim();
+
+        const weekStart =
+          rewardKeyToWeek(weekKey);
+
+        if (!weekStart) {
+          await sendMessage(
+            env,
+            chatId,
+            '❌ Некорректная дата награждения.',
+            adminMenuButtons(),
+          );
+
+          return new Response('OK');
+        }
+
+        const resetGiftText =
+          /^\/skip$/i.test(
+            messageText,
+          );
+
+        if (
+          !resetGiftText &&
+          (
+            messageText.length === 0 ||
+            messageText.length > 200
+          )
+        ) {
+          await sendMessage(
+            env,
+            chatId,
+            `CHUMI-GIFT-TEXT:${weekKey}\n\n` +
+              `❌ Подпись должна быть от 1 до 200 символов.\n\n` +
+              `Отправьте /skip, чтобы вернуть стандартную.`,
+            adminForceReply(
+              'Введите подпись',
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        await setWeeklyGiftText(
+          env,
+          supabase,
+          chatId,
+          weekStart,
+          resetGiftText
+            ? null
+            : messageText,
+        );
+
+        return new Response('OK');
+      }
+
       if (
         repliedBotText.startsWith(
           'CHUMI-STARS-INVOICE',

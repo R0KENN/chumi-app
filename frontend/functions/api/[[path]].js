@@ -1431,6 +1431,107 @@ async function sendAdminWeeklyRewardPrompt(
   }
 }
 
+function formatWeeklyDuration(
+  milliseconds,
+) {
+  const totalSeconds =
+    Math.round(
+      Math.max(
+        0,
+        Number(milliseconds) || 0,
+      ) / 1000,
+    );
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds} сек.`;
+  }
+
+  return (
+    `${Math.floor(totalSeconds / 60)} мин. ` +
+    `${totalSeconds % 60} сек.`
+  );
+}
+
+function formatWeeklyDistribution(
+  items,
+  limit = 5,
+) {
+  if (
+    !Array.isArray(items) ||
+    items.length === 0
+  ) {
+    return '—';
+  }
+
+  return items
+    .slice(0, limit)
+    .map(
+      item =>
+        `${item.key}: ${item.count}`,
+    )
+    .join(' · ');
+}
+
+function buildWeeklyStatsChunk(
+  summary,
+  weekStart,
+  weekEnd,
+) {
+  const rocketAttempts =
+    summary.rockets.collected +
+    summary.rockets.missed;
+
+  const checkpointText =
+    summary.checkpointDistribution
+      .map(
+        checkpoint =>
+          `${checkpoint.score}: ${checkpoint.count}`,
+      )
+      .join(' · ');
+
+  return (
+    `📊 Статистика Chumi Jump за неделю\n` +
+    `${weekStart} — ${weekEnd}\n\n` +
+    `👥 Уникальные игроки: ${summary.uniquePlayers}\n` +
+    `🎮 Забегов: ${summary.sessions}\n` +
+    `🔁 Забегов на игрока: ${summary.runsPerPlayer}\n` +
+    `♻️ Играли больше раза: ${summary.repeatPlayers}\n\n` +
+    `✅ Завершено: ${summary.completed}\n` +
+    `🚪 Брошено: ${summary.abandoned}\n` +
+    `0️⃣ Нулевой результат: ${summary.zeroScoreRuns}\n\n` +
+    `📈 Средний результат: ${summary.score.average}\n` +
+    `📊 Медиана: ${summary.score.median}\n` +
+    `🏆 Рекорд недели: ${summary.score.maximum}\n\n` +
+    `⏱ Средний забег: ${formatWeeklyDuration(summary.activeDurationMs.average)}\n` +
+    `⏱ Медиана забега: ${formatWeeklyDuration(summary.activeDurationMs.median)}\n\n` +
+    `🎯 Дошли до отметки:\n${checkpointText}\n\n` +
+    `🚀 Ракеты: ${summary.rockets.collected} собрано, ` +
+    `${summary.rockets.missed} упущено` +
+    (
+      rocketAttempts > 0
+        ? ` (${Math.round(summary.rockets.collectionShare * 100)}%)`
+        : ''
+    ) +
+    `\n` +
+    `🧱 Приземлений: ${summary.platformUsage.landings}\n\n` +
+    `💀 Причины смерти: ${formatWeeklyDistribution(summary.deathReasons)}\n` +
+    `📱 Платформы: ${formatWeeklyDistribution(summary.telegramPlatforms)}\n` +
+    `🌐 Языки: ${formatWeeklyDistribution(summary.languages)}\n\n` +
+    `🛡 Anti-cheat\n` +
+    `Принято: ${summary.accepted} · ` +
+    `Подозрительных: ${summary.suspicious} · ` +
+    `Отклонено: ${summary.rejected}\n` +
+    (
+      summary.antiCheatReasons.length > 0
+        ? `Причины: ${formatWeeklyDistribution(summary.antiCheatReasons, 6)}\n`
+        : ''
+    ) +
+    `\n💾 Ошибки сохранения: ${summary.saving.errors}\n` +
+    `📉 Средний FPS: ${summary.fps.average} · ` +
+    `просадки ≥250 мс: ${summary.fps.longFrameGapSessions}`
+  );
+}
+
 function buildWeeklyRankingChunks(
   rows,
   weekStart,
@@ -3733,14 +3834,56 @@ export async function onRequest(context) {
 
         let rankingImage = null;
 
+        /*
+         * Картинка не критична для отчёта.
+         * Если QuickChart недоступен,
+         * администратор всё равно получает текст.
+         */
         if (rankedRows.length > 0) {
-          rankingImage =
-            await createWeeklyRankingImage(
-              env,
-              rankedRows,
+          try {
+            rankingImage =
+              await createWeeklyRankingImage(
+                env,
+                rankedRows,
+                previousWeekStart,
+                previousWeekEnd,
+              );
+          } catch (imageError) {
+            console.error(
+              'Weekly ranking image failed:',
+              imageError,
+            );
+          }
+        }
+
+        let statsChunk = null;
+
+        try {
+          const loadedWeekSessions =
+            await loadJumpAnalyticsSessions(
+              supabase,
+              `${previousWeekStart}T00:00:00.000Z`,
+              `${currentWeekStart}T00:00:00.000Z`,
+            );
+
+          statsChunk =
+            buildWeeklyStatsChunk(
+              buildJumpAnalyticsSummary(
+                loadedWeekSessions.rows,
+              ),
               previousWeekStart,
               previousWeekEnd,
+            ) +
+            (
+              loadedWeekSessions.truncated
+                ? `\n\n⚠️ Учтены первые 20000 забегов.`
+                : ''
             );
+        } catch (statsError) {
+          console.error(
+            'Weekly stats build failed:',
+            statsError,
+          );
         }
 
         let rewardWinnerCount = 0;
@@ -3821,6 +3964,14 @@ export async function onRequest(context) {
               adminId,
               rankingImage,
               `🏆 Chumi Jump: ${previousWeekStart} — ${previousWeekEnd}`,
+            );
+          }
+
+          if (statsChunk) {
+            await sendAdminPlainMessage(
+              env,
+              adminId,
+              statsChunk,
             );
           }
 
