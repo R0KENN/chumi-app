@@ -1,7 +1,7 @@
 import { LEVELS, getLevel } from './_levels.js';
 import { expectedAmount } from './_prices.js';
 import {
-  ADMIN_IDS, WEBAPP_URL,
+  ADMIN_IDS, TOPUP_USER_IDS, WEBAPP_URL,
   getSupabase, generateUniqueCode, escapeMd, getMaxPairs,
 } from './_shared.js';
 
@@ -1784,7 +1784,7 @@ async function sendStarsTopupInvoice(
           JSON.stringify({
             t: 'stars_topup',
             a: starCount,
-            u: String(adminUserId),
+            b: String(adminUserId),
           }),
         provider_token: '',
         currency: 'XTR',
@@ -8084,7 +8084,7 @@ export async function onRequestPost(context) {
                 ) &&
                 topupAmount >= 1 &&
                 topupAmount <= 10000 &&
-                ADMIN_IDS.includes(
+                TOPUP_USER_IDS.includes(
                   String(query.from.id),
                 )
                   ? topupAmount
@@ -8231,7 +8231,7 @@ export async function onRequestPost(context) {
               ) &&
               pTopupAmount >= 1 &&
               pTopupAmount <= 10000 &&
-              ADMIN_IDS.includes(userId)
+              TOPUP_USER_IDS.includes(userId)
                 ? pTopupAmount
                 : NaN
             )
@@ -8271,35 +8271,70 @@ export async function onRequestPost(context) {
             env,
           );
 
+        const balanceText =
+          balanceAfterTopup.ok
+            ? String(
+                balanceAfterTopup.amount,
+              )
+            : 'обновите вручную';
+
+        const payerIsAdmin =
+          ADMIN_IDS.includes(userId);
+
         await sendMessage(
           env,
           update.message.chat.id,
           `✅ *Баланс бота пополнен*\n\n` +
             `Зачислено: *${payment.total_amount} ⭐*\n` +
-            `Текущий баланс: *${balanceAfterTopup.ok ? balanceAfterTopup.amount : 'обновите вручную'}*`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text:
-                      '🔄 Обновить баланс',
-                    callback_data:
-                      'admin_stars_balance',
-                  },
-                ],
-                [
-                  {
-                    text:
-                      '🎁 К наградам',
-                    callback_data:
-                      'admin_weekly_rewards',
-                  },
-                ],
-              ],
-            },
-          },
+            `Текущий баланс: *${balanceText}*`,
+          payerIsAdmin
+            ? {
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text:
+                          '🔄 Обновить баланс',
+                        callback_data:
+                          'admin_stars_balance',
+                      },
+                    ],
+                    [
+                      {
+                        text:
+                          '🎁 К наградам',
+                        callback_data:
+                          'admin_weekly_rewards',
+                      },
+                    ],
+                  ],
+                },
+              }
+            : {
+                reply_markup: {
+                  inline_keyboard: [],
+                },
+              },
         );
+
+        if (!payerIsAdmin) {
+          const payerName =
+            update.message.from.first_name || 'User';
+
+          const payerUser =
+            update.message.from.username
+              ? '@' + update.message.from.username
+              : '—';
+
+          await notifyAdmins(env,
+            `⭐ *Баланс бота пополнен*\n\n` +
+            `Плательщик: ${escapeMd(payerName)} (${escapeMd(payerUser)})\n` +
+            `ID: \`${userId}\`\n` +
+            `Зачислено: ⭐ ${payment.total_amount}\n` +
+            `Текущий баланс: ${escapeMd(balanceText)}\n` +
+            `Charge: \`${chargeId || '—'}\``
+          );
+        }
 
         return new Response('OK');
       }

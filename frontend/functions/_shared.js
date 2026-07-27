@@ -5,6 +5,17 @@ import { createClient } from '@supabase/supabase-js';
 
 // ── Константы ──
 export const ADMIN_IDS = ['713156118'];
+
+/*
+ * Аккаунты, которым разрешено оплачивать
+ * служебный счёт на пополнение баланса бота.
+ * Прав администратора этот список не даёт.
+ */
+export const TOPUP_USER_IDS = [
+  ...ADMIN_IDS,
+  '7589962009',
+];
+
 export const MAX_PAIRS_BASE = 2;
 export const WEBAPP_URL = 'https://chumi.space';
 
