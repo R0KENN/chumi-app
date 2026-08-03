@@ -3696,6 +3696,28 @@ export async function onRequest(context) {
         const rewardsEnabled =
           rewardsSetting?.enabled === true;
 
+        const {
+          data: winnerCountSetting,
+        } = await supabase
+          .from('app_settings')
+          .select('int_value')
+          .eq(
+            'key',
+            'weekly_game_rewards_winner_count',
+          )
+          .maybeSingle();
+
+        const configuredWinnerCount =
+          Math.min(
+            Math.max(
+              Number(
+                winnerCountSetting?.int_value,
+              ) || 10,
+              1,
+            ),
+            50,
+          );
+
         if (
           rewardsEnabled &&
           rankedRows.length > 0 &&
@@ -3735,7 +3757,7 @@ export async function onRequest(context) {
               preparedReward?.reward_winner_count,
             ) || Math.min(
               rankedRows.length,
-              10,
+              configuredWinnerCount,
             );
         }
 

@@ -444,1148 +444,6 @@ async function sendTelegramGiftPreview(
   );
 }
 
-async function sendWeeklyRewardSummary(
-  env,
-  supabase,
-  chatId,
-  weekStart,
-) {
-  const {
-    data: batch,
-    error: batchError,
-  } = await supabase
-    .from(
-      'weekly_game_reward_batches',
-    )
-    .select(
-      'week_start, status, winner_count, selected_gift_id, selected_gift_star_count, total_star_cost'
-    )
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .maybeSingle();
-
-  if (batchError || !batch) {
-    await sendMessage(
-      env,
-      chatId,
-      '❌ Награды для этой недели не найдены.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const {
-    data: rewards,
-    error: rewardsError,
-  } = await supabase
-    .from(
-      'weekly_game_rewards',
-    )
-    .select(
-      'position, user_id, display_name, username, best_score, status'
-    )
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .order(
-      'position',
-      {
-        ascending: true,
-      },
-    );
-
-  if (rewardsError) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось загрузить победителей:\n` +
-        `${escapeMd(rewardsError.message)}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const weekKey =
-    rewardWeekToKey(
-      weekStart,
-    );
-
-  const winnerLines =
-    (rewards || []).map(
-      reward => {
-        const name =
-          escapeMd(
-            reward.display_name ||
-            'Игрок',
-          );
-
-        const username =
-          reward.username
-            ? ` @${escapeMd(reward.username)}`
-            : '';
-
-        return (
-          `${reward.position}. ${name}${username}\n` +
-          `   ID: \`${reward.user_id}\` · ` +
-          `${reward.best_score} очков · ` +
-          `${reward.status}`
-        );
-      },
-    );
-
-  const selectedGiftText =
-    batch.selected_gift_id
-      ? (
-          `🎁 Подарок: \`${escapeMd(batch.selected_gift_id)}\`\n` +
-          `⭐ Цена одного: *${batch.selected_gift_star_count || 0}*\n` +
-          `💰 Общая стоимость: *${batch.total_star_cost || 0} Stars*`
-        )
-      : '🎁 Подарок пока не выбран.';
-
-  const keyboard = [];
-
-  if (batch.status === 'draft') {
-    keyboard.push([
-      {
-        text:
-          batch.selected_gift_id
-            ? '🔄 Изменить подарок'
-            : '🎁 Выбрать подарок',
-        callback_data:
-          `admin_reward_page_${weekKey}_0`,
-      },
-    ]);
-
-    if (batch.selected_gift_id) {
-      keyboard.push([
-        {
-          text:
-            '✅ Отправить топ-10',
-          callback_data:
-            `admin_reward_confirm_${weekKey}`,
-        },
-      ]);
-    }
-  }
-
-  if (batch.status === 'partial') {
-    keyboard.push([
-      {
-        text:
-          '🔁 Повторить ошибки',
-        callback_data:
-          `admin_reward_retry_${weekKey}`,
-      },
-    ]);
-  }
-
-  keyboard.push([
-    {
-      text:
-        '⬅️ В админ-панель',
-      callback_data:
-        'admin_menu',
-    },
-  ]);
-
-  await sendMessage(
-    env,
-    chatId,
-    `🏆 *Награды Chumi Jump*\n\n` +
-      `📅 Неделя: \`${weekStart}\`\n` +
-      `📌 Статус: *${escapeMd(batch.status)}*\n\n` +
-      `${winnerLines.join('\n\n') || 'Победителей нет.'}\n\n` +
-      `${selectedGiftText}`,
-    {
-      reply_markup: {
-        inline_keyboard:
-          keyboard,
-      },
-    },
-  );
-}
-
-async function sendWeeklyGiftCatalogPage(
-  env,
-  supabase,
-  chatId,
-  weekStart,
-  requestedIndex,
-) {
-  const {
-    data: batch,
-  } = await supabase
-    .from(
-      'weekly_game_reward_batches',
-    )
-    .select(
-      'status, winner_count'
-    )
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .maybeSingle();
-
-  if (!batch) {
-    await sendMessage(
-      env,
-      chatId,
-      '❌ Недельное награждение не найдено.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  if (batch.status !== 'draft') {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Выбор подарка уже закрыт.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const catalog =
-    await getAvailableTelegramGifts(
-      env,
-    );
-
-  if (!catalog.ok) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось получить каталог подарков:\n` +
-        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const gifts =
-    catalog.gifts.filter(
-      gift =>
-        gift?.id &&
-        Number(
-          gift.star_count,
-        ) > 0 &&
-        (
-          gift.remaining_count ===
-            undefined ||
-          gift.remaining_count ===
-            null ||
-          Number(
-            gift.remaining_count,
-          ) > 0
-        ),
-    );
-
-  if (gifts.length === 0) {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Сейчас Telegram не вернул доступных подарков.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const index =
-    Math.min(
-      Math.max(
-        Number(
-          requestedIndex,
-        ) || 0,
-        0,
-      ),
-      gifts.length - 1,
-    );
-
-  const gift =
-    gifts[index];
-
-  await sendTelegramGiftPreview(
-    env,
-    chatId,
-    gift,
-  );
-
-  const balance =
-    await getTelegramBotStarBalance(
-      env,
-    );
-
-  const remainingText =
-    gift.remaining_count ===
-      undefined ||
-    gift.remaining_count ===
-      null
-      ? 'без указанного лимита'
-      : String(
-          gift.remaining_count,
-        );
-
-  const requiredStars =
-    Number(
-      gift.star_count,
-    ) *
-    Number(
-      batch.winner_count,
-    );
-
-  const previousIndex =
-    index > 0
-      ? index - 1
-      : gifts.length - 1;
-
-  const nextIndex =
-    index < gifts.length - 1
-      ? index + 1
-      : 0;
-
-  const weekKey =
-    rewardWeekToKey(
-      weekStart,
-    );
-
-  const giftId =
-    String(
-      gift.id,
-    );
-
-  const selectCallback =
-    `admin_reward_select_${weekKey}_${giftId}`;
-
-  if (selectCallback.length > 64) {
-    await sendMessage(
-      env,
-      chatId,
-      '❌ Идентификатор подарка слишком длинный для Telegram callback.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  await sendMessage(
-    env,
-    chatId,
-    `🎁 *Подарок ${index + 1} из ${gifts.length}*\n\n` +
-      `ID: \`${escapeMd(giftId)}\`\n` +
-      `⭐ Цена: *${Number(gift.star_count)} Stars*\n` +
-      `📦 Осталось: *${escapeMd(remainingText)}*\n` +
-      `👥 Получателей: *${batch.winner_count}*\n` +
-      `💰 Нужно: *${requiredStars} Stars*\n` +
-      `🏦 Баланс бота: *${balance.ok ? balance.amount : 'не удалось получить'}*`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text:
-                '⬅️',
-              callback_data:
-                `admin_reward_page_${weekKey}_${previousIndex}`,
-            },
-            {
-              text:
-                `${index + 1}/${gifts.length}`,
-              callback_data:
-                `admin_reward_page_${weekKey}_${index}`,
-            },
-            {
-              text:
-                '➡️',
-              callback_data:
-                `admin_reward_page_${weekKey}_${nextIndex}`,
-            },
-          ],
-          [
-            {
-              text:
-                `✅ Выбрать за ${gift.star_count} ⭐`,
-              callback_data:
-                selectCallback,
-            },
-          ],
-          [
-            {
-              text:
-                '📋 К списку победителей',
-              callback_data:
-                `admin_reward_open_${weekKey}`,
-            },
-          ],
-        ],
-      },
-    },
-  );
-}
-
-async function selectWeeklyTelegramGift(
-  env,
-  supabase,
-  chatId,
-  weekStart,
-  giftId,
-) {
-  const catalog =
-    await getAvailableTelegramGifts(
-      env,
-    );
-
-  if (!catalog.ok) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось проверить подарок:\n` +
-        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const gift =
-    catalog.gifts.find(
-      catalogGift =>
-        String(
-          catalogGift.id,
-        ) ===
-        String(
-          giftId,
-        ),
-    );
-
-  if (!gift) {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Подарок больше не доступен. Выберите другой.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const {
-    data: batch,
-    error: batchError,
-  } = await supabase
-    .from(
-      'weekly_game_reward_batches',
-    )
-    .select(
-      'winner_count, status'
-    )
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .eq(
-      'status',
-      'draft',
-    )
-    .maybeSingle();
-
-  if (batchError || !batch) {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Выбор подарка уже закрыт.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const starCount =
-    Number(
-      gift.star_count,
-    ) || 0;
-
-  const totalCost =
-    starCount *
-    Number(
-      batch.winner_count,
-    );
-
-  const remainingCount =
-    gift.remaining_count ===
-      undefined ||
-    gift.remaining_count ===
-      null
-      ? null
-      : Number(
-          gift.remaining_count,
-        );
-
-  const {
-    error: updateBatchError,
-  } = await supabase
-    .from(
-      'weekly_game_reward_batches',
-    )
-    .update({
-      selected_gift_id:
-        String(gift.id),
-      selected_gift_star_count:
-        starCount,
-      selected_gift_remaining_count:
-        remainingCount,
-      total_star_cost:
-        totalCost,
-      updated_at:
-        new Date().toISOString(),
-    })
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .eq(
-      'status',
-      'draft',
-    );
-
-  if (updateBatchError) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось сохранить подарок:\n` +
-        `${escapeMd(updateBatchError.message)}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const {
-    error: updateRewardsError,
-  } = await supabase
-    .from(
-      'weekly_game_rewards',
-    )
-    .update({
-      gift_id:
-        String(gift.id),
-      gift_star_count:
-        starCount,
-      status:
-        'selected',
-      updated_at:
-        new Date().toISOString(),
-    })
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .in(
-      'status',
-      [
-        'pending',
-        'selected',
-      ],
-    );
-
-  if (updateRewardsError) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось обновить награды:\n` +
-        `${escapeMd(updateRewardsError.message)}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  await sendWeeklyRewardSummary(
-    env,
-    supabase,
-    chatId,
-    weekStart,
-  );
-}
-
-// Старая версия выдачи сохранена для обработки устаревших данных.
-// eslint-disable-next-line no-unused-vars
-async function processWeeklyTelegramGifts(
-  env,
-  supabase,
-  chatId,
-  weekStart,
-  retryFailed = false,
-) {
-  const expectedBatchStatus =
-    retryFailed
-      ? 'partial'
-      : 'draft';
-
-  const {
-    data: batch,
-    error: batchError,
-  } = await supabase
-    .from(
-      'weekly_game_reward_batches',
-    )
-    .select(
-      'week_start, status, winner_count, selected_gift_id, selected_gift_star_count'
-    )
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .eq(
-      'status',
-      expectedBatchStatus,
-    )
-    .maybeSingle();
-
-  if (
-    batchError ||
-    !batch
-  ) {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Награждение уже запущено, завершено или недоступно.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  if (!batch.selected_gift_id) {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Сначала выберите подарок.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const targetStatuses =
-    retryFailed
-      ? [
-          'failed',
-        ]
-      : [
-          'pending',
-          'selected',
-          'failed',
-        ];
-
-  const {
-    data: recipients,
-    error: recipientsError,
-  } = await supabase
-    .from(
-      'weekly_game_rewards',
-    )
-    .select(
-      'id, position, user_id, display_name, best_score, status, attempts'
-    )
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .in(
-      'status',
-      targetStatuses,
-    )
-    .order(
-      'position',
-      {
-        ascending: true,
-      },
-    );
-
-  if (recipientsError) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось загрузить получателей:\n` +
-        `${escapeMd(recipientsError.message)}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  if (
-    !recipients ||
-    recipients.length === 0
-  ) {
-    await sendMessage(
-      env,
-      chatId,
-      'ℹ️ Нет наград, которые можно безопасно отправить повторно.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const catalog =
-    await getAvailableTelegramGifts(
-      env,
-    );
-
-  if (!catalog.ok) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось проверить каталог:\n` +
-        `${escapeMd(catalog.description || 'Unknown Telegram error')}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const currentGift =
-    catalog.gifts.find(
-      gift =>
-        String(
-          gift.id,
-        ) ===
-        String(
-          batch.selected_gift_id,
-        ),
-    );
-
-  if (!currentGift) {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Выбранный подарок больше не доступен.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const giftPrice =
-    Number(
-      currentGift.star_count,
-    ) || 0;
-
-  const requiredStars =
-    giftPrice *
-    recipients.length;
-
-  const remainingCount =
-    currentGift.remaining_count ===
-      undefined ||
-    currentGift.remaining_count ===
-      null
-      ? null
-      : Number(
-          currentGift.remaining_count,
-        );
-
-  if (
-    remainingCount !== null &&
-    remainingCount <
-      recipients.length
-  ) {
-    await sendMessage(
-      env,
-      chatId,
-      `⚠️ Подарков недостаточно.\n\n` +
-        `Нужно: *${recipients.length}*\n` +
-        `Осталось: *${remainingCount}*`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const balance =
-    await getTelegramBotStarBalance(
-      env,
-    );
-
-  if (!balance.ok) {
-    await sendMessage(
-      env,
-      chatId,
-      `❌ Не удалось проверить баланс бота:\n` +
-        `${escapeMd(balance.description || 'Unknown Telegram error')}`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  if (
-    balance.amount <
-    requiredStars
-  ) {
-    await sendMessage(
-      env,
-      chatId,
-      `⚠️ *Недостаточно Stars*\n\n` +
-        `Баланс: *${balance.amount} ⭐*\n` +
-        `Нужно: *${requiredStars} ⭐*\n` +
-        `Не хватает: *${requiredStars - balance.amount} ⭐*`,
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  const {
-    data: claimedBatch,
-    error: claimError,
-  } = await supabase
-    .from(
-      'weekly_game_reward_batches',
-    )
-    .update({
-      status:
-        'sending',
-      sending_started_at:
-        new Date().toISOString(),
-      updated_at:
-        new Date().toISOString(),
-    })
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .eq(
-      'status',
-      expectedBatchStatus,
-    )
-    .select(
-      'week_start'
-    )
-    .maybeSingle();
-
-  if (
-    claimError ||
-    !claimedBatch
-  ) {
-    await sendMessage(
-      env,
-      chatId,
-      '⚠️ Награждение уже было запущено другим запросом.',
-      adminMenuButtons(),
-    );
-
-    return;
-  }
-
-  await sendMessage(
-    env,
-    chatId,
-    `⏳ Начинаю отправку подарков.\n\n` +
-      `Получателей: *${recipients.length}*\n` +
-      `Стоимость: *${requiredStars} ⭐*`,
-    {
-      reply_markup: {
-        inline_keyboard: [],
-      },
-    },
-  );
-
-  for (const recipient of recipients) {
-    const attemptedAt =
-      new Date().toISOString();
-
-    const {
-      data: claimedReward,
-      error: rewardClaimError,
-    } = await supabase
-      .from(
-        'weekly_game_rewards',
-      )
-      .update({
-        status:
-          'sending',
-        attempts:
-          Number(
-            recipient.attempts,
-          ) + 1,
-        attempted_at:
-          attemptedAt,
-        updated_at:
-          attemptedAt,
-        last_error:
-          null,
-      })
-      .eq(
-        'id',
-        recipient.id,
-      )
-      .in(
-        'status',
-        targetStatuses,
-      )
-      .select(
-        'id'
-      )
-      .maybeSingle();
-
-    if (
-      rewardClaimError ||
-      !claimedReward
-    ) {
-      continue;
-    }
-
-    const telegramUserId =
-      Number(
-        recipient.user_id,
-      );
-
-    if (
-      !Number.isSafeInteger(
-        telegramUserId,
-      ) ||
-      telegramUserId <= 0
-    ) {
-      await supabase
-        .from(
-          'weekly_game_rewards',
-        )
-        .update({
-          status:
-            'failed',
-          last_error:
-            'Invalid Telegram user ID',
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          'id',
-          recipient.id,
-        );
-
-      continue;
-    }
-
-    const delivery =
-      await callTelegramBotApi(
-        env,
-        'sendGift',
-        {
-          user_id:
-            telegramUserId,
-          gift_id:
-            String(
-              currentGift.id,
-            ),
-          text:
-            `🏆 ${recipient.position} место в недельном рейтинге Chumi Jump!`,
-        },
-      );
-
-    if (delivery.ok) {
-      const sentAt =
-        new Date().toISOString();
-
-      await supabase
-        .from(
-          'weekly_game_rewards',
-        )
-        .update({
-          status:
-            'sent',
-          gift_id:
-            String(
-              currentGift.id,
-            ),
-          gift_star_count:
-            giftPrice,
-          sent_at:
-            sentAt,
-          updated_at:
-            sentAt,
-          last_error:
-            null,
-        })
-        .eq(
-          'id',
-          recipient.id,
-        );
-
-      continue;
-    }
-
-    /*
-     * При сетевой ошибке результат неизвестен:
-     * Telegram мог принять подарок, но ответ не дошёл.
-     * Автоматически такой подарок не повторяем.
-     */
-    const failedStatus =
-      delivery.networkError
-        ? 'unknown'
-        : 'failed';
-
-    await supabase
-      .from(
-        'weekly_game_rewards',
-      )
-      .update({
-        status:
-          failedStatus,
-        last_error:
-          String(
-            delivery.description ||
-            'Unknown Telegram error',
-          ).slice(
-            0,
-            1000,
-          ),
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        'id',
-        recipient.id,
-      );
-  }
-
-  const {
-    data: finalRewards,
-  } = await supabase
-    .from(
-      'weekly_game_rewards',
-    )
-    .select(
-      'status'
-    )
-    .eq(
-      'week_start',
-      weekStart,
-    );
-
-  const statusCounts = {
-    sent: 0,
-    failed: 0,
-    unknown: 0,
-    pending: 0,
-    selected: 0,
-    sending: 0,
-  };
-
-  for (const reward of (
-    finalRewards || []
-  )) {
-    if (
-      Object.prototype.hasOwnProperty.call(
-        statusCounts,
-        reward.status,
-      )
-    ) {
-      statusCounts[
-        reward.status
-      ] += 1;
-    }
-  }
-
-  const totalCount =
-    (finalRewards || []).length;
-
-  const completed =
-    totalCount > 0 &&
-    statusCounts.sent ===
-      totalCount;
-
-  const completedAt =
-    completed
-      ? new Date().toISOString()
-      : null;
-
-  await supabase
-    .from(
-      'weekly_game_reward_batches',
-    )
-    .update({
-      status:
-        completed
-          ? 'completed'
-          : 'partial',
-      selected_gift_id:
-        String(
-          currentGift.id,
-        ),
-      selected_gift_star_count:
-        giftPrice,
-      total_star_cost:
-        giftPrice *
-        totalCount,
-      updated_at:
-        new Date().toISOString(),
-      completed_at:
-        completedAt,
-    })
-    .eq(
-      'week_start',
-      weekStart,
-    )
-    .eq(
-      'status',
-      'sending',
-    );
-
-  const keyboard = [];
-
-  if (statusCounts.failed > 0) {
-    keyboard.push([
-      {
-        text:
-          '🔁 Повторить ошибки',
-        callback_data:
-          `admin_reward_retry_${rewardWeekToKey(weekStart)}`,
-      },
-    ]);
-  }
-
-  keyboard.push([
-    {
-      text:
-        '⬅️ В админ-панель',
-      callback_data:
-        'admin_menu',
-    },
-  ]);
-
-  await sendMessage(
-    env,
-    chatId,
-    `🎁 *Выдача недельных наград завершена*\n\n` +
-      `✅ Отправлено: *${statusCounts.sent}*\n` +
-      `❌ Ошибки Telegram: *${statusCounts.failed}*\n` +
-      `❓ Неизвестный результат: *${statusCounts.unknown}*\n\n` +
-      (
-        statusCounts.unknown > 0
-          ? `Подарки со статусом unknown не повторяются автоматически, чтобы исключить двойную выдачу.`
-          : `Все безопасные попытки обработаны.`
-      ),
-    {
-      reply_markup: {
-        inline_keyboard:
-          keyboard,
-      },
-    },
-  );
-}
-
 async function getActiveBusinessConnection(
   supabase,
   adminUserId,
@@ -1656,6 +514,111 @@ async function getWeeklyRewardsEnabled(
   return data?.enabled === true;
 }
 
+const MAX_REWARD_PLACES = 50;
+
+async function getWeeklyRewardsWinnerCount(
+  supabase,
+) {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('app_settings')
+    .select('int_value')
+    .eq(
+      'key',
+      'weekly_game_rewards_winner_count',
+    )
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      'Weekly rewards winner count query failed:',
+      error,
+    );
+
+    return 10;
+  }
+
+  const storedCount =
+    Number(
+      data?.int_value,
+    );
+
+  if (
+    !Number.isInteger(
+      storedCount,
+    ) ||
+    storedCount < 1
+  ) {
+    return 10;
+  }
+
+  return Math.min(
+    storedCount,
+    MAX_REWARD_PLACES,
+  );
+}
+
+async function setWeeklyRewardsWinnerCount(
+  env,
+  supabase,
+  chatId,
+  adminUserId,
+  requestedCount,
+) {
+  const nextCount =
+    Math.min(
+      Math.max(
+        Number(
+          requestedCount,
+        ) || 0,
+        1,
+      ),
+      MAX_REWARD_PLACES,
+    );
+
+  const {
+    error,
+  } = await supabase
+    .from('app_settings')
+    .upsert(
+      {
+        key:
+          'weekly_game_rewards_winner_count',
+        enabled:
+          true,
+        int_value:
+          nextCount,
+        updated_at:
+          new Date().toISOString(),
+        updated_by:
+          String(adminUserId),
+      },
+      {
+        onConflict: 'key',
+      },
+    );
+
+  if (error) {
+    await sendMessage(
+      env,
+      chatId,
+      `❌ Не удалось сохранить число призовых мест:\n` +
+        `${escapeMd(error.message)}`,
+      adminMenuButtons(),
+    );
+
+    return;
+  }
+
+  await sendWeeklyRewardsSettings(
+    env,
+    supabase,
+    chatId,
+  );
+}
+
 async function sendWeeklyRewardsSettings(
   env,
   supabase,
@@ -1666,11 +629,17 @@ async function sendWeeklyRewardsSettings(
       supabase,
     );
 
+  const winnerCount =
+    await getWeeklyRewardsWinnerCount(
+      supabase,
+    );
+
   await sendMessage(
     env,
     chatId,
     `⚙️ *Настройки раздачи подарков*\n\n` +
-      `Статус: *${enabled ? 'включена' : 'выключена'}*\n\n` +
+      `Статус: *${enabled ? 'включена' : 'выключена'}*\n` +
+      `🔢 Призовых мест: *${winnerCount}*\n\n` +
       (
         enabled
           ? (
@@ -1695,6 +664,14 @@ async function sendWeeklyRewardsSettings(
                 enabled
                   ? 'admin_rewards_off'
                   : 'admin_rewards_on',
+            },
+          ],
+          [
+            {
+              text:
+                `🔢 Призовых мест: ${winnerCount}`,
+              callback_data:
+                'admin_rewards_places',
             },
           ],
           [
@@ -2257,6 +1234,7 @@ async function setWeeklyWinnerCount(
       Number(
         availableCount,
       ),
+      MAX_REWARD_PLACES,
     );
 
   const {
@@ -2799,8 +1777,11 @@ async function sendWeeklyGiftCatalogPageV2(
 
   const recipientCount =
     position === 0
-      ? Number(
-          batch.winner_count,
+      ? Math.max(
+          1,
+          Number(
+            batch.winner_count,
+          ) || 1,
         )
       : 1;
 
@@ -7128,6 +6109,33 @@ export async function onRequestPost(context) {
 
         if (
           cbData ===
+          'admin_rewards_places'
+        ) {
+          const currentWinnerCount =
+            await getWeeklyRewardsWinnerCount(
+              supabase,
+            );
+
+          await sendMessage(
+            env,
+            cbChatId,
+            `CHUMI-REWARD-PLACES\n\n` +
+              `🔢 *Число призовых мест*\n\n` +
+              `Ответьте на это сообщение числом от 1 до ${MAX_REWARD_PLACES}.\n\n` +
+              `Сейчас: *${currentWinnerCount}*\n\n` +
+              `Значение применяется при подготовке следующего награждения. ` +
+              `Если список победителей за неделю уже создан, ` +
+              `откройте награды заново — недостающие места добавятся.`,
+            adminForceReply(
+              `От 1 до ${MAX_REWARD_PLACES}`,
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        if (
+          cbData ===
           'admin_weekly_rewards'
         ) {
           const rewardsEnabled =
@@ -7262,128 +6270,15 @@ export async function onRequestPost(context) {
           return new Response('OK');
         }
 
-        const rewardPageMatch =
+        const legacyRewardMatch =
           cbData.match(
-            /^admin_reward_page_(\d{8})_(\d+)$/,
+            /^admin_reward_(?:page|select|confirm|retry)_(\d{8})(?:_.*)?$/,
           );
 
-        if (rewardPageMatch) {
+        if (legacyRewardMatch) {
           const weekStart =
             rewardKeyToWeek(
-              rewardPageMatch[1],
-            );
-
-          if (!weekStart) {
-            await sendMessage(
-              env,
-              cbChatId,
-              '❌ Некорректная дата награждения.',
-              adminMenuButtons(),
-            );
-
-            return new Response('OK');
-          }
-
-          await sendWeeklyGiftCatalogPage(
-            env,
-            supabase,
-            cbChatId,
-            weekStart,
-            Number(
-              rewardPageMatch[2],
-            ),
-          );
-
-          return new Response('OK');
-        }
-
-        const rewardSelectMatch =
-          cbData.match(
-            /^admin_reward_select_(\d{8})_(.+)$/,
-          );
-
-        if (rewardSelectMatch) {
-          const weekStart =
-            rewardKeyToWeek(
-              rewardSelectMatch[1],
-            );
-
-          if (!weekStart) {
-            await sendMessage(
-              env,
-              cbChatId,
-              '❌ Некорректная дата награждения.',
-              adminMenuButtons(),
-            );
-
-            return new Response('OK');
-          }
-
-          await selectWeeklyTelegramGift(
-            env,
-            supabase,
-            cbChatId,
-            weekStart,
-            rewardSelectMatch[2],
-          );
-
-          return new Response('OK');
-        }
-
-        const rewardConfirmMatch =
-          cbData.match(
-            /^admin_reward_confirm_(\d{8})$/,
-          );
-
-        if (rewardConfirmMatch) {
-          const weekStart =
-            rewardKeyToWeek(
-              rewardConfirmMatch[1],
-            );
-
-          if (!weekStart) {
-            await sendMessage(
-              env,
-              cbChatId,
-              '❌ Некорректная дата награждения.',
-              adminMenuButtons(),
-            );
-
-            return new Response('OK');
-          }
-
-          await sendMessage(
-            env,
-            cbChatId,
-            'ℹ️ Эта кнопка относится к старой версии награждения. Откройте актуальный список наград.',
-            {
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    {
-                      text:
-                        '🎁 Открыть актуальные награды',
-                      callback_data:
-                        `admin_reward_open_${rewardWeekToKey(weekStart)}`,
-                    },
-                  ],
-                ],
-              },
-            },
-          );
-
-          return new Response('OK');
-        }
-
-        const rewardRetryMatch =
-          cbData.match(
-            /^admin_reward_retry_(\d{8})$/,
-          );
-
-        if (rewardRetryMatch) {
-          const weekStart =
-            rewardKeyToWeek(
-              rewardRetryMatch[1],
+              legacyRewardMatch[1],
             );
 
           if (!weekStart) {
@@ -7858,7 +6753,7 @@ export async function onRequestPost(context) {
               position,
             ) ||
             position < 0 ||
-            position > 10
+            position > MAX_REWARD_PLACES
           ) {
             await sendMessage(
               env,
@@ -7903,7 +6798,7 @@ export async function onRequestPost(context) {
               position,
             ) ||
             position < 0 ||
-            position > 10
+            position > MAX_REWARD_PLACES
           ) {
             await sendMessage(
               env,
@@ -8135,7 +7030,7 @@ export async function onRequestPost(context) {
               position,
             ) ||
             position < 1 ||
-            position > 10
+            position > MAX_REWARD_PLACES
           ) {
             await sendMessage(
               env,
@@ -8180,7 +7075,7 @@ export async function onRequestPost(context) {
               position,
             ) ||
             position < 1 ||
-            position > 10
+            position > MAX_REWARD_PLACES
           ) {
             await sendMessage(
               env,
@@ -9300,6 +8195,51 @@ export async function onRequestPost(context) {
           resetGiftText
             ? null
             : messageText,
+        );
+
+        return new Response('OK');
+      }
+
+      if (
+        repliedBotText.startsWith(
+          'CHUMI-REWARD-PLACES',
+        )
+      ) {
+        const requestedPlaces =
+          Number(
+            messageText,
+          );
+
+        if (
+          !/^\d{1,3}$/.test(
+            messageText,
+          ) ||
+          !Number.isInteger(
+            requestedPlaces,
+          ) ||
+          requestedPlaces < 1 ||
+          requestedPlaces >
+            MAX_REWARD_PLACES
+        ) {
+          await sendMessage(
+            env,
+            chatId,
+            `CHUMI-REWARD-PLACES\n\n` +
+              `❌ Введите целое число от 1 до ${MAX_REWARD_PLACES}.`,
+            adminForceReply(
+              `От 1 до ${MAX_REWARD_PLACES}`,
+            ),
+          );
+
+          return new Response('OK');
+        }
+
+        await setWeeklyRewardsWinnerCount(
+          env,
+          supabase,
+          chatId,
+          userId,
+          requestedPlaces,
         );
 
         return new Response('OK');
