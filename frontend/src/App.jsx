@@ -172,6 +172,7 @@ function FullScreenMessage({
 
 function WeeklyRatingAnnouncement({
   onClose,
+  winnerCount,
 }) {
   const {
     lang,
@@ -179,6 +180,17 @@ function WeeklyRatingAnnouncement({
 
   const isRussian =
     lang === 'ru';
+
+  const placeCount =
+    Math.min(
+      Math.max(
+        Number(
+          winnerCount,
+        ) || 10,
+        1,
+      ),
+      50,
+    );
 
   return (
     <div className="weekly-rating-overlay">
@@ -212,15 +224,15 @@ function WeeklyRatingAnnouncement({
           {isRussian
             ? (
               <>
-                Играй в Chumi Jump и попади в топ-10
+                {`Играй в Chumi Jump и попади в топ-${placeCount} `}
                 недельного рейтинга. После подведения
                 итогов лучшие игроки получат подарки.
               </>
             )
             : (
               <>
-                Play Chumi Jump and finish in the weekly
-                top 10. After the results are finalized,
+                {`Play Chumi Jump and finish in the weekly top ${placeCount}. `}
+                After the results are finalized,
                 the best players will receive gifts.
               </>
             )}
@@ -232,8 +244,8 @@ function WeeklyRatingAnnouncement({
           onClick={onClose}
         >
           {isRussian
-            ? 'Вперёд в топ-10!'
-            : 'Go for the top 10!'}
+            ? `Вперёд в топ-${placeCount}!`
+            : `Go for the top ${placeCount}!`}
         </button>
       </section>
     </div>
@@ -250,6 +262,11 @@ function AppContent() {
     showWeeklyRatingAnnouncement,
     setShowWeeklyRatingAnnouncement,
   ] = useState(false);
+
+  const [
+    weeklyRewardsWinnerCount,
+    setWeeklyRewardsWinnerCount,
+  ] = useState(10);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,6 +295,20 @@ function AppContent() {
           data.weeklyRatingAnnouncementEnabled ===
             true,
         );
+
+        if (
+          Number.isFinite(
+            Number(
+              data.weeklyRewardsWinnerCount,
+            ),
+          )
+        ) {
+          setWeeklyRewardsWinnerCount(
+            Number(
+              data.weeklyRewardsWinnerCount,
+            ),
+          );
+        }
       } catch (error) {
         console.warn(
           'Failed to load announcement setting:',
@@ -345,6 +376,7 @@ function AppContent() {
 
       {showWeeklyRatingAnnouncement && (
         <WeeklyRatingAnnouncement
+          winnerCount={weeklyRewardsWinnerCount}
           onClose={() => {
             setShowWeeklyRatingAnnouncement(false);
 

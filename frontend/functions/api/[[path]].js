@@ -3270,16 +3270,39 @@ export async function onRequest(context) {
               'Failed to load app settings',
             weeklyRatingAnnouncementEnabled:
               false,
+            weeklyRewardsWinnerCount:
+              10,
           },
           500,
           request,
         );
       }
 
+      const {
+        data: publicWinnerCountSetting,
+      } = await supabase
+        .from('app_settings')
+        .select('int_value')
+        .eq(
+          'key',
+          'weekly_game_rewards_winner_count',
+        )
+        .maybeSingle();
+
       return json(
         {
           weeklyRatingAnnouncementEnabled:
             announcementSetting?.enabled === true,
+          weeklyRewardsWinnerCount:
+            Math.min(
+              Math.max(
+                Number(
+                  publicWinnerCountSetting?.int_value,
+                ) || 10,
+                1,
+              ),
+              50,
+            ),
         },
         200,
         request,
